@@ -82,11 +82,15 @@ export default function TopNav({
     fetchWeather();
   }, []);
 
-  const userName = currentUser ? (currentUser.Name || currentUser.name || currentUser.fullname || 'Ranggi Tino Fambudi') : 'Ranggi Tino Fambudi';
-  const userEmail = currentUser ? (currentUser.email || currentUser.Email || currentUser.USER_UID || 'ranggiit@gmail.com') : 'ranggiit@gmail.com';
+  // Debugging log untuk mengecek isi data user di Console Browser
+  console.log("Data User TopNav:", currentUser);
+
+  // Fallback nama dan email diubah dari hardcode agar lebih netral
+  const userName = currentUser?.Name || currentUser?.name || currentUser?.fullname || 'Guest';
+  const userEmail = currentUser?.email || currentUser?.Email || currentUser?.USER_UID || 'Tidak ada email';
   
   // Profile picture strictly from employee_directory column "link"
-  const userAvatar = currentUser ? (currentUser.link || currentUser.Link || currentUser.photo || currentUser.avatar || 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png') : 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png';
+  const userAvatar = currentUser?.link || currentUser?.Link || currentUser?.photo || currentUser?.avatar || 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png';
 
   const handleLogout = () => {
     localStorage.removeItem('hris_session_data');
