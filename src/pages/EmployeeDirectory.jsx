@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
 const TABLE_EMPLOYEES = ['employee_directory', 'employee directory', 'Employee Directory', 'employees'];
-const ITEMS_PER_PAGE = 12;
+const ITEMS_PER_PAGE = 12; // Jumlah kartu per halaman agar pas 3 baris x 4 kolom
 
 export default function EmployeeDirectory() {
   const context = useOutletContext() || {};
@@ -14,17 +14,17 @@ export default function EmployeeDirectory() {
   const [isLoading, setIsLoading] = useState(false);
   const [departments, setDepartments] = useState([]);
 
-  // Filters: Default status is 'Active'
+  // Filter States
   const [deptFilter, setDeptFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('Active');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Pagination
+  // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Accordions: Default CLOSED (false)
-  const [showNewEmp, setShowNewEmp] = useState(false);
-  const [showOffEmp, setShowOffEmp] = useState(false);
+  // Accordion Panels
+  const [showNewEmp, setShowNewEmp] = useState(true);
+  const [showOffEmp, setShowOffEmp] = useState(true);
 
   const getPropCaseInsensitive = (obj, candidateNames, fallback = '') => {
     if (!obj) return fallback;
@@ -46,7 +46,7 @@ export default function EmployeeDirectory() {
 
     const parsed = new Date(str);
     if (!isNaN(parsed.getTime())) return parsed;
-
+    
     const mIso = str.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
     if (mIso) {
       return new Date(parseInt(mIso[1], 10), parseInt(mIso[2], 10) - 1, parseInt(mIso[3], 10));
@@ -62,7 +62,7 @@ export default function EmployeeDirectory() {
     return null;
   };
 
-  // Fetch employees from employee_directory where company = user company
+  // 1. Pengambilan Data Murni berdasarkan Company = User Login Company
   const fetchDirectory = useCallback(async () => {
     if (!currentUser) return;
     setIsLoading(true);
@@ -95,10 +95,10 @@ export default function EmployeeDirectory() {
           const comp = getPropCaseInsensitive(emp, ['company', 'Company Name', 'companyuid', 'company_uid'], '').trim().toLowerCase();
           const joinDate = getPropCaseInsensitive(emp, ['join date', 'joindate', 'Join Date', 'date_of_joining'], '');
 
-          return { name, dept, jobTitle, empId, email, workEmail, phone, status, photo, comp, joinDate };
+          return { name, dept, jobTitle, empId, email, workEmail, phone, status, photo, comp, joinDate, raw: emp };
         });
 
-        // Filter: Company = user login company
+        // Filter ketat: Company = User Company
         if (userCompany) {
           formattedData = formattedData.filter(emp => 
             emp.comp === userCompany || 
@@ -107,6 +107,7 @@ export default function EmployeeDirectory() {
           );
         }
 
+        // Ambil daftar unik departemen
         const depts = [...new Set(formattedData.map(e => e.dept))].filter(d => d && d !== '-').sort();
         setDepartments(depts);
         setEmployees(formattedData);
@@ -122,12 +123,12 @@ export default function EmployeeDirectory() {
     fetchDirectory();
   }, [fetchDirectory]);
 
-  // Reset page when filters change
+  // Reset ke halaman 1 setiap kali filter berubah
   useEffect(() => {
     setCurrentPage(1);
   }, [deptFilter, statusFilter, searchQuery]);
 
-  // Karyawan Baru (Join Date di Bulan Ini)
+  // 2. Karyawan Baru (Join Date di Bulan Ini)
   const newEmployees = useMemo(() => {
     const today = new Date();
     const curM = today.getMonth();
@@ -140,7 +141,7 @@ export default function EmployeeDirectory() {
     });
   }, [employees]);
 
-  // Karyawan Resign / Off-Boarding
+  // 3. Karyawan Resign / Off-Boarding
   const offBoardingEmployees = useMemo(() => {
     return employees.filter(emp => {
       const s = emp.status.toLowerCase();
@@ -148,32 +149,58 @@ export default function EmployeeDirectory() {
     });
   }, [employees]);
 
-  // Filtered List berdasarkan Filter Departemen, Filter Status, dan Pencarian
-  const filteredEmployees = useMemo(() => {
+  // 4. Data Filter untuk Summary Card (Berdasarkan Dept & Search, mengabaikan Status agar count Inactive/Active tetap utuh)
+  const summaryBase = useMemo(() => {
+    return employees.filter(emp => {
+      if (deptFilter && emp.dept !== deptFilter) return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        if (!emp.name.toLowerCase().includes(q) && 
+            !emp.empId.toLowerCase().includes(q) && 
+            !emp.email.toLowerCase().includes(q)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [employees, deptFilter, searchQuery]);
+
+  const totalCount = summaryBase.length;
+  const activeCount = summaryBase.filter(emp => {
+    const s = emp.status.toLowerCase();
+    return !s.includes('inactive') && !s.includes('resign') && !s.includes('off');
+  }).length;
+  const inactiveCount = totalCount - activeCount;
+
+  // 5. Data Filter untuk Grid List Utama (Sesuai employeedirectory.html: New Emp dan Off-Boarding sudah terpisah di panel atas)
+  const filteredList = useMemo(() => {
     const today = new Date();
     const curM = today.getMonth();
     const curY = today.getFullYear();
 
     return employees.filter(emp => {
       const s = emp.status.toLowerCase();
-      let normalizedStatus = 'Active';
-      if (s.includes('off-boarding') || s.includes('resign')) {
-        normalizedStatus = 'Off-Boarding';
-      } else if (s.includes('inactive')) {
-        normalizedStatus = 'Inactive';
+      const isOff = s.includes('resign') || s.includes('off-boarding') || s.includes('off boarding');
+      if (isOff) return false; // Sudah tampil di notifikasi atas
+
+      if (emp.joinDate && emp.joinDate !== '-') {
+        const pDate = parseFlexibleDate(emp.joinDate);
+        if (pDate && pDate.getMonth() === curM && pDate.getFullYear() === curY) {
+          return false; // Sudah tampil di notifikasi Karyawan Baru
+        }
       }
 
       // Filter Departemen
-      if (deptFilter && deptFilter !== 'All' && emp.dept !== deptFilter) return false;
+      if (deptFilter && emp.dept !== deptFilter) return false;
 
-      // Filter Status (Default: Active)
-      if (statusFilter && statusFilter !== 'All') {
-        if (statusFilter === 'Active' && normalizedStatus !== 'Active') return false;
-        if (statusFilter === 'Inactive' && normalizedStatus !== 'Inactive') return false;
-        if (statusFilter === 'Off-Boarding' && normalizedStatus !== 'Off-Boarding') return false;
+      // Filter Status
+      if (statusFilter === 'Active') {
+        if (s.includes('inactive') || s.includes('resign') || s.includes('off')) return false;
+      } else if (statusFilter === 'Inactive') {
+        if (!s.includes('inactive') && !s.includes('resign') && !s.includes('off')) return false;
       }
 
-      // Filter Pencarian
+      // Filter Search Box
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         if (!emp.name.toLowerCase().includes(q) && 
@@ -187,30 +214,17 @@ export default function EmployeeDirectory() {
     }).sort((a, b) => a.name.localeCompare(b.name));
   }, [employees, deptFilter, statusFilter, searchQuery]);
 
-  // Summary Card: MENGHITUNG BERDASARKAN FILTER YANG AKTIF
-  const totalCount = filteredEmployees.length;
-  let activeCount = 0;
-  let inactiveCount = 0;
-
-  filteredEmployees.forEach(emp => {
-    const s = emp.status.toLowerCase();
-    if (s.includes('inactive') || s.includes('resign') || s.includes('off-boarding') || s.includes('off boarding')) {
-      inactiveCount++;
-    } else {
-      activeCount++;
-    }
-  });
-
-  // Pagination Logic
-  const totalPages = Math.ceil(filteredEmployees.length / ITEMS_PER_PAGE) || 1;
+  // 6. Logika Pagination
+  const totalPages = Math.ceil(filteredList.length / ITEMS_PER_PAGE) || 1;
   const paginatedEmployees = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredEmployees.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [filteredEmployees, currentPage]);
+    return filteredList.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredList, currentPage]);
 
-  const startIndexDisplay = filteredEmployees.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
-  const endIndexDisplay = Math.min(currentPage * ITEMS_PER_PAGE, filteredEmployees.length);
+  const startIndexDisplay = filteredList.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
+  const endIndexDisplay = Math.min(currentPage * ITEMS_PER_PAGE, filteredList.length);
 
+  // Helper WhatsApp URL
   const formatWhatsappUrl = (phone) => {
     if (!phone || phone === '-') return '#';
     let clean = phone.replace(/[^0-9]/g, '');
@@ -251,7 +265,7 @@ export default function EmployeeDirectory() {
         </button>
       </div>
 
-      {/* Accordion 1: New Employees (This Month) - Default TERTUTUP */}
+      {/* Accordion 1: New Employees (This Month) */}
       {newEmployees.length > 0 && (
         <div className="mb-3.5 border-l-4 border-indigo-500 bg-indigo-50/50 rounded-r-xl overflow-hidden shadow-xs">
           <div 
@@ -275,7 +289,7 @@ export default function EmployeeDirectory() {
           </div>
 
           {showNewEmp && (
-            <div className="p-3 sm:p-4 pt-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 border-t border-indigo-100/60 mt-1">
+            <div className="p-3 sm:p-4 pt-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
               {newEmployees.map((emp, i) => (
                 <div key={i} className="bg-white border border-gray-100 rounded-lg p-2.5 flex items-center justify-between shadow-xs">
                   <div className="flex items-center gap-3 min-w-0">
@@ -308,7 +322,7 @@ export default function EmployeeDirectory() {
         </div>
       )}
 
-      {/* Accordion 2: Resign / Off-Boarding - Default TERTUTUP */}
+      {/* Accordion 2: Resign / Off-Boarding */}
       {offBoardingEmployees.length > 0 && (
         <div className="mb-4 sm:mb-5 border-l-4 border-red-500 bg-red-50/40 rounded-r-xl overflow-hidden shadow-xs">
           <div 
@@ -330,7 +344,7 @@ export default function EmployeeDirectory() {
           </div>
 
           {showOffEmp && (
-            <div className="p-3 sm:p-4 pt-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 border-t border-red-100/60 mt-1">
+            <div className="p-3 sm:p-4 pt-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
               {offBoardingEmployees.map((emp, i) => (
                 <div key={i} className="bg-white border border-gray-100 rounded-lg p-2.5 flex items-center justify-between shadow-xs">
                   <div className="flex items-center gap-3 min-w-0">
@@ -363,7 +377,7 @@ export default function EmployeeDirectory() {
         </div>
       )}
 
-      {/* Filter Row: Status default adalah "Active" */}
+      {/* Filter Row */}
       <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 mb-4 sm:mb-5">
         <div className="w-full sm:w-1/3">
           <select 
@@ -385,7 +399,6 @@ export default function EmployeeDirectory() {
             <option value="All">{currentLang === 'id' ? 'Semua Status' : 'All Status'}</option>
             <option value="Active">{currentLang === 'id' ? 'Aktif' : 'Active'}</option>
             <option value="Inactive">{currentLang === 'id' ? 'Tidak Aktif' : 'Inactive'}</option>
-            <option value="Off-Boarding">Off-Boarding</option>
           </select>
         </div>
 
@@ -400,7 +413,7 @@ export default function EmployeeDirectory() {
         </div>
       </div>
 
-      {/* Summary Cards: MENGHITUNG BERDASARKAN FILTER */}
+      {/* Summary Cards */}
       <div className="flex w-full bg-white border border-gray-200 rounded-xl shadow-xs overflow-hidden mb-4 sm:mb-6 divide-x divide-gray-200">
         <div className="flex-1 p-2 sm:p-4 text-center relative">
           <div className="text-[9px] sm:text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">
@@ -435,21 +448,8 @@ export default function EmployeeDirectory() {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
         {paginatedEmployees.map((emp, idx) => {
           const s = emp.status.toLowerCase();
-          const isOff = s.includes('off-boarding') || s.includes('resign');
-          const isInactive = s.includes('inactive');
-          const isActive = !isOff && !isInactive;
-
-          let badgeDotColor = 'bg-green-500';
-          let stripColor = 'bg-green-500';
-
-          if (isOff) {
-            badgeDotColor = 'bg-yellow-500';
-            stripColor = 'bg-yellow-500';
-          } else if (isInactive) {
-            badgeDotColor = 'bg-red-500';
-            stripColor = 'bg-red-500';
-          }
-
+          const isActive = !s.includes('inactive') && !s.includes('resign') && !s.includes('off');
+          const stripColor = isActive ? 'bg-green-500' : 'bg-red-500';
           const initials = emp.name ? emp.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : '?';
 
           return (
@@ -473,7 +473,7 @@ export default function EmployeeDirectory() {
                         e.target.src = `https://ui-avatars.com/api/?name=${initials}&background=e0e7ff&color=4f46e5&bold=true`;
                       }} 
                     />
-                    <span className={`absolute bottom-0 right-0 w-3 h-3 border-2 border-white rounded-full ${badgeDotColor}`}></span>
+                    <span className={`absolute bottom-0 right-0 w-3 h-3 border-2 border-white rounded-full ${stripColor}`}></span>
                   </div>
                   <div className="min-w-0">
                     <h4 className="text-sm font-bold text-gray-800 leading-tight truncate w-36 sm:w-44" title={emp.name}>
@@ -527,7 +527,7 @@ export default function EmployeeDirectory() {
           );
         })}
 
-        {filteredEmployees.length === 0 && !isLoading && (
+        {filteredList.length === 0 && !isLoading && (
           <div className="col-span-full p-8 text-center text-gray-400 text-sm border border-dashed border-gray-200 rounded-2xl italic">
             {currentLang === 'id' ? 'Tidak ada data karyawan yang cocok.' : 'No employee records matched.'}
           </div>
@@ -535,16 +535,18 @@ export default function EmployeeDirectory() {
       </div>
 
       {/* ================= PAGINATION CONTROLS ================= */}
-      {filteredEmployees.length > 0 && (
+      {filteredList.length > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between border-t border-gray-100 pt-5 mt-6 gap-3">
+          {/* Info Status Halaman */}
           <p className="text-xs text-gray-500 font-medium">
             {currentLang === 'id' ? (
-              <>Menampilkan <span className="font-bold text-gray-800">{startIndexDisplay}</span> - <span className="font-bold text-gray-800">{endIndexDisplay}</span> dari <span className="font-bold text-gray-800">{filteredEmployees.length}</span> karyawan</>
+              <>Menampilkan <span className="font-bold text-gray-800">{startIndexDisplay}</span> - <span className="font-bold text-gray-800">{endIndexDisplay}</span> dari <span className="font-bold text-gray-800">{filteredList.length}</span> karyawan</>
             ) : (
-              <>Showing <span className="font-bold text-gray-800">{startIndexDisplay}</span> to <span className="font-bold text-gray-800">{endIndexDisplay}</span> of <span className="font-bold text-gray-800">{filteredEmployees.length}</span> employees</>
+              <>Showing <span className="font-bold text-gray-800">{startIndexDisplay}</span> to <span className="font-bold text-gray-800">{endIndexDisplay}</span> of <span className="font-bold text-gray-800">{filteredList.length}</span> employees</>
             )}
           </p>
 
+          {/* Tombol Halaman (Prev, Nomor Halaman, Next) */}
           <div className="flex items-center space-x-1.5">
             {/* Tombol Previous */}
             <button
@@ -562,10 +564,11 @@ export default function EmployeeDirectory() {
               <span>{currentLang === 'id' ? 'Sebelumnya' : 'Previous'}</span>
             </button>
 
-            {/* Tombol Nomor Halaman */}
+            {/* Tombol Angka Halaman */}
             <div className="flex items-center space-x-1">
               {Array.from({ length: totalPages }, (_, i) => i + 1)
                 .filter(page => {
+                  // Tampilkan halaman pertama, terakhir, dan halaman sekitar halaman aktif
                   return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
                 })
                 .map((page, idx, arr) => {
