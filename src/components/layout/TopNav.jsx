@@ -90,28 +90,23 @@ export default function TopNav({
 
   // Effect untuk menghitung jumlah approval secara berkala (polling)
   useEffect(() => {
+    let lastLog = ''; // Untuk mencegah spam console.log
+
     const calculatePendingCount = () => {
-      // Prioritaskan berbagai variasi work email
-      const rawEmail = 
-        currentUser?.work_email || 
+      // 1. Ambil HANYA Work Email dari akun yang sedang login
+      const rawUserWorkEmail = 
+        currentUser?.['Work Email'] ||
         currentUser?.['work email'] || 
+        currentUser?.Work_Email ||
+        currentUser?.work_email || 
         currentUser?.['Employee work email'] || 
         currentUser?.Employee_work_email ||
-        currentUser?.Work_Email || 
-        currentUser?.email || 
+        currentUser?.email || // Fallback jika tidak ada field khusus
         currentUser?.Email;
-        
-      const rawName = 
-        currentUser?.fullname ||
-        currentUser?.Name ||
-        currentUser?.name;
 
-      // Jika tidak ada identifier yang bisa dipakai, keluar
-      if (!rawEmail && !rawName) return;
+      if (!rawUserWorkEmail) return;
 
-      const normalizedWorkEmail = String(rawEmail || '').trim().toLowerCase();
-      const normalizedName = String(rawName || '').trim().toLowerCase();
-      
+      const normalizedWorkEmail = String(rawUserWorkEmail).trim().toLowerCase();
       let pendingCount = 0;
       let dataFound = false;
 
@@ -122,33 +117,27 @@ export default function TopNav({
         let count = 0;
         
         dataArray.forEach(item => {
+          // 2. Ambil nilai status
           const status = String(item?.Status || item?.status || '').trim().toLowerCase();
           
-          // Cek variasi nama kolom Line Manager dan Employee Work Email
+          // 3. Ambil HANYA nilai dari kolom Line Manager
           const lineManager = String(
             item?.['Line Manager'] || 
-            item?.line_manager || 
             item?.Line_Manager || 
+            item?.line_manager || 
             item?.['line manager'] || 
-            item?.['work email'] || 
-            item?.work_email || 
-            item?.['Employee work email'] || 
-            item?.Employee_work_email || 
             ''
           ).trim().toLowerCase();
           
-          // Cek variasi penulisan Pending Approval
+          // 4. Validasi Status (Berdasarkan instruksi: Pending Approval / Pending_Approval / pending)
           const isPending = 
             status === 'pending approval' || 
             status === 'pending_approval' || 
             status === 'pending' || 
             status === 'waiting approval';
             
-          // Cek kecocokan
-          const isMyApproval = (normalizedWorkEmail && lineManager === normalizedWorkEmail) || 
-                               (normalizedName && lineManager === normalizedName);
-          
-          if (isPending && isMyApproval) {
+          // 5. Pencocokan Ketat: Line Manager === User Work Email
+          if (isPending && lineManager === normalizedWorkEmail) {
             count++;
           }
         });
@@ -156,11 +145,11 @@ export default function TopNav({
       };
 
       try {
-        // 1. Cek dari API Local/State Management jika ditaruh di window
+        // Cek data di Window (global)
         if (window.globalLeaveRequests) pendingCount += checkArrayForPending(window.globalLeaveRequests, 'window.leave');
         if (window.globalAttendance) pendingCount += checkArrayForPending(window.globalAttendance, 'window.attendance');
         
-        // 2. Cek dari hris_database
+        // Cek dari hris_database
         const dbData = localStorage.getItem('hris_database');
         if (dbData) {
           const parsedDb = JSON.parse(dbData);
@@ -168,19 +157,31 @@ export default function TopNav({
           pendingCount += checkArrayForPending(parsedDb?.tables?.attendance || parsedDb?.attendance, 'db.attendance');
         } 
         
-        // 3. Cek key localStorage individual
+        // Cek key localStorage individual
         const leaveDataStr = localStorage.getItem('leave_requests') || localStorage.getItem('leaveData');
         if (leaveDataStr) pendingCount += checkArrayForPending(JSON.parse(leaveDataStr), 'local.leave_requests');
 
         const attDataStr = localStorage.getItem('attendance') || localStorage.getItem('attendanceData');
         if (attDataStr) pendingCount += checkArrayForPending(JSON.parse(attDataStr), 'local.attendance');
         
-        // 4. Update State
+        // Update State
         if (dataFound) {
             setIsCalculated(true);
             setCalculatedApprovalCount(pendingCount);
+
+            // Log untuk debugging (Hanya print jika nilainya berubah atau pertama kali untuk hindari spam)
+            const currentLog = `[TopNav Badge] Target WorkEmail: "${normalizedWorkEmail}" | Total Pending Ditemukan: ${pendingCount}`;
+            if (currentLog !== lastLog) {
+              console.log(`%c${currentLog}`, 'color: #10b981; font-weight: bold;');
+              lastLog = currentLog;
+            }
+
         } else {
             setIsCalculated(false);
+            if (lastLog !== 'No Data') {
+              console.log('%c[TopNav Badge] Data Leave/Attendance tidak ditemukan di localStorage.', 'color: #ef4444;');
+              lastLog = 'No Data';
+            }
         }
 
       } catch (e) {
