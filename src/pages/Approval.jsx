@@ -91,7 +91,7 @@ const matchesLineManager = (record, targetEmail) => {
   return mgrVal === targetEmail || mgrVal.includes(targetEmail);
 };
 
-// Calendar Helpers
+// Calendar Date Matcher
 const checkDateMatch = (rawDbDate, targetYear, targetMonth, targetDay) => {
   if (!rawDbDate) return false;
   const str = String(rawDbDate).trim();
@@ -144,14 +144,15 @@ export default function Approval() {
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [attendanceRequests, setAttendanceRequests] = useState([]);
   
-  // Team Calendar States
+  // Team Calendar & Directory States
+  const [teamMembers, setTeamMembers] = useState([]);
   const [teamScheduleRecords, setTeamScheduleRecords] = useState([]);
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [teamScheduleModalData, setTeamScheduleModalData] = useState(null);
 
-  // Filter & Search
+  // Filter States
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'leave' | 'attendance'
-  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedEmployee, setSelectedEmployee] = useState('all');
 
   // Modals
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -184,13 +185,49 @@ export default function Approval() {
     return getPropCaseInsensitive(currentUser, ['Name', 'name', 'nama', 'fullname', 'full_name'], userWorkEmail.split('@')[0] || 'Manager');
   }, [currentUser, userWorkEmail]);
 
-  // Fetch Pending Approval Requests for this Line Manager
+  // Fetch Pending Approval Requests, Directory, and Schedule for this Line Manager
   const refreshAllData = useCallback(async () => {
     if (!userWorkEmail) return;
     setLoading(true);
 
     try {
-      // 1. Fetch Leave Requests
+      // 1. Fetch Subordinate Employees from employee_directory
+      try {
+        const { data: dirData, error: dirErr } = await supabase
+          .from('employee_directory')
+          .select('*')
+          .limit(2000);
+
+        if (!dirErr && dirData) {
+          const subordinates = dirData.filter(row => matchesLineManager(row, userWorkEmail));
+          
+          const uniqueMap = new Map();
+          subordinates.forEach(emp => {
+            const email = (getPropCaseInsensitive(emp, [
+              'Employee work email',
+              'employee_work_email',
+              'work_email',
+              'work email',
+              'Work Email',
+              'email',
+              'Email',
+              'user_uid'
+            ]) || '').trim().toLowerCase();
+
+            const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
+
+            if (email && !uniqueMap.has(email)) {
+              uniqueMap.set(email, { email, name });
+            }
+          });
+
+          setTeamMembers(Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
+        }
+      } catch (err) {
+        console.warn("Could not query employee_directory:", err);
+      }
+
+      // 2. Fetch Leave Requests
       const { data: lvData, error: lvError } = await supabase
         .from('leave_requests')
         .select('*')
@@ -210,7 +247,7 @@ export default function Approval() {
           }));
       }
 
-      // 2. Fetch Attendance Requests
+      // 3. Fetch Attendance Requests
       let pendingAttendance = [];
       try {
         const { data: attData, error: attErr } = await supabase
@@ -233,15 +270,15 @@ export default function Approval() {
       } catch (e) {
         console.warn("Could not query attendance table:", e);
       }
-      
-      // 3. Fetch Team Schedule
+
+      // 4. Fetch Team Schedule
       let teamSched = [];
       try {
         const { data: schedData, error: schedErr } = await supabase
           .from('schedule')
           .select('*')
           .limit(5000);
-          
+
         if (!schedErr && schedData) {
           teamSched = schedData.filter(row => matchesLineManager(row, userWorkEmail));
         }
@@ -262,7 +299,7 @@ export default function Approval() {
     refreshAllData();
   }, [refreshAllData]);
 
-  // Calendar Logic
+  // Calendar Controls
   const prevMonth = () => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1));
   const nextMonth = () => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1));
   const setThisMonth = () => setCalendarDate(new Date());
@@ -273,6 +310,25 @@ export default function Approval() {
   const totalDays = new Date(year, month + 1, 0).getDate();
   const today = new Date();
 
+  // Filtered schedules according to selected employee dropdown
+  const filteredScheduleRecords = useMemo(() => {
+    if (!selectedEmployee || selectedEmployee === 'all') {
+      return teamScheduleRecords;
+    }
+    return teamScheduleRecords.filter(item => {
+      const email = (getPropCaseInsensitive(item, [
+        'Employee',
+        'employee',
+        'email',
+        'user_uid',
+        'employee_email',
+        'work_email',
+        'Employee work email'
+      ]) || '').toLowerCase();
+      return email === selectedEmployee.toLowerCase();
+    });
+  }, [teamScheduleRecords, selectedEmployee]);
+
   const { calendarDays } = useMemo(() => {
     const days = [];
 
@@ -280,7 +336,7 @@ export default function Approval() {
       const currLoopDate = new Date(year, month, day);
       const isToday = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
 
-      const teamOnThisDay = teamScheduleRecords.filter(item => {
+      const teamOnThisDay = filteredScheduleRecords.filter(item => {
         const dbDate = getPropCaseInsensitive(item, ['date', 'Date', 'tanggal', 'scheduledate', 'schedule_date', 'startdate']);
         return checkDateMatch(dbDate, year, month, day);
       });
@@ -305,7 +361,7 @@ export default function Approval() {
       });
     }
     return { calendarDays: days };
-  }, [year, month, totalDays, teamScheduleRecords, today]);
+  }, [year, month, totalDays, filteredScheduleRecords, today]);
 
   // Send email notification upon Approve / Reject
   const sendNotificationEmail = async (item, newStatus, reason = '') => {
@@ -421,7 +477,7 @@ export default function Approval() {
     handleUpdateStatus(itemToReject, 'Rejected', rejectReason);
   };
 
-  // Filtered List
+  // Filtered List based on tab and selected employee
   const combinedList = useMemo(() => {
     let list = [];
     if (activeTab === 'all' || activeTab === 'leave') {
@@ -431,17 +487,20 @@ export default function Approval() {
       list.push(...attendanceRequests);
     }
 
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase();
+    if (selectedEmployee && selectedEmployee !== 'all') {
+      const target = selectedEmployee.toLowerCase();
       list = list.filter(item => {
-        const name = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name']).toLowerCase();
-        const emp = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid']).toLowerCase();
-        const type = (item._category === 'Leave' 
-          ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type']) 
-          : getPropCaseInsensitive(item, ['Type', 'type', 'Attendance Type', 'attendance_type'])
-        ).toLowerCase();
+        const empEmail = (getPropCaseInsensitive(item, [
+          'Employee',
+          'employee',
+          'email',
+          'user_uid',
+          'employee_email',
+          'work_email',
+          'Employee work email'
+        ]) || '').toLowerCase();
 
-        return name.includes(q) || emp.includes(q) || type.includes(q);
+        return empEmail === target;
       });
     }
 
@@ -450,85 +509,12 @@ export default function Approval() {
       const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'created_at'])) || new Date(0);
       return dtB.getTime() - dtA.getTime();
     });
-  }, [activeTab, leaveRequests, attendanceRequests, searchTerm]);
+  }, [activeTab, leaveRequests, attendanceRequests, selectedEmployee]);
 
   return (
     <div className="w-full text-gray-800 font-sans">
       
-      {/* 1. Team Working Calendar Card */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 w-full">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 mb-4 border-b border-gray-100 gap-3">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-              Team Working Calendar
-            </h3>
-            <p className="text-xs text-gray-500 mt-0.5">Schedules for team members reporting to you</p>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <button onClick={prevMonth} className="p-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Previous Month">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
-            </button>
-            <span className="text-sm sm:text-base font-bold text-gray-800 min-w-[120px] text-center">
-              {monthNames[month]} {year}
-            </span>
-            <button onClick={nextMonth} className="p-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Next Month">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-            </button>
-            <button onClick={setThisMonth} className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition shadow-sm active:scale-95 ml-1">
-              This Month
-            </button>
-          </div>
-        </div>
-
-        {/* Days of Week Header */}
-        <div className="grid grid-cols-7 text-center text-xs font-bold pt-1 mb-1">
-          <span className="text-red-500">Sun</span>
-          <span className="text-gray-700">Mon</span>
-          <span className="text-gray-700">Tue</span>
-          <span className="text-gray-700">Wed</span>
-          <span className="text-gray-700">Thu</span>
-          <span className="text-gray-700">Fri</span>
-          <span className="text-blue-600">Sat</span>
-        </div>
-
-        {/* Calendar Grid */}
-        <div className="grid grid-cols-7 gap-1 sm:gap-1.5 text-center text-xs">
-          {Array.from({ length: firstDayIndex }).map((_, idx) => (
-            <div key={`empty-${idx}`} className="h-20 sm:h-24 bg-gray-50 border border-dashed border-gray-200 rounded-xl opacity-40"></div>
-          ))}
-
-          {calendarDays.map((d) => (
-            <div 
-              key={`day-${d.day}`}
-              onClick={() => {
-                if (d.teamData.length > 0) {
-                  setTeamScheduleModalData({ date: d.dateToPass, records: d.teamData });
-                }
-              }}
-              className={`relative h-20 sm:h-24 p-1 sm:p-2 rounded-xl border transition flex flex-col overflow-hidden bg-white ${d.teamData.length > 0 ? 'cursor-pointer hover:shadow-md hover:border-blue-300' : ''} ${d.isToday ? 'ring-2 ring-blue-500 ring-offset-1 border-blue-300' : 'border-gray-200'}`}
-            >
-              <div className="flex justify-between items-start w-full">
-                <span className={`text-xs sm:text-sm font-extrabold leading-none ${d.isToday ? 'text-blue-600' : d.isSunday ? 'text-red-500' : 'text-gray-800'}`}>
-                  {d.day}
-                </span>
-              </div>
-
-              <div className="w-full flex flex-col items-center justify-center my-auto gap-0.5 sm:gap-1 mt-1">
-                {d.counts.workingCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-green-600 text-white shadow-sm">{d.counts.workingCount} Work</span>}
-                {d.counts.sickCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-pink-500 text-white shadow-sm">{d.counts.sickCount} Sick</span>}
-                {d.counts.leaveCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-orange-500 text-white shadow-sm">{d.counts.leaveCount} Leave</span>}
-                {d.counts.offCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-red-600 text-white shadow-sm">{d.counts.offCount} Off</span>}
-                
-                {d.teamData.length === 0 && <span className="text-[10px] text-gray-300">-</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* 2. Unified Main Card: Controls, Filters, and Table */}
+      {/* 1. Unified Main Card: Controls, Filters, and Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-6 w-full">
         
         {/* Top Header Row & Filters */}
@@ -563,7 +549,7 @@ export default function Approval() {
             </div>
           </div>
 
-          {/* Filter Tabs & Search Bar */}
+          {/* Filter Tabs & Employee Dropdown */}
           <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-4">
             <div className="flex p-1 bg-gray-100 rounded-xl space-x-1">
               <button
@@ -586,20 +572,26 @@ export default function Approval() {
               </button>
             </div>
 
+            {/* Dropdown filter Employee from employee_directory */}
             <div className="relative min-w-[240px]">
-              <input
-                type="text"
-                placeholder="Search employee, type..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-xs border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-              />
-              <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              {searchTerm && (
-                <button onClick={() => setSearchTerm('')} className="absolute right-3 top-2 text-gray-400 hover:text-gray-600 text-xs">✕</button>
-              )}
+              <select
+                value={selectedEmployee}
+                onChange={(e) => setSelectedEmployee(e.target.value)}
+                className="w-full pl-3 pr-8 py-2 text-xs font-semibold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs cursor-pointer transition"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 0.75rem center',
+                  backgroundSize: '1rem'
+                }}
+              >
+                <option value="all">All Team Members ({teamMembers.length})</option>
+                {teamMembers.map((member) => (
+                  <option key={member.email} value={member.email}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
@@ -639,8 +631,8 @@ export default function Approval() {
                       <svg className="w-10 h-10 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      <p className="font-semibold text-gray-600 text-sm">No requests pending approval.</p>
-                      <p className="text-xs text-gray-400 mt-1">All leave and attendance requests from your team have been processed.</p>
+                      <p className="font-semibold text-gray-600 text-sm">No requests found.</p>
+                      <p className="text-xs text-gray-400 mt-1">There are no pending requests matching your current filter.</p>
                     </div>
                   </td>
                 </tr>
@@ -657,7 +649,6 @@ export default function Approval() {
                   const status = getPropCaseInsensitive(item, ['Status', 'status', 'Approval Status'], 'Pending Approval');
                   const attachmentUrl = getPropCaseInsensitive(item, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo', 'Link', 'link'], '');
 
-                  // Date range / info
                   let dateInfo = '-';
                   let durationInfo = '-';
 
@@ -762,6 +753,83 @@ export default function Approval() {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* 2. Team Working Calendar Card (Dipindahkan ke paling bawah) */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 w-full">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 mb-4 border-b border-gray-100 gap-3">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+              Team Working Calendar
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {selectedEmployee === 'all' 
+                ? 'Showing schedules for all team members under your supervision' 
+                : `Showing schedule for: ${teamMembers.find(m => m.email === selectedEmployee)?.name || selectedEmployee}`}
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <button onClick={prevMonth} className="p-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Previous Month">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <span className="text-sm sm:text-base font-bold text-gray-800 min-w-[120px] text-center">
+              {monthNames[month]} {year}
+            </span>
+            <button onClick={nextMonth} className="p-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Next Month">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+            </button>
+            <button onClick={setThisMonth} className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition shadow-sm active:scale-95 ml-1">
+              This Month
+            </button>
+          </div>
+        </div>
+
+        {/* Days of Week Header */}
+        <div className="grid grid-cols-7 text-center text-xs font-bold pt-1 mb-1">
+          <span className="text-red-500">Sun</span>
+          <span className="text-gray-700">Mon</span>
+          <span className="text-gray-700">Tue</span>
+          <span className="text-gray-700">Wed</span>
+          <span className="text-gray-700">Thu</span>
+          <span className="text-gray-700">Fri</span>
+          <span className="text-blue-600">Sat</span>
+        </div>
+
+        {/* Calendar Grid */}
+        <div className="grid grid-cols-7 gap-1 sm:gap-1.5 text-center text-xs">
+          {Array.from({ length: firstDayIndex }).map((_, idx) => (
+            <div key={`empty-${idx}`} className="h-20 sm:h-24 bg-gray-50 border border-dashed border-gray-200 rounded-xl opacity-40"></div>
+          ))}
+
+          {calendarDays.map((d) => (
+            <div 
+              key={`day-${d.day}`}
+              onClick={() => {
+                if (d.teamData.length > 0) {
+                  setTeamScheduleModalData({ date: d.dateToPass, records: d.teamData });
+                }
+              }}
+              className={`relative h-20 sm:h-24 p-1 sm:p-2 rounded-xl border transition flex flex-col overflow-hidden bg-white ${d.teamData.length > 0 ? 'cursor-pointer hover:shadow-md hover:border-blue-300' : ''} ${d.isToday ? 'ring-2 ring-blue-500 ring-offset-1 border-blue-300' : 'border-gray-200'}`}
+            >
+              <div className="flex justify-between items-start w-full">
+                <span className={`text-xs sm:text-sm font-extrabold leading-none ${d.isToday ? 'text-blue-600' : d.isSunday ? 'text-red-500' : 'text-gray-800'}`}>
+                  {d.day}
+                </span>
+              </div>
+
+              <div className="w-full flex flex-col items-center justify-center my-auto gap-0.5 sm:gap-1 mt-1">
+                {d.counts.workingCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-green-600 text-white shadow-sm">{d.counts.workingCount} Work</span>}
+                {d.counts.sickCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-pink-500 text-white shadow-sm">{d.counts.sickCount} Sick</span>}
+                {d.counts.leaveCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-orange-500 text-white shadow-sm">{d.counts.leaveCount} Leave</span>}
+                {d.counts.offCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-red-600 text-white shadow-sm">{d.counts.offCount} Off</span>}
+                
+                {d.teamData.length === 0 && <span className="text-[10px] text-gray-300">-</span>}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
