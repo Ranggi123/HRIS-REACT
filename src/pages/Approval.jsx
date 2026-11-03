@@ -91,6 +91,42 @@ const matchesLineManager = (record, targetEmail) => {
   return mgrVal === targetEmail || mgrVal.includes(targetEmail);
 };
 
+// Calendar Helpers
+const checkDateMatch = (rawDbDate, targetYear, targetMonth, targetDay) => {
+  if (!rawDbDate) return false;
+  const str = String(rawDbDate).trim();
+  if (str.includes('-')) {
+    const parts = str.split('T')[0].split(' ')[0].split('-');
+    if (parts.length === 3) {
+      return parseInt(parts[0], 10) === targetYear && (parseInt(parts[1], 10) - 1) === targetMonth && parseInt(parts[2], 10) === targetDay;
+    }
+  }
+  if (str.includes('/')) {
+    const parts = str.split(' ')[0].split('/');
+    if (parts.length === 3) {
+      const p0 = parseInt(parts[0], 10), p1 = parseInt(parts[1], 10), p2 = parseInt(parts[2], 10);
+      if (p2 === targetYear) {
+        if ((p1 - 1) === targetMonth && p0 === targetDay) return true;
+        if ((p0 - 1) === targetMonth && p1 === targetDay) return true;
+      }
+    }
+  }
+  if (!isNaN(str) && Number(str) > 30000 && Number(str) < 60000) {
+    const excelDate = new Date((Number(str) - 25569) * 86400 * 1000);
+    return excelDate.getFullYear() === targetYear && excelDate.getMonth() === targetMonth && excelDate.getDate() === targetDay;
+  }
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.getFullYear() === targetYear && parsed.getMonth() === targetMonth && parsed.getDate() === targetDay;
+  }
+  return false;
+};
+
+const monthNames = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
 export default function Approval() {
   const [currentUser] = useState(() => {
     const saved = localStorage.getItem('hris_session_data');
@@ -107,6 +143,11 @@ export default function Approval() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [attendanceRequests, setAttendanceRequests] = useState([]);
+  
+  // Team Calendar States
+  const [teamScheduleRecords, setTeamScheduleRecords] = useState([]);
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [teamScheduleModalData, setTeamScheduleModalData] = useState(null);
 
   // Filter & Search
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'leave' | 'attendance'
@@ -192,9 +233,25 @@ export default function Approval() {
       } catch (e) {
         console.warn("Could not query attendance table:", e);
       }
+      
+      // 3. Fetch Team Schedule
+      let teamSched = [];
+      try {
+        const { data: schedData, error: schedErr } = await supabase
+          .from('schedule')
+          .select('*')
+          .limit(5000);
+          
+        if (!schedErr && schedData) {
+          teamSched = schedData.filter(row => matchesLineManager(row, userWorkEmail));
+        }
+      } catch (e) {
+        console.warn("Could not query schedule table:", e);
+      }
 
       setLeaveRequests(pendingLeaves);
       setAttendanceRequests(pendingAttendance);
+      setTeamScheduleRecords(teamSched);
     } catch (err) {
       console.error('Error fetching approval records:', err);
     }
@@ -204,6 +261,51 @@ export default function Approval() {
   useEffect(() => {
     refreshAllData();
   }, [refreshAllData]);
+
+  // Calendar Logic
+  const prevMonth = () => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1));
+  const nextMonth = () => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1));
+  const setThisMonth = () => setCalendarDate(new Date());
+
+  const year = calendarDate.getFullYear();
+  const month = calendarDate.getMonth();
+  const firstDayIndex = new Date(year, month, 1).getDay();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+
+  const { calendarDays } = useMemo(() => {
+    const days = [];
+
+    for (let day = 1; day <= totalDays; day++) {
+      const currLoopDate = new Date(year, month, day);
+      const isToday = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
+
+      const teamOnThisDay = teamScheduleRecords.filter(item => {
+        const dbDate = getPropCaseInsensitive(item, ['date', 'Date', 'tanggal', 'scheduledate', 'schedule_date', 'startdate']);
+        return checkDateMatch(dbDate, year, month, day);
+      });
+
+      let workingCount = 0; let sickCount = 0; let offCount = 0; let leaveCount = 0;
+      teamOnThisDay.forEach(item => {
+        const t = (getPropCaseInsensitive(item, ['type', 'Type', 'status']) || '').toLowerCase();
+        if (t.includes('working') || t === 'work' || t.includes('kerja')) workingCount++;
+        else if (t.includes('sick') || t.includes('maternity') || t.includes('sakit') || t.includes('melahirkan')) sickCount++;
+        else if (t.includes('day off') || t === 'off' || t.includes('holiday') || t.includes('libur')) offCount++;
+        else if (t) leaveCount++;
+      });
+      
+      days.push({
+        day,
+        dateToPass: `${String(day).padStart(2, '0')}-${String(month + 1).padStart(2, '0')}-${year}`,
+        teamData: teamOnThisDay,
+        counts: { workingCount, sickCount, offCount, leaveCount },
+        isToday,
+        isSunday: currLoopDate.getDay() === 0,
+        isSaturday: currLoopDate.getDay() === 6
+      });
+    }
+    return { calendarDays: days };
+  }, [year, month, totalDays, teamScheduleRecords, today]);
 
   // Send email notification upon Approve / Reject
   const sendNotificationEmail = async (item, newStatus, reason = '') => {
@@ -353,7 +455,80 @@ export default function Approval() {
   return (
     <div className="w-full text-gray-800 font-sans">
       
-      {/* Unified Main Card: Controls, Filters, and Table */}
+      {/* 1. Team Working Calendar Card */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 w-full">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 mb-4 border-b border-gray-100 gap-3">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+              Team Working Calendar
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">Schedules for team members reporting to you</p>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <button onClick={prevMonth} className="p-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Previous Month">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <span className="text-sm sm:text-base font-bold text-gray-800 min-w-[120px] text-center">
+              {monthNames[month]} {year}
+            </span>
+            <button onClick={nextMonth} className="p-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Next Month">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+            </button>
+            <button onClick={setThisMonth} className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition shadow-sm active:scale-95 ml-1">
+              This Month
+            </button>
+          </div>
+        </div>
+
+        {/* Days of Week Header */}
+        <div className="grid grid-cols-7 text-center text-xs font-bold pt-1 mb-1">
+          <span className="text-red-500">Sun</span>
+          <span className="text-gray-700">Mon</span>
+          <span className="text-gray-700">Tue</span>
+          <span className="text-gray-700">Wed</span>
+          <span className="text-gray-700">Thu</span>
+          <span className="text-gray-700">Fri</span>
+          <span className="text-blue-600">Sat</span>
+        </div>
+
+        {/* Calendar Grid */}
+        <div className="grid grid-cols-7 gap-1 sm:gap-1.5 text-center text-xs">
+          {Array.from({ length: firstDayIndex }).map((_, idx) => (
+            <div key={`empty-${idx}`} className="h-20 sm:h-24 bg-gray-50 border border-dashed border-gray-200 rounded-xl opacity-40"></div>
+          ))}
+
+          {calendarDays.map((d) => (
+            <div 
+              key={`day-${d.day}`}
+              onClick={() => {
+                if (d.teamData.length > 0) {
+                  setTeamScheduleModalData({ date: d.dateToPass, records: d.teamData });
+                }
+              }}
+              className={`relative h-20 sm:h-24 p-1 sm:p-2 rounded-xl border transition flex flex-col overflow-hidden bg-white ${d.teamData.length > 0 ? 'cursor-pointer hover:shadow-md hover:border-blue-300' : ''} ${d.isToday ? 'ring-2 ring-blue-500 ring-offset-1 border-blue-300' : 'border-gray-200'}`}
+            >
+              <div className="flex justify-between items-start w-full">
+                <span className={`text-xs sm:text-sm font-extrabold leading-none ${d.isToday ? 'text-blue-600' : d.isSunday ? 'text-red-500' : 'text-gray-800'}`}>
+                  {d.day}
+                </span>
+              </div>
+
+              <div className="w-full flex flex-col items-center justify-center my-auto gap-0.5 sm:gap-1 mt-1">
+                {d.counts.workingCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-green-600 text-white shadow-sm">{d.counts.workingCount} Work</span>}
+                {d.counts.sickCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-pink-500 text-white shadow-sm">{d.counts.sickCount} Sick</span>}
+                {d.counts.leaveCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-orange-500 text-white shadow-sm">{d.counts.leaveCount} Leave</span>}
+                {d.counts.offCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-red-600 text-white shadow-sm">{d.counts.offCount} Off</span>}
+                
+                {d.teamData.length === 0 && <span className="text-[10px] text-gray-300">-</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 2. Unified Main Card: Controls, Filters, and Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-6 w-full">
         
         {/* Top Header Row & Filters */}
@@ -516,42 +691,29 @@ export default function Approval() {
                       onClick={() => openDetailModal(item)}
                       className="hover:bg-blue-50/40 transition cursor-pointer text-xs sm:text-sm border-b border-gray-100"
                     >
-                      {/* Category Badge */}
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className={`px-2 py-1 rounded-md text-[11px] font-bold border ${isLeave ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}>
                           {item._category}
                         </span>
                       </td>
-
-                      {/* Employee */}
                       <td className="px-4 py-3">
                         <div className="font-semibold text-gray-900">{employeeName}</div>
                         <div className="text-[11px] text-gray-400 truncate max-w-[150px]">{employeeEmail}</div>
                       </td>
-
-                      {/* Request Type */}
                       <td className="px-4 py-3 font-medium text-gray-800">
                         <span className="font-semibold text-gray-800">{reqType}</span>
                       </td>
-
-                      {/* Date / Period */}
                       <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-700">
                         {dateInfo}
                       </td>
-
-                      {/* Duration */}
                       <td className="px-4 py-3 text-center font-bold text-gray-800 whitespace-nowrap">
                         {durationInfo}
                       </td>
-
-                      {/* Status */}
                       <td className="px-4 py-3 text-center whitespace-nowrap">
                         <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-yellow-100 text-yellow-800 border border-yellow-200">
                           {status}
                         </span>
                       </td>
-
-                      {/* Attachment */}
                       <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                         {attachmentUrl && attachmentUrl.startsWith('http') ? (
                           <button
@@ -568,8 +730,6 @@ export default function Approval() {
                           <span className="text-gray-300">-</span>
                         )}
                       </td>
-
-                      {/* Actions */}
                       <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center space-x-1.5">
                           <button
@@ -605,12 +765,56 @@ export default function Approval() {
         </div>
       </div>
 
+      {/* --- MODALS --- */}
+      
+      {/* Team Schedule Date Detail Modal */}
+      {teamScheduleModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setTeamScheduleModalData(null)}>
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-5 border border-gray-100" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100">
+              <h3 className="text-base sm:text-lg font-bold text-gray-900">
+                Team Schedule: <span className="text-blue-600">{teamScheduleModalData.date}</span>
+              </h3>
+              <button onClick={() => setTeamScheduleModalData(null)} className="text-gray-400 hover:text-gray-600 p-1">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            
+            <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
+              {teamScheduleModalData.records.map((emp, idx) => {
+                const empName = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'employee_name', 'Employee'], 'Employee');
+                const t = getPropCaseInsensitive(emp, ['type', 'Type', 'status'], '-');
+                const shift = getPropCaseInsensitive(emp, ['shift', 'jam kerja'], '-');
+                
+                let badgeClass = 'bg-gray-100 text-gray-700 border-gray-200';
+                const tLower = t.toLowerCase();
+                if (tLower.includes('working') || tLower === 'work' || tLower.includes('kerja')) badgeClass = 'bg-green-50 text-green-700 border-green-200';
+                else if (tLower.includes('sick') || tLower.includes('sakit')) badgeClass = 'bg-pink-50 text-pink-700 border-pink-200';
+                else if (tLower.includes('off') || tLower.includes('libur')) badgeClass = 'bg-red-50 text-red-700 border-red-200';
+                else if (tLower.includes('leave') || tLower.includes('cuti')) badgeClass = 'bg-orange-50 text-orange-700 border-orange-200';
+
+                return (
+                  <div key={idx} className="flex justify-between items-center p-3 border border-gray-100 rounded-xl bg-white shadow-xs">
+                    <div>
+                      <div className="font-bold text-sm text-gray-800">{empName}</div>
+                      <div className="text-[11px] text-gray-500 font-medium mt-0.5">Shift: {shift}</div>
+                    </div>
+                    <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold border ${badgeClass}`}>
+                      {t}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Detail Request Modal */}
       {isDetailModalOpen && selectedRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-4 sm:p-6 border border-gray-100 max-h-[90vh] overflow-y-auto">
             
-            {/* Modal Header */}
             <div className="flex justify-between items-center pb-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
                 <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${selectedRequest._category === 'Leave' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}>
@@ -626,7 +830,6 @@ export default function Approval() {
               </button>
             </div>
 
-            {/* Employee Information */}
             <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Employee Information</span>
               <div className="text-sm font-bold text-gray-800">
@@ -640,7 +843,6 @@ export default function Approval() {
               </div>
             </div>
 
-            {/* Details according to Category */}
             <div className="mt-4 space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
@@ -717,7 +919,6 @@ export default function Approval() {
                 </>
               )}
 
-              {/* Notes / Reason */}
               <div className="p-3 bg-white border border-gray-200 rounded-xl">
                 <span className="text-[10px] text-gray-400 font-semibold block">Reason / Request Notes</span>
                 <p className="text-xs text-gray-700 mt-1 whitespace-pre-wrap">
@@ -725,7 +926,6 @@ export default function Approval() {
                 </p>
               </div>
 
-              {/* Supporting Document / Attachment */}
               {getPropCaseInsensitive(selectedRequest, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo', 'Link']) && (
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block mb-2">Attachment / Proof</span>
@@ -757,7 +957,6 @@ export default function Approval() {
               )}
             </div>
 
-            {/* Modal Footer Actions */}
             <div className="flex justify-end gap-2.5 pt-4 mt-5 border-t border-gray-100">
               <button
                 type="button"
