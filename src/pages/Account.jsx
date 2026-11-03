@@ -204,6 +204,11 @@ export default function Account() {
               <DetailRow label="Employee Work Email" value={getVal(['employee work email', 'work email', 'employee_work_email', 'email'])} />
               <DetailRow label="Direct Reporting Line" value={getVal(['direct reporting line', 'direct line report', 'bawahan langsung'])} />
               <DetailRow label="Line Manager" value={getVal(['line manager', 'atasan'])} />
+
+              <SectionHeader title="Leave Balance" />
+              <DetailRow label="Annual Leave" value={getVal(['annual leave', 'cuti tahunan'])} />
+              <DetailRow label="Day Off Payment" value={getVal(['day off payment', 'dop'])} />
+              <DetailRow label="Extra Off" value={getVal(['extra off', 'eo'])} />
             </div>
           )}
 

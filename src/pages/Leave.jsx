@@ -102,6 +102,9 @@ export default function Leave() {
   const [isHolidayListModalOpen, setIsHolidayListModalOpen] = useState(false);
   const [holidayListType, setHolidayListType] = useState('');
 
+  // Status Filter State
+  const [statusFilter, setStatusFilter] = useState('All');
+
   // Form State
   const [formType, setFormType] = useState('');
   const [formStart, setFormStart] = useState('');
@@ -224,7 +227,7 @@ export default function Leave() {
         const durVal = parseFloat(dur) || 0;
 
         if (s.includes('approve') || s.includes('setuju')) app++;
-        else if (s.includes('reject') || s.includes('tolak')) rej++;
+        else if (s.includes('reject') || s.includes('tolak') || s.includes('cancel')) rej++;
         else {
           pend++;
           if (t === 'Annual Leave') pAnn += durVal;
@@ -750,6 +753,24 @@ No further action is required.`,
     }
   };
 
+  const filteredLeaveRecords = useMemo(() => {
+    return leaveRecords.filter(r => {
+      if (statusFilter === 'All') return true;
+      const sLower = getPropCaseInsensitive(r, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval').toLowerCase();
+      
+      if (statusFilter === 'Approved') {
+        return sLower.includes('approve') || sLower.includes('setuju');
+      }
+      if (statusFilter === 'Reject/Cancel') {
+        return sLower.includes('reject') || sLower.includes('tolak') || sLower.includes('cancel');
+      }
+      if (statusFilter === 'Pending') {
+        return !sLower.includes('approve') && !sLower.includes('setuju') && !sLower.includes('reject') && !sLower.includes('tolak') && !sLower.includes('cancel');
+      }
+      return true;
+    });
+  }, [leaveRecords, statusFilter]);
+
   return (
     <div className="w-full text-gray-800 font-sans">
       
@@ -849,20 +870,32 @@ No further action is required.`,
           <div>
             <h4 className="text-xs sm:text-sm font-bold text-gray-500 uppercase tracking-wider mb-1.5 px-1">Submission Summary</h4>
             <div className="grid grid-cols-4 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden divide-x divide-gray-100">
-              <div className="py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-blue-500">
+              <div 
+                className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-blue-500 cursor-pointer transition ${statusFilter === 'All' ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                onClick={() => setStatusFilter('All')}
+              >
                 <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase">Total</span>
                 <span className="text-lg sm:text-xl font-black text-gray-800">{stats.total}</span>
               </div>
-              <div className="py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-green-500">
+              <div 
+                className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-green-500 cursor-pointer transition ${statusFilter === 'Approved' ? 'bg-green-50' : 'hover:bg-gray-50'}`}
+                onClick={() => setStatusFilter('Approved')}
+              >
                 <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase">Approved</span>
                 <span className="text-lg sm:text-xl font-black text-green-600">{stats.approved}</span>
               </div>
-              <div className="py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-yellow-400">
+              <div 
+                className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-yellow-400 cursor-pointer transition ${statusFilter === 'Pending' ? 'bg-yellow-50' : 'hover:bg-gray-50'}`}
+                onClick={() => setStatusFilter('Pending')}
+              >
                 <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase">Pending</span>
                 <span className="text-lg sm:text-xl font-black text-yellow-500">{stats.pending}</span>
               </div>
-              <div className="py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-red-500">
-                <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase">Rejected</span>
+              <div 
+                className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-red-500 cursor-pointer transition ${statusFilter === 'Reject/Cancel' ? 'bg-red-50' : 'hover:bg-gray-50'}`}
+                onClick={() => setStatusFilter('Reject/Cancel')}
+              >
+                <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase text-center leading-tight">Reject/Cancel</span>
                 <span className="text-lg sm:text-xl font-black text-red-500">{stats.rejected}</span>
               </div>
             </div>
@@ -886,10 +919,10 @@ No further action is required.`,
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr><td colSpan="7" className="px-5 py-8 text-center text-gray-400 italic">Loading leave records...</td></tr>
-              ) : leaveRecords.length === 0 ? (
+              ) : filteredLeaveRecords.length === 0 ? (
                 <tr><td colSpan="7" className="px-5 py-8 text-center text-gray-400 italic">No leave records found.</td></tr>
               ) : (
-                leaveRecords.map((r, i) => {
+                filteredLeaveRecords.map((r, i) => {
                   const status = getPropCaseInsensitive(r, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval');
                   const leaveType = getPropCaseInsensitive(r, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '-');
                   const sLower = status.toLowerCase();
@@ -897,6 +930,7 @@ No further action is required.`,
                   let badgeClass = "bg-yellow-100 text-yellow-800 border-yellow-200";
                   if (sLower.includes('approve') || sLower.includes('setuju')) badgeClass = "bg-green-100 text-green-700 border-green-200";
                   else if (sLower.includes('reject') || sLower.includes('tolak')) badgeClass = "bg-red-100 text-red-700 border-red-200";
+                  else if (sLower.includes('cancel')) badgeClass = "bg-purple-100 text-purple-700 border-purple-200";
 
                   let duration = getPropCaseInsensitive(r, ['Total Days', 'total_days', 'Duration', 'duration', 'Days', 'days'], '');
                   if (!duration) {
