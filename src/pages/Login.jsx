@@ -475,7 +475,6 @@ export default function Login() {
   };
 
   // Google OAuth Login
-  // Google OAuth Login
   const handleGoogleLogin = async () => {
     setAlert(null);
     try {
@@ -557,12 +556,13 @@ export default function Login() {
     if (originalUser) {
       localStorage.setItem('hris_session_data', JSON.stringify(originalUser));
       const nameOrEmail = originalUser.Name || originalUser.name || originalUser.fullname || 'ranggiit@gmail.com';
-      alert(currentLang === 'id' 
+      window.alert(currentLang === 'id' 
         ? `Super Admin Mode dinonaktifkan. Kembali ke profil asli (${nameOrEmail}).` 
         : `Super Admin Mode disabled. Reverted to original profile (${nameOrEmail}).`);
       navigate('/');
     } else {
-      alert(currentLang === 'id' ? "Super Admin Mode dinonaktifkan." : "Super Admin Mode disabled.");
+      window.alert(currentLang === 'id' ? "Super Admin Mode dinonaktifkan." : "Super Admin Mode disabled.");
+      navigate('/');
     }
   };
 
