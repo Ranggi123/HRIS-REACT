@@ -313,7 +313,6 @@ export default function Leave() {
     }
   }, [formStart, formEnd]);
 
-
   const { todayFormatted, minStartDate } = useMemo(() => {
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -365,8 +364,7 @@ export default function Leave() {
     }
   }, [formEnd, minDate, maxDate]);
 
-  // Upload Logic Mock
-
+  // Line manager resolver
   const getLineManagerEmail = async () => {
     if (!currentUser) return "ranggi@vivre-group.com";
     const rawMgr = getPropCaseInsensitive(currentUser, ['Line Manager Email', 'line_manager_email', 'Line Manager', 'line_manager', 'Manager Email', 'manager_email', 'Manager', 'manager', 'Reports To', 'reports_to', 'Atasan Email', 'atasan_email', 'Approver'], '').trim();
@@ -506,13 +504,6 @@ export default function Leave() {
 
       const lineManager = await getLineManagerEmail();
 
-      // Sesuai permintaan:
-      // Leave ID = Uniqueid
-      // Status = Pending Approval
-      // Employee = user email
-      // Name = user name
-      // Total Days Count = total days
-      // Final balance = balance sesuai leave type dikurangi total days
       let payload = {
         [colPrimaryId]: uniqueId,
         [colEmployee]: userEmail,
@@ -581,8 +572,8 @@ export default function Leave() {
             action: "sendEmail",
             to: lineManager,
             subject: `Leave Request: ${formType} - ${profileName}`,
-            body: emailHtml, // Passing HTML directly into body for scripts that render body as HTML
-            htmlBody: emailHtml, // Passing htmlBody for standard MailApp/GmailApp scripts
+            body: emailHtml,
+            htmlBody: emailHtml,
             plainText: emailText,
             fromEmail: userEmail
           })
@@ -641,15 +632,7 @@ export default function Leave() {
             action: "sendEmail",
             to: lineManager,
             subject: `Cancel Leave Request: ${rType} - ${profileName}`,
-            body: `Hi,
-
-A pending leave request has been CANCELLED by the employee:
-
-Employee: ${profileName}
-Leave Type: ${rType}
-Period: ${rStart} to ${rEnd} (${durLabel})
-
-No further action is required.`,
+            body: `Hi,\n\nA pending leave request has been CANCELLED by the employee:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nNo further action is required.`,
             fromEmail: userEmail
           })
         });
@@ -810,8 +793,6 @@ No further action is required.`,
                   if (sLower.includes('approve') || sLower.includes('setuju')) badgeClass = "bg-green-100 text-green-700 border-green-200";
                   else if (sLower.includes('reject') || sLower.includes('tolak')) badgeClass = "bg-red-100 text-red-700 border-red-200";
 
-                  const attachUrl = getPropCaseInsensitive(r, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'Link', 'link'], '');
-                  
                   let duration = getPropCaseInsensitive(r, ['Total Days', 'total_days', 'Duration', 'duration', 'Days', 'days'], '');
                   if (!duration) {
                     const dS = parseFlexibleDate(getPropCaseInsensitive(r, ['From Date', 'from_date', 'Start Date', 'start_date'], '-'));
@@ -823,9 +804,9 @@ No further action is required.`,
                   return (
                     <tr 
                       key={i} 
-                      onClick={() => { setSelectedHoliday(r); setIsHolidayDetailOpen(true); }}
+                      onClick={() => { setSelectedRecord(r); setIsDetailModalOpen(true); }}
                       title="Click to view details"
-                      className="hover:bg-purple-50/70 cursor-pointer transition border-b border-gray-100 text-xs sm:text-sm group"
+                      className="hover:bg-blue-50/70 cursor-pointer transition border-b border-gray-100 text-xs sm:text-sm group"
                     >
                       <td className="px-2 py-2 sm:px-4 sm:py-3 font-semibold text-gray-800 whitespace-nowrap">
                         {formatDateDisplay(getPropCaseInsensitive(r, ['CreatedDate', 'created_date', 'Request Date', 'Date', 'created_at'], '-'), lang)}
@@ -987,7 +968,7 @@ No further action is required.`,
         </div>
       )}
 
-            {/* Modal Leave Request Details */}
+      {/* Modal Leave Request Details */}
       {isDetailModalOpen && selectedRecord && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 animate-fadeIn"
@@ -1311,7 +1292,7 @@ No further action is required.`,
         </div>
       )}
 
-{/* Modal Photo Preview */}
+      {/* Modal Photo Preview */}
       {isPhotoModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 p-4" onClick={() => setIsPhotoModalOpen(false)}>
           <div className="relative max-w-lg w-full bg-white rounded-2xl overflow-hidden shadow-2xl p-2" onClick={e => e.stopPropagation()}>

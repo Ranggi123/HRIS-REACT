@@ -21,6 +21,9 @@ export default function TopNav({
 
   // State untuk menghitung approvalCount secara independen dalam TopNav
   const [calculatedApprovalCount, setCalculatedApprovalCount] = useState(approvalCount);
+  
+  // State untuk melacak apakah kita menggunakan calculated atau props
+  const [isCalculated, setIsCalculated] = useState(false);
 
   // Close dropdown when clicked outside
   useEffect(() => {
@@ -88,28 +91,64 @@ export default function TopNav({
   // Effect untuk menghitung jumlah approval secara berkala (polling)
   useEffect(() => {
     const calculatePendingCount = () => {
-      // Prioritaskan work_email, lalu email biasa
+      // Prioritaskan berbagai variasi work email
       const rawEmail = 
         currentUser?.work_email || 
         currentUser?.['work email'] || 
+        currentUser?.['Employee work email'] || 
+        currentUser?.Employee_work_email ||
         currentUser?.Work_Email || 
         currentUser?.email || 
         currentUser?.Email;
+        
+      const rawName = 
+        currentUser?.fullname ||
+        currentUser?.Name ||
+        currentUser?.name;
 
-      if (!rawEmail) return;
+      // Jika tidak ada identifier yang bisa dipakai, keluar
+      if (!rawEmail && !rawName) return;
 
-      const normalizedWorkEmail = String(rawEmail).trim().toLowerCase();
+      const normalizedWorkEmail = String(rawEmail || '').trim().toLowerCase();
+      const normalizedName = String(rawName || '').trim().toLowerCase();
+      
       let pendingCount = 0;
+      let dataFound = false;
 
       // Fungsi bantuan untuk memeriksa array data
       const checkArrayForPending = (dataArray, arrayName) => {
-        if (!Array.isArray(dataArray)) return 0;
+        if (!Array.isArray(dataArray) || dataArray.length === 0) return 0;
+        dataFound = true;
         let count = 0;
+        
         dataArray.forEach(item => {
           const status = String(item?.Status || item?.status || '').trim().toLowerCase();
-          const lineManager = String(item?.['Line Manager'] || item?.line_manager || item?.Line_Manager || item?.['line manager'] || '').trim().toLowerCase();
           
-          if ((status === 'pending approval' || status === 'pending') && lineManager === normalizedWorkEmail) {
+          // Cek variasi nama kolom Line Manager dan Employee Work Email
+          const lineManager = String(
+            item?.['Line Manager'] || 
+            item?.line_manager || 
+            item?.Line_Manager || 
+            item?.['line manager'] || 
+            item?.['work email'] || 
+            item?.work_email || 
+            item?.['Employee work email'] || 
+            item?.Employee_work_email || 
+            ''
+          ).trim().toLowerCase();
+          
+          // Cek variasi penulisan Pending Approval
+          const isPending = 
+            status === 'pending approval' || 
+            status === 'pending_approval' || 
+            status === 'pending' || 
+            status === 'waiting approval';
+            
+          // Cek kecocokan
+          const isMyApproval = (normalizedWorkEmail && lineManager === normalizedWorkEmail) || 
+                               (normalizedName && lineManager === normalizedName);
+          
+          if (isPending && isMyApproval) {
             count++;
           }
         });
@@ -117,7 +156,11 @@ export default function TopNav({
       };
 
       try {
-        // 1. Cek dari hris_database (jika data digabung di satu key)
+        // 1. Cek dari API Local/State Management jika ditaruh di window
+        if (window.globalLeaveRequests) pendingCount += checkArrayForPending(window.globalLeaveRequests, 'window.leave');
+        if (window.globalAttendance) pendingCount += checkArrayForPending(window.globalAttendance, 'window.attendance');
+        
+        // 2. Cek dari hris_database
         const dbData = localStorage.getItem('hris_database');
         if (dbData) {
           const parsedDb = JSON.parse(dbData);
@@ -125,31 +168,28 @@ export default function TopNav({
           pendingCount += checkArrayForPending(parsedDb?.tables?.attendance || parsedDb?.attendance, 'db.attendance');
         } 
         
-        // 2. Cek dari key terpisah jika belum ada di hris_database
-        if (pendingCount === 0) {
-          const leaveDataStr = localStorage.getItem('leave_requests') || localStorage.getItem('leaveData');
-          if (leaveDataStr) pendingCount += checkArrayForPending(JSON.parse(leaveDataStr), 'local.leave_requests');
+        // 3. Cek key localStorage individual
+        const leaveDataStr = localStorage.getItem('leave_requests') || localStorage.getItem('leaveData');
+        if (leaveDataStr) pendingCount += checkArrayForPending(JSON.parse(leaveDataStr), 'local.leave_requests');
 
-          const attDataStr = localStorage.getItem('attendance') || localStorage.getItem('attendanceData');
-          if (attDataStr) pendingCount += checkArrayForPending(JSON.parse(attDataStr), 'local.attendance');
+        const attDataStr = localStorage.getItem('attendance') || localStorage.getItem('attendanceData');
+        if (attDataStr) pendingCount += checkArrayForPending(JSON.parse(attDataStr), 'local.attendance');
+        
+        // 4. Update State
+        if (dataFound) {
+            setIsCalculated(true);
+            setCalculatedApprovalCount(pendingCount);
+        } else {
+            setIsCalculated(false);
         }
-
-        // Tampilkan debug info di console browser Anda (Silakan cek Console!)
-        // console.log(`%c[Badge Approval] Email target: ${normalizedWorkEmail} | Total Pending: ${pendingCount}`, 'color: #3b82f6; font-weight: bold');
-
-        setCalculatedApprovalCount(pendingCount);
 
       } catch (e) {
         console.error("Error saat menghitung data approval:", e);
       }
     };
 
-    // Jalankan pertama kali
     calculatePendingCount();
-
-    // Jalankan setiap 3 detik untuk mengecek apakah ada approval baru yang masuk
-    const intervalId = setInterval(calculatePendingCount, 3000);
-
+    const intervalId = setInterval(calculatePendingCount, 2000);
     return () => clearInterval(intervalId);
   }, [currentUser]);
 
@@ -188,8 +228,8 @@ export default function TopNav({
     }
   };
 
-  // Gunakan calculatedApprovalCount, atau fallback ke prop jika data tidak ketemu
-  const displayApprovalCount = calculatedApprovalCount > 0 ? calculatedApprovalCount : (approvalCount > 0 ? approvalCount : 0);
+  // Logika final untuk tampilan Badge
+  const displayApprovalCount = isCalculated ? calculatedApprovalCount : (approvalCount > 0 ? approvalCount : 0);
 
   return (
     <nav className="bg-blue-600 p-2 sm:p-4 text-white shadow-md sticky top-0 z-50 w-full transition-all">
