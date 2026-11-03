@@ -84,6 +84,7 @@ export default function TopNav({
 
   // Debugging log untuk mengecek isi data user di Console Browser
   console.log("Data User TopNav:", currentUser);
+  console.log("isSuperAdminEligible prop:", isSuperAdminEligible);
 
   // Fallback nama dan email
   const userName = currentUser?.Name || currentUser?.name || currentUser?.fullname || 'Guest';
@@ -93,7 +94,7 @@ export default function TopNav({
   const userAvatar = currentUser?.link || currentUser?.Link || currentUser?.photo || currentUser?.avatar || 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png';
 
   // Validasi nilai "super admin?" dari record currentUser employee_directory
-  // Menggunakan bracket notation currentUser?.['super admin?'] untuk menghindari SyntaxError
+  // Cek apakah nilai eksplisit FALSE
   const rawSuperAdminVal = 
     currentUser?.['super admin?'] ?? 
     currentUser?.['Super Admin?'] ?? 
@@ -101,10 +102,17 @@ export default function TopNav({
     currentUser?.['Super Admin'] ?? 
     currentUser?.super_admin;
 
-  const isSuperAdmin = 
+  console.log("rawSuperAdminVal:", rawSuperAdminVal);
+
+  // LOGIKA DIPERKETAT: Harus benar-benar true atau "true"
+  // Abaikan isSuperAdminEligible dari prop jika di database nyata-nyatanya false
+  const isSuperAdminDatabase = 
     rawSuperAdminVal === true || 
-    String(rawSuperAdminVal).trim().toLowerCase() === 'true' ||
-    isSuperAdminEligible === true;
+    String(rawSuperAdminVal).trim().toLowerCase() === 'true';
+
+  // Jika di database false, maka tidak peduli apa kata prop isSuperAdminEligible,
+  // isSuperAdmin akan menjadi false.
+  const isSuperAdmin = isSuperAdminDatabase;
 
   const handleLogout = () => {
     localStorage.removeItem('hris_session_data');
@@ -207,7 +215,7 @@ export default function TopNav({
                   <p className="text-xs font-bold text-gray-800 truncate mt-0.5">{userEmail}</p>
                 </div>
 
-                {/* SUPER ADMIN TOGGLE: Hanya muncul jika terbukti super admin di database */}
+                {/* SUPER ADMIN TOGGLE: Hanya muncul jika isSuperAdmin = true murni dari database */}
                 {isSuperAdmin && (
                   <div 
                     className="px-4 py-2.5 border-b border-gray-100 bg-indigo-50/40"
