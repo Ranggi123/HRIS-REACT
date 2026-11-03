@@ -55,6 +55,25 @@ const i18n = {
   }
 };
 
+// Helper: Memeriksa apakah kolom super admin? / super admin bernilai TRUE
+export const checkIsSuperAdmin = (emp) => {
+  if (!emp || typeof emp !== 'object') return false;
+  const keys = Object.keys(emp);
+  for (const k of keys) {
+    const norm = k.toLowerCase().replace(/[\s_?-]/g, '');
+    if (norm === 'superadmin' || norm === 'issuperadmin') {
+      const val = emp[k];
+      return (
+        val === true ||
+        val === 1 ||
+        String(val).trim().toLowerCase() === 'true' ||
+        String(val).trim() === '1'
+      );
+    }
+  }
+  return false;
+};
+
 export default function Login() {
   const navigate = useNavigate();
   const currentLang = localStorage.getItem('hris_lang') || 'en';
@@ -68,10 +87,12 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
-  // Super Admin state
+  // Super Admin state & hak akses toggle
+  const [canAccessSuperAdmin, setCanAccessSuperAdmin] = useState(false);
   const [isSuperAdminMode, setIsSuperAdminMode] = useState(
     localStorage.getItem('hris_super_admin_active') === 'true'
   );
+
   const [companies, setCompanies] = useState([]);
   const [selectedCompany, setSelectedCompany] = useState('');
   const [allEmployees, setAllEmployees] = useState([]);
@@ -80,7 +101,7 @@ export default function Login() {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [empSearchQuery, setEmpSearchQuery] = useState('');
 
-  // Floating widget top-left (Date, Location, and Weather)
+  // Floating widget top-left
   const [timeStr, setTimeStr] = useState('');
   const [locationName, setLocationName] = useState('Kecamatan Kuta Selatan, ID');
   const [weatherText, setWeatherText] = useState('⛅ 29°C');
@@ -89,8 +110,8 @@ export default function Login() {
     if (!obj) return fallback;
     const keys = Object.keys(obj);
     for (const cand of candidateNames) {
-      const normalizedCand = cand.toLowerCase().replace(/[\s_-]/g, '');
-      const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedCand);
+      const normalizedCand = cand.toLowerCase().replace(/[\s_?-]/g, '');
+      const found = keys.find(k => k.toLowerCase().replace(/[\s_?-]/g, '') === normalizedCand);
       if (found && obj[found] !== null && obj[found] !== undefined && String(obj[found]).trim() !== '') {
         return String(obj[found]).trim();
       }
@@ -98,7 +119,6 @@ export default function Login() {
     return fallback;
   };
 
-  // Helper: Cek apakah perangkat/browser ini sudah pernah berhasil login sebelumnya
   const isDeviceVerifiedForEmail = (email) => {
     if (!email) return false;
     try {
@@ -122,7 +142,17 @@ export default function Login() {
     } catch (e) {}
   };
 
-  // 1. Live Time Update (Always active for both Normal Login and Super Admin Login)
+  const fetchDirectory = async () => {
+    for (const tbl of TABLE_EMPLOYEES) {
+      const { data, error } = await supabase.from(tbl).select('*').limit(1000);
+      if (!error && data && data.length > 0) {
+        return data;
+      }
+    }
+    return [];
+  };
+
+  // 1. Live Time Update
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -137,7 +167,7 @@ export default function Login() {
     return () => clearInterval(interval);
   }, [currentLang]);
 
-  // 2. Weather & Location Widget (Always active for both Normal Login and Super Admin Login)
+  // 2. Weather & Location Widget
   useEffect(() => {
     const getWeatherIcon = (code, isDay = 1) => {
       if (code === 0) return isDay ? '☀️' : '🌙';
@@ -150,6 +180,23 @@ export default function Login() {
       if ([80, 81, 82].includes(code)) return '🌦️';
       if ([95, 96, 99].includes(code)) return '⛈️';
       return '⛅';
+    };
+
+    const fetchWeatherDetails = async (lat, lon, city) => {
+      try {
+        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+        if (res.ok) {
+          const wData = await res.json();
+          if (wData?.current_weather) {
+            const temp = Math.round(wData.current_weather.temperature);
+            const icon = getWeatherIcon(wData.current_weather.weathercode, wData.current_weather.is_day);
+            const text = `${icon} ${temp}°C`;
+            setWeatherText(text);
+            localStorage.setItem('hris_cached_weather', JSON.stringify({ city, weatherText: text }));
+            localStorage.setItem('hris_cached_weather_time', String(Date.now()));
+          }
+        }
+      } catch (e) {}
     };
 
     const fetchWeather = async () => {
@@ -196,38 +243,66 @@ export default function Login() {
       }
     };
 
-    const fetchWeatherDetails = async (lat, lon, city) => {
-      try {
-        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
-        if (res.ok) {
-          const wData = await res.json();
-          if (wData?.current_weather) {
-            const temp = Math.round(wData.current_weather.temperature);
-            const icon = getWeatherIcon(wData.current_weather.weathercode, wData.current_weather.is_day);
-            const text = `${icon} ${temp}°C`;
-            setWeatherText(text);
-            localStorage.setItem('hris_cached_weather', JSON.stringify({ city, weatherText: text }));
-            localStorage.setItem('hris_cached_weather_time', String(Date.now()));
-          }
-        }
-      } catch (e) {}
-    };
-
     fetchWeather();
   }, []);
 
-  // 3. Check existing logged-in session
+  // 3. Verifikasi Hak Akses Toggle Super Admin
+  useEffect(() => {
+    const checkSuperAdminPermission = async () => {
+      const isModeActive = localStorage.getItem('hris_super_admin_active') === 'true';
+      const savedOriginal = localStorage.getItem('hris_original_super_admin');
+      const savedSession = localStorage.getItem('hris_session_data');
+
+      let originalObj = null;
+      let sessionObj = null;
+      try { if (savedOriginal) originalObj = JSON.parse(savedOriginal); } catch (e) {}
+      try { if (savedSession) sessionObj = JSON.parse(savedSession); } catch (e) {}
+
+      // Hak akses toggle hanya terbuka jika:
+      // a. Akun original adalah Super Admin (sedang berpindah akun)
+      // b. Akun sesi saat ini adalah Super Admin
+      // c. Mode Super Admin telah diaktifkan sebelumnya
+      if (checkIsSuperAdmin(originalObj) || checkIsSuperAdmin(sessionObj)) {
+        setCanAccessSuperAdmin(true);
+      } else if (isModeActive) {
+        // Mode pernah aktif sebelumnya: Verifikasi ke database apakah email yang bersangkutan memang Super Admin
+        const emailToCheck = getPropCaseInsensitive(originalObj || sessionObj, ['email', 'email address', 'user_uid']);
+        if (emailToCheck) {
+          const dir = await fetchDirectory();
+          const target = dir.find(row => 
+            getPropCaseInsensitive(row, ['email', 'email address', 'user_uid']).toLowerCase() === emailToCheck.toLowerCase()
+          );
+          if (target && checkIsSuperAdmin(target)) {
+            setCanAccessSuperAdmin(true);
+            return;
+          }
+        }
+        // Jika tidak terbukti Super Admin di database, bersihkan state
+        setIsSuperAdminMode(false);
+        setCanAccessSuperAdmin(false);
+        localStorage.removeItem('hris_super_admin_active');
+        localStorage.removeItem('hris_original_super_admin');
+      } else {
+        setCanAccessSuperAdmin(false);
+        setIsSuperAdminMode(false);
+      }
+    };
+
+    checkSuperAdminPermission();
+  }, []);
+
+  // 4. Periksa sesi login yang aktif
   useEffect(() => {
     const existing = localStorage.getItem('hris_session_data');
-    if (existing) {
+    if (existing && !isSuperAdminMode) {
       navigate('/');
     }
-  }, [navigate]);
+  }, [navigate, isSuperAdminMode]);
 
-  // 4. Handle OAuth redirection listener
+  // 5. OAuth redirection listener (HANYA saat user benar-benar login baru)
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user?.email) {
+      if (event === 'SIGNED_IN' && session?.user?.email) {
         const currentSession = localStorage.getItem('hris_session_data');
         if (!currentSession) {
           await validateAndLoginOAuth(session.user.email);
@@ -240,27 +315,20 @@ export default function Login() {
     };
   }, []);
 
-  // 5. Load Companies & Employees if in Super Admin mode
+  // 6. Muat data Super Admin jika mode aktif
   useEffect(() => {
-    if (isSuperAdminMode) {
+    if (isSuperAdminMode && canAccessSuperAdmin) {
       loadSuperAdminData();
     }
-  }, [isSuperAdminMode]);
+  }, [isSuperAdminMode, canAccessSuperAdmin]);
 
   const loadSuperAdminData = async () => {
     try {
       const { data: compData } = await supabase.from('company').select('*').limit(100);
       if (compData) setCompanies(compData);
 
-      let empData = null;
-      for (const tbl of TABLE_EMPLOYEES) {
-        const { data, error } = await supabase.from(tbl).select('*').limit(1000);
-        if (!error && data && data.length > 0) {
-          empData = data;
-          break;
-        }
-      }
-      if (empData) {
+      const empData = await fetchDirectory();
+      if (empData && empData.length > 0) {
         setAllEmployees(empData);
         filterSuperAdminEmployees(empData, selectedCompany, '');
       }
@@ -332,22 +400,12 @@ export default function Login() {
     setAlert(null);
   };
 
-  const fetchDirectory = async () => {
-    for (const tbl of TABLE_EMPLOYEES) {
-      const { data, error } = await supabase.from(tbl).select('*').limit(1000);
-      if (!error && data && data.length > 0) {
-        return data;
-      }
-    }
-    return [];
-  };
-
   const handleSendOtp = async (e) => {
     e.preventDefault();
     setAlert(null);
 
     let targetEmail = '';
-    if (isSuperAdminMode) {
+    if (isSuperAdminMode && canAccessSuperAdmin) {
       if (!selectedEmployee) {
         setAlert({ message: t.pleaseSelectEmployee, type: 'error' });
         return;
@@ -364,8 +422,8 @@ export default function Login() {
 
     setIsLoading(true);
 
-    // Bypass OTP in Super Admin Mode
-    if (isSuperAdminMode) {
+    // Bypass OTP dalam Super Admin Mode
+    if (isSuperAdminMode && canAccessSuperAdmin) {
       try {
         const data = await fetchDirectory();
         const target = data.find(row => 
@@ -373,6 +431,19 @@ export default function Login() {
         );
         if (!target) throw new Error(`${t.emailNotRegistered} (${targetEmail})`);
 
+        // Simpan akun Super Admin asli agar tidak hilang saat berganti akun
+        const currentSessionStr = localStorage.getItem('hris_session_data');
+        const savedOriginal = localStorage.getItem('hris_original_super_admin');
+        if (!savedOriginal && currentSessionStr) {
+          try {
+            const curObj = JSON.parse(currentSessionStr);
+            if (checkIsSuperAdmin(curObj)) {
+              localStorage.setItem('hris_original_super_admin', JSON.stringify(curObj));
+            }
+          } catch (e) {}
+        }
+
+        localStorage.setItem('hris_super_admin_active', 'true');
         localStorage.setItem('hris_session_data', JSON.stringify(target));
         navigate('/');
         return;
@@ -394,16 +465,16 @@ export default function Login() {
       const status = (target.STATUS || target.Status || target.status || '').toLowerCase();
       if (status && status !== 'active') throw new Error(t.accountInactive);
 
-      // JIKA PERANGKAT INI SUDAH PERNAH LOGIN DENGAN EMAIL TERSEBUT:
-      // Lewati (bypass) OTP dan langsung masuk ke dashboard
+      // Bypass OTP jika perangkat sudah terverifikasi
       if (isDeviceVerifiedForEmail(targetEmail)) {
         localStorage.setItem('hris_session_data', JSON.stringify(target));
+        if (checkIsSuperAdmin(target)) {
+          localStorage.setItem('hris_original_super_admin', JSON.stringify(target));
+        }
         navigate('/');
         return;
       }
 
-      // JIKA PERANGKAT BARU / BELUM PERNAH LOGIN:
-      // Kirim kode OTP seperti biasa
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: targetEmail,
         options: {
@@ -463,8 +534,11 @@ export default function Login() {
 
       if (target) {
         localStorage.setItem('hris_session_data', JSON.stringify(target));
-        // Simpan email ini sebagai perangkat yang sudah terverifikasi
         markDeviceAsVerified(activeEmail);
+
+        if (checkIsSuperAdmin(target)) {
+          localStorage.setItem('hris_original_super_admin', JSON.stringify(target));
+        }
       }
       navigate('/');
     } catch (err) {
@@ -474,11 +548,9 @@ export default function Login() {
     }
   };
 
-  // Google OAuth Login
   const handleGoogleLogin = async () => {
     setAlert(null);
     try {
-      // Pastikan URL redirect benar saat login dengan Google
       let redirectTarget = window.location.origin;
       if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         redirectTarget = 'http://localhost:5173';
@@ -489,7 +561,7 @@ export default function Login() {
         options: {
           redirectTo: redirectTarget,
           queryParams: {
-            prompt: 'select_account' // Memaksa munculnya pilihan akun Google
+            prompt: 'select_account'
           }
         }
       });
@@ -521,6 +593,10 @@ export default function Login() {
 
       localStorage.setItem('hris_session_data', JSON.stringify(target));
       markDeviceAsVerified(email);
+
+      if (checkIsSuperAdmin(target)) {
+        localStorage.setItem('hris_original_super_admin', JSON.stringify(target));
+      }
       navigate('/');
     } catch (err) {
       setAlert({ message: err.message, type: 'error' });
@@ -540,36 +616,26 @@ export default function Login() {
         originalUser = JSON.parse(savedOriginal);
       } catch (e) {}
     }
-    localStorage.removeItem('hris_original_super_admin');
 
-    if (!originalUser) {
-      try {
-        const data = await fetchDirectory();
-        if (data && data.length > 0) {
-          originalUser = data.find(row => 
-            Object.values(row).some(v => typeof v === 'string' && v.trim().toLowerCase() === 'ranggiit@gmail.com')
-          );
-        }
-      } catch (e) {}
-    }
-
-    if (originalUser) {
+    if (originalUser && checkIsSuperAdmin(originalUser)) {
       localStorage.setItem('hris_session_data', JSON.stringify(originalUser));
-      const nameOrEmail = originalUser.Name || originalUser.name || originalUser.fullname || 'ranggiit@gmail.com';
+      const nameOrEmail = originalUser.Name || originalUser.name || originalUser.fullname || originalUser.email || 'Super Admin';
       window.alert(currentLang === 'id' 
         ? `Super Admin Mode dinonaktifkan. Kembali ke profil asli (${nameOrEmail}).` 
         : `Super Admin Mode disabled. Reverted to original profile (${nameOrEmail}).`);
       navigate('/');
     } else {
+      localStorage.removeItem('hris_original_super_admin');
+      setCanAccessSuperAdmin(false);
       window.alert(currentLang === 'id' ? "Super Admin Mode dinonaktifkan." : "Super Admin Mode disabled.");
-      navigate('/');
+      navigate('/login');
     }
   };
 
   return (
     <div className="relative flex items-center justify-center min-h-screen px-4 bg-gray-100">
       
-      {/* Top Left Floating Widget: Always visible both in Normal Login & Super Admin Switch Account */}
+      {/* Floating Widget Top-Left */}
       <div className="absolute top-4 left-4 hidden sm:flex items-center space-x-2 text-xs font-medium text-gray-500 bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200 transition-all z-10">
         <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -588,7 +654,7 @@ export default function Login() {
       {/* Main Login Card */}
       <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md border border-gray-200 mt-10 md:mt-0">
         
-        {/* Mobile Widget inside card on small screens */}
+        {/* Mobile Widget */}
         <div className="flex sm:hidden justify-center items-center space-x-1.5 text-[10px] text-gray-500 bg-gray-50 py-1.5 px-3 rounded-full mb-3 border border-gray-200 mx-auto w-max">
           <span className="font-medium">{timeStr || 'Loading time...'}</span>
           <span className="opacity-50">|</span>
@@ -600,7 +666,7 @@ export default function Login() {
           <h1 className="text-2xl font-bold text-blue-600">HRIS Portal</h1>
           
           <p className="text-sm text-gray-500 mt-1.5 flex items-center justify-center gap-1">
-            {isSuperAdminMode ? (
+            {isSuperAdminMode && canAccessSuperAdmin ? (
               <span className="text-indigo-600 font-bold flex items-center gap-1">
                 <span className="text-amber-500">⚡</span> Super Admin Mode
               </span>
@@ -608,6 +674,33 @@ export default function Login() {
               t.authSubtitle
             )}
           </p>
+
+          {/* TOGGLE SUPER ADMIN: HANYA MUNCUL JIKA USER ADALAH SUPER ADMIN */}
+          {canAccessSuperAdmin && (
+            <div className="mt-3 flex justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  const nextState = !isSuperAdminMode;
+                  setIsSuperAdminMode(nextState);
+                  if (nextState) {
+                    localStorage.setItem('hris_super_admin_active', 'true');
+                  } else {
+                    localStorage.removeItem('hris_super_admin_active');
+                  }
+                  setAlert(null);
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition border cursor-pointer ${
+                  isSuperAdminMode 
+                    ? 'bg-indigo-100 text-indigo-700 border-indigo-300 hover:bg-indigo-200' 
+                    : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
+                }`}
+              >
+                <span className={isSuperAdminMode ? 'text-amber-500' : 'text-gray-400'}>⚡</span>
+                <span>{isSuperAdminMode ? 'Mode Super Admin: ON' : 'Switch to Super Admin'}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Alert Notification */}
@@ -619,8 +712,8 @@ export default function Login() {
           </div>
         )}
 
-        {/* Super Admin Active Banner (Only in Super Admin Mode) */}
-        {isSuperAdminMode && (
+        {/* Super Admin Active Banner */}
+        {isSuperAdminMode && canAccessSuperAdmin && (
           <div className="mb-4 p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl flex items-center justify-between text-xs shadow-xs">
             <div className="flex items-center space-x-2 text-indigo-900 font-semibold">
               <span className="flex h-2.5 w-2.5 relative">
@@ -644,7 +737,7 @@ export default function Login() {
           <form onSubmit={handleSendOtp}>
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                {isSuperAdminMode ? (
+                {isSuperAdminMode && canAccessSuperAdmin ? (
                   <span>
                     Selected Employee <span className="text-indigo-600 font-semibold text-xs">(Bypass OTP)</span>
                   </span>
@@ -653,8 +746,8 @@ export default function Login() {
                 )}
               </label>
 
-              {/* Normal Input: Shown when Super Admin is nonactive */}
-              {!isSuperAdminMode ? (
+              {/* Normal Input */}
+              {(!isSuperAdminMode || !canAccessSuperAdmin) ? (
                 <input 
                   type="email" 
                   value={emailInput}
@@ -664,9 +757,8 @@ export default function Login() {
                   className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition shadow-xs"
                 />
               ) : (
-                /* Super Admin Mode: Dropdown Company & Dropdown Employee */
+                /* Super Admin Mode Dropdowns */
                 <div className="space-y-3">
-                  {/* 1. Company Filter Select */}
                   <div className="relative">
                     <select 
                       value={selectedCompany} 
@@ -687,7 +779,6 @@ export default function Login() {
                     </div>
                   </div>
 
-                  {/* 2. Employee Picker Custom Dropdown */}
                   <div className="relative">
                     <button 
                       type="button" 
@@ -762,16 +853,16 @@ export default function Login() {
               type="submit" 
               disabled={isLoading || cooldown > 0}
               className={`w-full py-2.5 px-4 rounded-xl font-semibold text-sm transition duration-150 shadow-xs flex items-center justify-center gap-1.5 ${
-                isSuperAdminMode 
+                (isSuperAdminMode && canAccessSuperAdmin)
                   ? 'bg-indigo-600 hover:bg-indigo-700 text-white' 
                   : 'bg-blue-600 hover:bg-blue-700 text-white'
               } ${isLoading || cooldown > 0 ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer active:scale-98'}`}
             >
               {isLoading ? (
-                <span>{isSuperAdminMode ? 'Logging in...' : t.loadingData}</span>
+                <span>{(isSuperAdminMode && canAccessSuperAdmin) ? 'Logging in...' : t.loadingData}</span>
               ) : cooldown > 0 ? (
                 <span>{currentLang === 'id' ? `Tunggu ${cooldown}s` : `Wait ${cooldown}s`}</span>
-              ) : isSuperAdminMode ? (
+              ) : (isSuperAdminMode && canAccessSuperAdmin) ? (
                 t.directLoginBtn
               ) : isDeviceVerifiedForEmail(emailInput) ? (
                 (currentLang === 'id' ? 'Masuk' : 'Log In')
@@ -780,8 +871,8 @@ export default function Login() {
               )}
             </button>
 
-            {/* Google Sign-In & OR Divider: ONLY DISPLAYED WHEN SUPER ADMIN MODE IS NONACTIVE */}
-            {!isSuperAdminMode && (
+            {/* Google Sign-In & OR Divider */}
+            {(!isSuperAdminMode || !canAccessSuperAdmin) && (
               <>
                 <div className="relative my-5 flex items-center">
                   <div className="flex-grow border-t border-gray-200"></div>
