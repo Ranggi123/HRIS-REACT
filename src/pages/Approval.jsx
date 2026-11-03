@@ -353,292 +353,263 @@ export default function Approval() {
   return (
     <div className="w-full text-gray-800 font-sans p-2 sm:p-4 md:p-6">
       
-      {/* Header Container */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-100 gap-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      {/* Container Lebar (Mengikuti gambar) */}
+      <div className="w-full">
+        {/* Header Container */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-100 gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-lg sm:text-xl font-bold text-gray-900">Approval Requests</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Tinjau dan setujui pengajuan Cuti & Kehadiran dari tim Anda.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+              <div className="bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs">
+                <span className="text-gray-400 mr-1.5 font-medium">Line Manager:</span>
+                <span className="font-semibold text-gray-700">{userWorkEmail || 'Belum Login'}</span>
+              </div>
+
+              <button
+                onClick={refreshAllData}
+                disabled={loading}
+                className="px-3.5 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
+                title="Refresh Data"
+              >
+                <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-              </div>
-              <div>
-                <h2 className="text-lg sm:text-xl font-bold text-gray-900">Approval Requests</h2>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Tinjau dan setujui pengajuan Cuti & Kehadiran dari tim Anda.
-                </p>
-              </div>
+                <span>{loading ? 'Loading...' : 'Refresh'}</span>
+              </button>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-            <div className="bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs">
-              <span className="text-gray-400 mr-1.5 font-medium">Line Manager:</span>
-              <span className="font-semibold text-gray-700">{userWorkEmail || 'Belum Login'}</span>
+          {/* Filter Tabs & Search Bar */}
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-4">
+            <div className="flex p-1 bg-gray-100 rounded-xl space-x-1">
+              <button
+                onClick={() => setActiveTab('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Semua ({leaveRequests.length + attendanceRequests.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('leave')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'leave' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Cuti / Leave ({leaveRequests.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('attendance')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'attendance' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Absensi ({attendanceRequests.length})
+              </button>
             </div>
 
-            <button
-              onClick={refreshAllData}
-              disabled={loading}
-              className="px-3.5 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
-              title="Refresh Data"
-            >
-              <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            <div className="relative min-w-[240px]">
+              <input
+                type="text"
+                placeholder="Cari karyawan, tipe..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-xs border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+              />
+              <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              <span>{loading ? 'Memuat...' : 'Refresh'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Stats Summary Cards (Matching Image Style) */}
-        <div className="mt-5 w-full bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm flex items-center divide-x divide-gray-100">
-          <div 
-            onClick={() => setActiveTab('all')} 
-            className={`flex-1 flex flex-col items-center justify-center py-4 cursor-pointer transition ${activeTab === 'all' ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
-          >
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">TOTAL PENDING</span>
-            <span className="text-xl sm:text-2xl font-black text-[#d32f2f]">{leaveRequests.length + attendanceRequests.length}</span>
-          </div>
-          
-          <div 
-            onClick={() => setActiveTab('leave')} 
-            className={`flex-1 flex flex-col items-center justify-center py-4 cursor-pointer transition ${activeTab === 'leave' ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
-          >
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">LEAVE</span>
-            <span className="text-xl sm:text-2xl font-black text-[#388e3c]">{leaveRequests.length}</span>
-          </div>
-
-          <div 
-            onClick={() => setActiveTab('attendance')} 
-            className={`flex-1 flex flex-col items-center justify-center py-4 cursor-pointer transition ${activeTab === 'attendance' ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
-          >
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">ATTENDANCE</span>
-            <span className="text-xl sm:text-2xl font-black text-[#d81b60]">{attendanceRequests.length}</span>
-          </div>
-
-          <div className="flex-1 flex flex-col items-center justify-center py-4 cursor-default">
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">PROCESSED</span>
-            <span className="text-xl sm:text-2xl font-black text-slate-800">0</span>
-          </div>
-        </div>
-
-        {/* Filter Tabs & Search Bar */}
-        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-6 pt-4 border-t border-gray-100">
-          <div className="flex p-1 bg-gray-100 rounded-xl space-x-1">
-            <button
-              onClick={() => setActiveTab('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Semua ({leaveRequests.length + attendanceRequests.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('leave')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'leave' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Cuti / Leave ({leaveRequests.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('attendance')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'attendance' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Absensi ({attendanceRequests.length})
-            </button>
-          </div>
-
-          <div className="relative min-w-[240px]">
-            <input
-              type="text"
-              placeholder="Cari karyawan, tipe..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-            />
-            <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            {searchTerm && (
-              <button onClick={() => setSearchTerm('')} className="absolute right-3 top-2 text-gray-400 hover:text-gray-600 text-xs">✕</button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Main List Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left text-gray-600">
-            <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-4 py-3">Kategori</th>
-                <th className="px-4 py-3">Karyawan</th>
-                <th className="px-4 py-3">Tipe Pengajuan</th>
-                <th className="px-4 py-3">Tanggal / Periode</th>
-                <th className="px-4 py-3 text-center">Durasi / Jam</th>
-                <th className="px-4 py-3 text-center">Status</th>
-                <th className="px-4 py-3 text-center">Bukti / Lampiran</th>
-                <th className="px-4 py-3 text-center">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading ? (
-                <tr>
-                  <td colSpan="8" className="px-5 py-12 text-center text-gray-400">
-                    <div className="flex flex-col items-center justify-center">
-                      <svg className="w-8 h-8 animate-spin text-blue-500 mb-2" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                      </svg>
-                      <p className="text-xs">Memuat daftar pengajuan pending...</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : combinedList.length === 0 ? (
-                <tr>
-                  <td colSpan="8" className="px-5 py-12 text-center text-gray-400">
-                    <div className="flex flex-col items-center justify-center">
-                      <svg className="w-10 h-10 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <p className="font-semibold text-gray-600 text-sm">Tidak ada permintaan yang menunggu persetujuan.</p>
-                      <p className="text-xs text-gray-400 mt-1">Semua pengajuan cuti dan absensi tim Anda telah diproses.</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                combinedList.map((item, idx) => {
-                  const isLeave = item._category === 'Leave';
-                  const employeeName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Tanpa Nama');
-                  const employeeEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid'], '-');
-                  
-                  const reqType = isLeave
-                    ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], 'Cuti')
-                    : getPropCaseInsensitive(item, ['Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Attendance');
-
-                  const status = getPropCaseInsensitive(item, ['Status', 'status', 'Approval Status'], 'Pending Approval');
-                  const attachmentUrl = getPropCaseInsensitive(item, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo', 'Link', 'link'], '');
-
-                  // Date range / info
-                  let dateInfo = '-';
-                  let durationInfo = '-';
-
-                  if (isLeave) {
-                    const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']), lang);
-                    const toDate = formatDateDisplay(getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']), lang);
-                    dateInfo = `${fromDate} - ${toDate}`;
-                    
-                    let dur = getPropCaseInsensitive(item, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration', 'duration', 'Days', 'days'], '');
-                    if (!dur) {
-                      const dS = parseFlexibleDate(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']));
-                      const dE = parseFlexibleDate(getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']));
-                      dur = (dS && dE) ? Math.ceil(Math.abs(dE - dS) / (1000 * 60 * 60 * 24)) + 1 : '1';
-                    }
-                    durationInfo = `${dur} Hari`;
-                  } else {
-                    const attDate = formatDateDisplay(getPropCaseInsensitive(item, ['Date', 'date', 'attendance_date', 'CreatedDate', 'created_date']), lang);
-                    dateInfo = attDate;
-                    const clockIn = getPropCaseInsensitive(item, ['Clock In', 'clock_in', 'In Time', 'in_time'], '');
-                    const clockOut = getPropCaseInsensitive(item, ['Clock Out', 'clock_out', 'Out Time', 'out_time'], '');
-                    if (clockIn || clockOut) {
-                      durationInfo = `${clockIn || '--:--'} s/d ${clockOut || '--:--'}`;
-                    } else {
-                      durationInfo = 'Presensi';
-                    }
-                  }
-
-                  return (
-                    <tr
-                      key={idx}
-                      onClick={() => openDetailModal(item)}
-                      className="hover:bg-blue-50/40 transition cursor-pointer text-xs sm:text-sm border-b border-gray-100"
-                    >
-                      {/* Kategori Badge */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`px-2 py-1 rounded-md text-[11px] font-bold border ${isLeave ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}>
-                          {item._category}
-                        </span>
-                      </td>
-
-                      {/* Karyawan */}
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-gray-900">{employeeName}</div>
-                        <div className="text-[11px] text-gray-400 truncate max-w-[150px]">{employeeEmail}</div>
-                      </td>
-
-                      {/* Tipe Pengajuan */}
-                      <td className="px-4 py-3 font-medium text-gray-800">
-                        <span className="font-semibold text-gray-800">{reqType}</span>
-                      </td>
-
-                      {/* Tanggal / Periode */}
-                      <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-700">
-                        {dateInfo}
-                      </td>
-
-                      {/* Durasi */}
-                      <td className="px-4 py-3 text-center font-bold text-gray-800 whitespace-nowrap">
-                        {durationInfo}
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-4 py-3 text-center whitespace-nowrap">
-                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-yellow-100 text-yellow-800 border border-yellow-200">
-                          {status}
-                        </span>
-                      </td>
-
-                      {/* Attachment */}
-                      <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
-                        {attachmentUrl && attachmentUrl.startsWith('http') ? (
-                          <button
-                            onClick={() => {
-                              setPhotoPreviewUrl(attachmentUrl);
-                              setIsPhotoModalOpen(true);
-                            }}
-                            className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100 hover:bg-blue-100 transition"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                            <span>Lihat</span>
-                          </button>
-                        ) : (
-                          <span className="text-gray-300">-</span>
-                        )}
-                      </td>
-
-                      {/* Aksi Button */}
-                      <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-center space-x-1.5">
-                          <button
-                            disabled={isProcessing}
-                            onClick={() => {
-                              if (window.confirm(`Setujui (Approve) pengajuan dari ${employeeName}?`)) {
-                                handleUpdateStatus(item, 'Approved');
-                              }
-                            }}
-                            className="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1 cursor-pointer"
-                            title="Approve"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                            <span>Approve</span>
-                          </button>
-                          <button
-                            disabled={isProcessing}
-                            onClick={(e) => openRejectDialog(item, e)}
-                            className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 active:scale-95 text-red-600 border border-red-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
-                            title="Reject"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                            <span>Reject</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+              {searchTerm && (
+                <button onClick={() => setSearchTerm('')} className="absolute right-3 top-2 text-gray-400 hover:text-gray-600 text-xs">✕</button>
               )}
-            </tbody>
-          </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Main List Table (Full Width) */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden w-full">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left text-gray-600">
+              <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3">Kategori</th>
+                  <th className="px-4 py-3">Karyawan</th>
+                  <th className="px-4 py-3">Tipe Pengajuan</th>
+                  <th className="px-4 py-3">Tanggal / Periode</th>
+                  <th className="px-4 py-3 text-center">Durasi / Jam</th>
+                  <th className="px-4 py-3 text-center">Status</th>
+                  <th className="px-4 py-3 text-center">Bukti / Lampiran</th>
+                  <th className="px-4 py-3 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan="8" className="px-5 py-12 text-center text-gray-400">
+                      <div className="flex flex-col items-center justify-center">
+                        <svg className="w-8 h-8 animate-spin text-blue-500 mb-2" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        <p className="text-xs">Memuat daftar pengajuan pending...</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : combinedList.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" className="px-5 py-12 text-center text-gray-400">
+                      <div className="flex flex-col items-center justify-center">
+                        <svg className="w-10 h-10 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <p className="font-semibold text-gray-600 text-sm">Tidak ada permintaan yang menunggu persetujuan.</p>
+                        <p className="text-xs text-gray-400 mt-1">Semua pengajuan cuti dan absensi tim Anda telah diproses.</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  combinedList.map((item, idx) => {
+                    const isLeave = item._category === 'Leave';
+                    const employeeName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Tanpa Nama');
+                    const employeeEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid'], '-');
+                    
+                    const reqType = isLeave
+                      ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], 'Cuti')
+                      : getPropCaseInsensitive(item, ['Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Attendance');
+
+                    const status = getPropCaseInsensitive(item, ['Status', 'status', 'Approval Status'], 'Pending Approval');
+                    const attachmentUrl = getPropCaseInsensitive(item, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo', 'Link', 'link'], '');
+
+                    // Date range / info
+                    let dateInfo = '-';
+                    let durationInfo = '-';
+
+                    if (isLeave) {
+                      const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']), lang);
+                      const toDate = formatDateDisplay(getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']), lang);
+                      dateInfo = `${fromDate} - ${toDate}`;
+                      
+                      let dur = getPropCaseInsensitive(item, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration', 'duration', 'Days', 'days'], '');
+                      if (!dur) {
+                        const dS = parseFlexibleDate(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']));
+                        const dE = parseFlexibleDate(getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']));
+                        dur = (dS && dE) ? Math.ceil(Math.abs(dE - dS) / (1000 * 60 * 60 * 24)) + 1 : '1';
+                      }
+                      durationInfo = `${dur} Hari`;
+                    } else {
+                      const attDate = formatDateDisplay(getPropCaseInsensitive(item, ['Date', 'date', 'attendance_date', 'CreatedDate', 'created_date']), lang);
+                      dateInfo = attDate;
+                      const clockIn = getPropCaseInsensitive(item, ['Clock In', 'clock_in', 'In Time', 'in_time'], '');
+                      const clockOut = getPropCaseInsensitive(item, ['Clock Out', 'clock_out', 'Out Time', 'out_time'], '');
+                      if (clockIn || clockOut) {
+                        durationInfo = `${clockIn || '--:--'} s/d ${clockOut || '--:--'}`;
+                      } else {
+                        durationInfo = 'Presensi';
+                      }
+                    }
+
+                    return (
+                      <tr
+                        key={idx}
+                        onClick={() => openDetailModal(item)}
+                        className="hover:bg-blue-50/40 transition cursor-pointer text-xs sm:text-sm border-b border-gray-100"
+                      >
+                        {/* Kategori Badge */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`px-2 py-1 rounded-md text-[11px] font-bold border ${isLeave ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}>
+                            {item._category}
+                          </span>
+                        </td>
+
+                        {/* Karyawan */}
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-gray-900">{employeeName}</div>
+                          <div className="text-[11px] text-gray-400 truncate max-w-[150px]">{employeeEmail}</div>
+                        </td>
+
+                        {/* Tipe Pengajuan */}
+                        <td className="px-4 py-3 font-medium text-gray-800">
+                          <span className="font-semibold text-gray-800">{reqType}</span>
+                        </td>
+
+                        {/* Tanggal / Periode */}
+                        <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-700">
+                          {dateInfo}
+                        </td>
+
+                        {/* Durasi */}
+                        <td className="px-4 py-3 text-center font-bold text-gray-800 whitespace-nowrap">
+                          {durationInfo}
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-yellow-100 text-yellow-800 border border-yellow-200">
+                            {status}
+                          </span>
+                        </td>
+
+                        {/* Attachment */}
+                        <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          {attachmentUrl && attachmentUrl.startsWith('http') ? (
+                            <button
+                              onClick={() => {
+                                setPhotoPreviewUrl(attachmentUrl);
+                                setIsPhotoModalOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100 hover:bg-blue-100 transition"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                              <span>Lihat</span>
+                            </button>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
+                        </td>
+
+                        {/* Aksi Button */}
+                        <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center space-x-1.5">
+                            <button
+                              disabled={isProcessing}
+                              onClick={() => {
+                                if (window.confirm(`Setujui (Approve) pengajuan dari ${employeeName}?`)) {
+                                  handleUpdateStatus(item, 'Approved');
+                                }
+                              }}
+                              className="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1 cursor-pointer"
+                              title="Approve"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                              <span>Approve</span>
+                            </button>
+                            <button
+                              disabled={isProcessing}
+                              onClick={(e) => openRejectDialog(item, e)}
+                              className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 active:scale-95 text-red-600 border border-red-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
+                              title="Reject"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                              <span>Reject</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
