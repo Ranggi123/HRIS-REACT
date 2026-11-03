@@ -153,7 +153,6 @@ export default function Approval() {
       const { data: lvData, error: lvError } = await supabase
         .from('leave_requests')
         .select('*')
-        .order('CreatedDate', { ascending: false })
         .limit(1000);
 
       let pendingLeaves = [];
@@ -170,16 +169,16 @@ export default function Approval() {
           }));
       }
 
-      // 2. Fetch Attendance Requests (Mencakup tabel attendance_requests dan attendance)
+      // 2. Fetch Attendance (langsung dari tabel 'attendance')
       let pendingAttendance = [];
-      const { data: attReqData, error: attReqErr } = await supabase
-        .from('attendance_requests')
-        .select('*')
-        .limit(1000);
+      try {
+        const { data: attData, error: attErr } = await supabase
+          .from('attendance')
+          .select('*')
+          .limit(1000);
 
-      if (!attReqErr && attReqData && attReqData.length > 0) {
-        pendingAttendance.push(
-          ...attReqData
+        if (!attErr && attData && attData.length > 0) {
+          pendingAttendance = attData
             .filter(row => {
               const status = getPropCaseInsensitive(row, ['Status', 'status', 'Approval Status', 'approval_status'], '');
               return isPendingApprovalStatus(status) && matchesLineManager(row, userWorkEmail);
@@ -187,32 +186,11 @@ export default function Approval() {
             .map(row => ({
               ...row,
               _category: 'Attendance',
-              _sourceTable: 'attendance_requests'
-            }))
-        );
-      }
-
-      // Cek tabel attendance biasa jika ada yang statusnya Pending
-      const { data: attData, error: attErr } = await supabase
-        .from('attendance')
-        .select('*')
-        .limit(1000);
-
-      if (!attErr && attData && attData.length > 0) {
-        const existingIds = new Set(pendingAttendance.map(r => r.id || r['Attendance ID'] || r.attendance_id));
-        const moreAtt = attData
-          .filter(row => {
-            const id = row.id || row['Attendance ID'] || row.attendance_id;
-            const status = getPropCaseInsensitive(row, ['Status', 'status', 'Approval Status', 'approval_status'], '');
-            return (!id || !existingIds.has(id)) && isPendingApprovalStatus(status) && matchesLineManager(row, userWorkEmail);
-          })
-          .map(row => ({
-            ...row,
-            _category: 'Attendance',
-            _sourceTable: 'attendance'
-          }));
-
-        pendingAttendance.push(...moreAtt);
+              _sourceTable: 'attendance'
+            }));
+        }
+      } catch (e) {
+        console.warn("Could not query attendance table:", e);
       }
 
       setLeaveRequests(pendingLeaves);
@@ -365,7 +343,6 @@ export default function Approval() {
       });
     }
 
-    // Urutkan dari yang terbaru
     return list.sort((a, b) => {
       const dtA = parseFlexibleDate(getPropCaseInsensitive(a, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'created_at'])) || new Date(0);
       const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'created_at'])) || new Date(0);
@@ -415,45 +392,35 @@ export default function Approval() {
           </div>
         </div>
 
-        {/* Stats Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-5">
+        {/* Stats Summary Cards (Matching Image Style) */}
+        <div className="mt-5 w-full bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm flex items-center divide-x divide-gray-100">
           <div 
             onClick={() => setActiveTab('all')} 
-            className={`p-3.5 rounded-xl border cursor-pointer transition ${activeTab === 'all' ? 'bg-blue-50/70 border-blue-400 ring-2 ring-blue-200' : 'bg-gray-50/50 border-gray-200 hover:bg-gray-50'}`}
+            className={`flex-1 flex flex-col items-center justify-center py-4 cursor-pointer transition ${activeTab === 'all' ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Total Pending</span>
-              <span className="px-2 py-0.5 text-[10px] font-extrabold rounded-full bg-yellow-100 text-yellow-800">Menunggu</span>
-            </div>
-            <div className="mt-2 text-2xl font-black text-gray-800">
-              {leaveRequests.length + attendanceRequests.length}
-            </div>
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">TOTAL PENDING</span>
+            <span className="text-xl sm:text-2xl font-black text-[#d32f2f]">{leaveRequests.length + attendanceRequests.length}</span>
           </div>
-
+          
           <div 
             onClick={() => setActiveTab('leave')} 
-            className={`p-3.5 rounded-xl border cursor-pointer transition ${activeTab === 'leave' ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-200' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+            className={`flex-1 flex flex-col items-center justify-center py-4 cursor-pointer transition ${activeTab === 'leave' ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-blue-600">Leave Requests</span>
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-            </div>
-            <div className="mt-2 text-2xl font-black text-blue-900">
-              {leaveRequests.length}
-            </div>
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">LEAVE</span>
+            <span className="text-xl sm:text-2xl font-black text-[#388e3c]">{leaveRequests.length}</span>
           </div>
 
           <div 
             onClick={() => setActiveTab('attendance')} 
-            className={`p-3.5 rounded-xl border cursor-pointer transition ${activeTab === 'attendance' ? 'bg-purple-50 border-purple-500 ring-2 ring-purple-200' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+            className={`flex-1 flex flex-col items-center justify-center py-4 cursor-pointer transition ${activeTab === 'attendance' ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-purple-600">Attendance Requests</span>
-              <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-            </div>
-            <div className="mt-2 text-2xl font-black text-purple-900">
-              {attendanceRequests.length}
-            </div>
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">ATTENDANCE</span>
+            <span className="text-xl sm:text-2xl font-black text-[#d81b60]">{attendanceRequests.length}</span>
+          </div>
+
+          <div className="flex-1 flex flex-col items-center justify-center py-4 cursor-default">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">PROCESSED</span>
+            <span className="text-xl sm:text-2xl font-black text-slate-800">0</span>
           </div>
         </div>
 
@@ -878,7 +845,7 @@ export default function Approval() {
             <textarea
               rows="3"
               value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
+              onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Contoh: Jadwal bertabrakan dengan shift lain / bukti tidak lengkap..."
               className="w-full p-2.5 text-xs border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-400 focus:outline-none mb-4"
             />
