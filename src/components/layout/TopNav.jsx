@@ -6,7 +6,7 @@ export default function TopNav({
   currentLang = 'en', 
   onLangChange = () => {}, 
   onOpenProfile = () => {},
-  approvalCount = 0,
+  approvalCount = 1,
   isSuperAdminMode = false,
   isSuperAdminEligible = false,
   onToggleSuperAdmin = () => {},
@@ -82,6 +82,9 @@ export default function TopNav({
     fetchWeather();
   }, []);
 
+  // Debugging log untuk mengecek isi data user di Console Browser
+  console.log("Data User TopNav:", currentUser);
+
   // Fallback nama dan email
   const userName = currentUser?.Name || currentUser?.name || currentUser?.fullname || 'Guest';
   const userEmail = currentUser?.email || currentUser?.Email || currentUser?.USER_UID || 'Tidak ada email';
@@ -89,7 +92,7 @@ export default function TopNav({
   // Profile picture strictly from employee_directory column "link"
   const userAvatar = currentUser?.link || currentUser?.Link || currentUser?.photo || currentUser?.avatar || 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png';
 
-  // Validasi nilai "super admin?" dari record currentUser employee_directory
+  // Cek validasi hak milik original "super admin" dari akun asli
   const rawSuperAdminVal = 
     currentUser?.['super admin?'] ?? 
     currentUser?.['Super Admin?'] ?? 
@@ -97,11 +100,13 @@ export default function TopNav({
     currentUser?.['Super Admin'] ?? 
     currentUser?.super_admin;
 
-  const isSuperAdminDatabase = 
+  const isOriginalSuperAdmin = 
     rawSuperAdminVal === true || 
     String(rawSuperAdminVal).trim().toLowerCase() === 'true';
 
-  const isSuperAdmin = isSuperAdminDatabase;
+  // Logika final: Toggle muncul JIKA akun aslinya adalah super admin (isOriginalSuperAdmin),
+  // ATAU sedang berada dalam mode "Switch Account" sebagai super admin (isSuperAdminMode aktif)
+  const showSuperAdminToggle = isOriginalSuperAdmin || isSuperAdminMode;
 
   const handleLogout = () => {
     localStorage.removeItem('hris_session_data');
@@ -204,8 +209,8 @@ export default function TopNav({
                   <p className="text-xs font-bold text-gray-800 truncate mt-0.5">{userEmail}</p>
                 </div>
 
-                {/* SUPER ADMIN TOGGLE: Hanya muncul jika isSuperAdmin = true murni dari database */}
-                {isSuperAdmin && (
+                {/* SUPER ADMIN TOGGLE: Muncul jika akun asli adalah Super Admin ATAU sedang impersonate */}
+                {showSuperAdminToggle && (
                   <div 
                     className="px-4 py-2.5 border-b border-gray-100 bg-indigo-50/40"
                     onClick={(e) => e.stopPropagation()}
@@ -254,7 +259,7 @@ export default function TopNav({
 
                 {/* Approval Menu Item */}
                 <Link 
-                  to="/approval" 
+                  to="/leave" 
                   onClick={() => setDropdownOpen(false)}
                   className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 hover:text-blue-600 flex items-center justify-between transition border-b border-gray-50"
                 >
