@@ -545,6 +545,30 @@ export default function Leave() {
       const formattedEnd = formatDateDisplay(formEnd, 'en');
       const durLabel = `${totalDays} Day(s)`;
 
+      const emailText = `Hi,\n\nA new leave request has been submitted:\n\nEmployee: ${profileName}\nLeave Type: ${formType}\nPeriod: ${formattedStart} - ${formattedEnd} (${durLabel})\n\nPlease review via the HRIS Portal.\n\ngo to HRIS: https://hr.arratechs.com/approval`;
+
+      const emailHtml = `
+<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
+  <p style="margin-top: 0; font-size: 15px;">Hi,</p>
+  <p style="font-size: 15px;">A new leave request has been submitted:</p>
+  <div style="background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 12px 16px; margin: 16px 0; border-radius: 6px;">
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Employee:</strong> ${profileName}</p>
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Leave Type:</strong> ${formType}</p>
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Period:</strong> ${formattedStart} - ${formattedEnd} (${durLabel})</p>
+  </div>
+  <p style="font-size: 14px; margin-bottom: 20px;">Please review via the HRIS Portal.</p>
+  <div style="margin: 24px 0 10px 0;">
+    <!--[if mso]>
+    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="https://hr.arratechs.com/approval" style="height:40px;v-text-anchor:middle;width:140px;" arcsize="20%" stroke="f" fillcolor="#2563eb">
+      <w:anchorlock/>
+      <center style="color:#ffffff;font-family:sans-serif;font-size:14px;font-weight:bold;">go to HRIS</center>
+    </v:roundrect>
+    <![endif]-->
+    <a href="https://hr.arratechs.com/approval" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block; mso-padding-alt: 0;">go to HRIS</a>
+  </div>
+</div>
+`;
+
       try {
         await fetch(GAS_WEB_APP_URL, {
           method: 'POST',
@@ -553,7 +577,9 @@ export default function Leave() {
             action: "sendEmail",
             to: lineManager,
             subject: `Leave Request: ${formType} - ${profileName}`,
-            body: `Hi,\n\nA new leave request has been submitted:\n\nEmployee: ${profileName}\nLeave Type: ${formType}\nPeriod: ${formattedStart} - ${formattedEnd} (${durLabel})\n\nPlease review via the HRIS Portal.`,
+            body: emailHtml, // Passing HTML directly into body for scripts that render body as HTML
+            htmlBody: emailHtml, // Passing htmlBody for standard MailApp/GmailApp scripts
+            plainText: emailText,
             fromEmail: userEmail
           })
         });

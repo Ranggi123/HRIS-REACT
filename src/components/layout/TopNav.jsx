@@ -6,7 +6,7 @@ export default function TopNav({
   currentLang = 'en', 
   onLangChange = () => {}, 
   onOpenProfile = () => {},
-  approvalCount = 1,
+  approvalCount = 0,
   isSuperAdminMode = false,
   isSuperAdminEligible = false,
   onToggleSuperAdmin = () => {},
@@ -94,7 +94,6 @@ export default function TopNav({
   const userAvatar = currentUser?.link || currentUser?.Link || currentUser?.photo || currentUser?.avatar || 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png';
 
   // Validasi nilai "super admin?" dari record currentUser employee_directory
-  // Cek apakah nilai eksplisit FALSE
   const rawSuperAdminVal = 
     currentUser?.['super admin?'] ?? 
     currentUser?.['Super Admin?'] ?? 
@@ -104,14 +103,10 @@ export default function TopNav({
 
   console.log("rawSuperAdminVal:", rawSuperAdminVal);
 
-  // LOGIKA DIPERKETAT: Harus benar-benar true atau "true"
-  // Abaikan isSuperAdminEligible dari prop jika di database nyata-nyatanya false
   const isSuperAdminDatabase = 
     rawSuperAdminVal === true || 
     String(rawSuperAdminVal).trim().toLowerCase() === 'true';
 
-  // Jika di database false, maka tidak peduli apa kata prop isSuperAdminEligible,
-  // isSuperAdmin akan menjadi false.
   const isSuperAdmin = isSuperAdminDatabase;
 
   const handleLogout = () => {
@@ -265,7 +260,7 @@ export default function TopNav({
 
                 {/* Approval Menu Item */}
                 <Link 
-                  to="/leave" 
+                  to="/approval" 
                   onClick={() => setDropdownOpen(false)}
                   className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 hover:text-blue-600 flex items-center justify-between transition border-b border-gray-50"
                 >
