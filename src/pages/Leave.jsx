@@ -81,8 +81,8 @@ export default function Leave() {
   const [leaveRecords, setLeaveRecords] = useState([]);
   const [holidayRecords, setHolidayRecords] = useState([]);
   const [expiringHolidays, setExpiringHolidays] = useState([]);
-  const [scheduleRecords, setScheduleRecords] = useState([]); // New state for dynamic database schedule
-  const [nonWorkingError, setNonWorkingError] = useState(''); // New state for database schedule error
+  const [scheduleRecords, setScheduleRecords] = useState([]);
+  const [nonWorkingError, setNonWorkingError] = useState('');
 
   // Stats & Balances
   const [originalBalances, setOriginalBalances] = useState({ annual: 0, dayOff: 0, extraOff: 0 });
@@ -212,7 +212,7 @@ export default function Leave() {
         const t = getPropCaseInsensitive(row, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '');
         
         const sdRaw = getPropCaseInsensitive(row, ['From Date', 'from_date', 'From', 'from', 'Start Date', 'start_date'], '-');
-        const edRaw = getPropCaseInsensitive(row, ['To Date', 'to_date', 'To', 'to', 'End Date', 'end_date'], '-');
+        const edRaw = getPropCaseInsensitive(row, ['To Date', 'to_date', 'End Date', 'end_date'], '-');
         let dur = getPropCaseInsensitive(row, ['Total Days', 'total_days', 'Duration', 'duration', 'Days', 'days'], '');
         
         if (!dur) {
@@ -240,21 +240,19 @@ export default function Leave() {
         extraOff: Math.max(0, totalExtraOff - pExt)
       });
 
-      // 5. Fetch Schedules (to validate working days)
+      // 5. Fetch Schedule Aman dari Database berdasarkan input user (tabel 'schedule') - Filternya menggunakan kolom employee = userEmail
       try {
-        let fetchedSchedules = [];
-        for (const tName of ['employee_schedule', 'schedules', 'roster', 'employee_roster', 'attendance_schedule', 'shift_schedule']) {
-          const { data, error } = await supabase.from(tName).select('*').limit(3000);
-          if (!error && data && data.length > 0) {
-            fetchedSchedules = data.filter(row => {
-              const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id']).toLowerCase();
-              return validKeys.some(key => empVal === key || empVal.includes(key) || key.includes(empVal));
-            });
-            if (fetchedSchedules.length > 0) break; // found the right table
-          }
+        const { data, error } = await supabase.from('schedule')
+          .select('*')
+          .eq('employee', userEmail)
+          .limit(3000);
+          
+        if (!error && Array.isArray(data)) {
+          setScheduleRecords(data);
         }
-        setScheduleRecords(fetchedSchedules);
-      } catch(e) { console.warn('Schedule fetch error', e); }
+      } catch (e) {
+        console.warn('Schedule lookup skipped:', e);
+      }
 
     } catch (err) {
       console.error(err);
@@ -322,56 +320,55 @@ export default function Leave() {
     }
   };
 
-  // Check Schedule Working Days when formStart/formEnd changes
+  // Validasi Jadwal Kerja (Working Day) berdasarkan Database
   useEffect(() => {
     let durationStr = 'Invalid';
     let errorMsg = '';
     
     if (formStart && formEnd) {
-      const s = new Date(formStart);
-      const e = new Date(formEnd);
-      if (e >= s) {
+      const s = parseFlexibleDate(formStart);
+      const e = parseFlexibleDate(formEnd);
+
+      if (s && e && e >= s) {
         const diff = Math.ceil(Math.abs(e - s) / (1000 * 60 * 60 * 24)) + 1;
         durationStr = `${diff} Day(s)`;
         
-        // Skip validation for Maternity Leave as it naturally includes weekends/off days
         if (scheduleRecords.length > 0 && formType !== 'Maternity Leave') {
-          let tempDate = new Date(s);
+          let curr = new Date(s.getTime());
           let nonWorkingFound = [];
           
-          while (tempDate <= e) {
-            const dStr = `${tempDate.getFullYear()}-${String(tempDate.getMonth()+1).padStart(2,'0')}-${String(tempDate.getDate()).padStart(2,'0')}`;
+          while (curr <= e) {
+            const yr = curr.getFullYear();
+            const mo = String(curr.getMonth() + 1).padStart(2, '0');
+            const dy = String(curr.getDate()).padStart(2, '0');
+            const dateStr = `${yr}-${mo}-${dy}`;
             
-            const daySched = scheduleRecords.find(row => {
-              const rowDateRaw = getPropCaseInsensitive(row, ['date', 'Date', 'tanggal', 'Tanggal', 'schedule_date', 'working_date']);
-              const rowDate = parseFlexibleDate(rowDateRaw);
-              if (!rowDate) return false;
-              const rStr = `${rowDate.getFullYear()}-${String(rowDate.getMonth()+1).padStart(2,'0')}-${String(rowDate.getDate()).padStart(2,'0')}`;
-              return rStr === dStr;
+            const match = scheduleRecords.find(row => {
+              const rDate = parseFlexibleDate(getPropCaseInsensitive(row, ['date', 'Date', 'tanggal', 'Tanggal', 'schedule_date', 'working_date']));
+              if (!rDate) return false;
+              const rStr = `${rDate.getFullYear()}-${String(rDate.getMonth() + 1).padStart(2, '0')}-${String(rDate.getDate()).padStart(2, '0')}`;
+              return rStr === dateStr;
             });
 
-            if (daySched) {
-              let isWorkingDay = true;
+            if (match) {
+              let isWorking = true;
               
-              // Verify explicit false/0 for working status
-              const isWorkingVal = getPropCaseInsensitive(daySched, ['is_working_day', 'is_working', 'working_day']);
-              const shiftVal = getPropCaseInsensitive(daySched, ['shift', 'Shift', 'status', 'Status', 'shift_name', 'tipe_shift']).toLowerCase();
-              
-              if (isWorkingVal !== '') {
-                if (isWorkingVal === false || isWorkingVal === 'false' || isWorkingVal === '0' || isWorkingVal === 0) {
-                  isWorkingDay = false;
-                }
-              } else if (shiftVal) {
-                if (shiftVal === 'off' || shiftVal.includes('libur') || shiftVal.includes('rest')) {
-                  isWorkingDay = false;
-                }
+              // Only check the 'type' column to determine if it is a working day
+              const rawType = (getPropCaseInsensitive(match, ['type', 'Type', 'tipe', 'Tipe']) || '').trim().toLowerCase();
+
+              // If type is not explicitly 'working day' (e.g. 'off day', 'non working day', etc), then block it
+              if (rawType && rawType !== 'working day') {
+                isWorking = false;
               }
 
-              if (!isWorkingDay) {
-                nonWorkingFound.push(formatDateDisplay(dStr, lang));
+              if (!isWorking) {
+                nonWorkingFound.push(formatDateDisplay(dateStr, lang));
               }
+            } else {
+              // Opsional: Jika tidak ada jadwal sama sekali di database
+              // nonWorkingFound.push(formatDateDisplay(dateStr, lang));
             }
-            tempDate.setDate(tempDate.getDate() + 1);
+            curr.setDate(curr.getDate() + 1);
           }
           
           if (nonWorkingFound.length > 0) {
@@ -427,7 +424,6 @@ export default function Leave() {
     return { minDate: min, maxDate: max || '' };
   }, [formStart, formType, balances, minStartDate]);
 
-  // Effect to auto-correct formEnd if it exceeds maxDate or goes below minDate
   useEffect(() => {
     if (formEnd && maxDate && formEnd > maxDate) {
       setFormEnd(maxDate);
@@ -504,9 +500,7 @@ export default function Leave() {
     e.preventDefault();
     if (!formType) return alert('Please select a leave type.');
     if (new Date(formEnd) < new Date(formStart)) return alert('End date cannot be earlier than start date.');
-    
-    // Database working-day validation block
-    if (nonWorkingError) return alert(`Pengajuan ditolak: ${nonWorkingError}`);
+    if (nonWorkingError) return alert(`Pengajuan tidak dapat diproses: ${nonWorkingError}`);
 
     const dtStart = new Date(formStart);
     const dtEnd = new Date(formEnd);
@@ -566,7 +560,6 @@ export default function Leave() {
       const todayFormatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const uniqueId = 'LV-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
 
-      // Hitung Final Balance sesuai balance leave type dikurangi total days
       let currentBalance = 0;
       if (formType === 'Annual Leave') {
         currentBalance = originalBalances.annual;
@@ -638,13 +631,7 @@ go to HRIS: https://hr.arratechs.com/approval`;
   </div>
   <p style="font-size: 14px; margin-bottom: 20px;">Please review via the HRIS Portal.</p>
   <div style="margin: 24px 0 10px 0;">
-    <!--[if mso]>
-    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="https://hr.arratechs.com/approval" style="height:40px;v-text-anchor:middle;width:140px;" arcsize="20%" stroke="f" fillcolor="#2563eb">
-      <w:anchorlock/>
-      <center style="color:#ffffff;font-family:sans-serif;font-size:14px;font-weight:bold;">go to HRIS</center>
-    </v:roundrect>
-    <![endif]-->
-    <a href="https://hr.arratechs.com/approval" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block; mso-padding-alt: 0;">go to HRIS</a>
+    <a href="https://hr.arratechs.com/approval" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">go to HRIS</a>
   </div>
 </div>
 `;
@@ -691,7 +678,6 @@ go to HRIS: https://hr.arratechs.com/approval`;
         await supabase.from('leave_requests').delete().eq(colEmp, record[colEmp]).eq(colCreated, record[colCreated]);
       }
       
-      // Send Cancellation Email
       const rType = getPropCaseInsensitive(record, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '-');
       const rStartRaw = getPropCaseInsensitive(record, ['From Date', 'from_date', 'Start Date', 'start_date'], '-');
       const rEndRaw = getPropCaseInsensitive(record, ['To Date', 'to_date', 'End Date', 'end_date'], '-');
@@ -706,7 +692,6 @@ go to HRIS: https://hr.arratechs.com/approval`;
         else rDur = 1;
       }
       const durLabel = `${rDur} day(s)`;
-
       const lineManager = getPropCaseInsensitive(currentUser, ['Line Manager', 'line_manager', 'Manager Email', 'Approver', 'Atasan Email'], 'ranggiit@gmail.com');
       
       try {
@@ -785,7 +770,7 @@ No further action is required.`,
               className="px-3.5 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
               title="Refresh Data"
             >
-              <svg className={\`w-4 h-4 \${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}\`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
               <span>{loading ? 'Loading...' : 'Refresh'}</span>
@@ -936,7 +921,7 @@ No further action is required.`,
                       </td>
                       <td className="px-2 py-2 sm:px-4 sm:py-3 text-center font-bold">{duration}</td>
                       <td className="px-2 py-2 sm:px-4 sm:py-3 text-center">
-                        <span className={\`px-2 py-0.5 rounded-md text-xs font-bold border \${badgeClass}\`}>{status}</span>
+                        <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${badgeClass}`}>{status}</span>
                       </td>
                       <td className="px-2 py-2 sm:px-4 sm:py-3 text-center" onClick={(e) => e.stopPropagation()}>
                         {sLower.includes('approve') || sLower.includes('setuju') ? (
@@ -1029,7 +1014,7 @@ No further action is required.`,
                             {getPropCaseInsensitive(r, ['Description', 'description', 'desc', 'keterangan'], '-')}
                           </td>
                           <td className="px-2 py-2 sm:px-4 sm:py-3 text-center">
-                            <span className={\`px-2 py-0.5 rounded-md text-xs font-bold border \${statusClass}\`}>{status}</span>
+                            <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${statusClass}`}>{status}</span>
                           </td>
                         </tr>
                       )
@@ -1080,7 +1065,7 @@ No further action is required.`,
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">To Date <span className="text-red-500">*</span></label>
-                  <input type="date" required min={minDate} max={maxDate} value={formEnd} onChange={handleEndChange} readOnly={['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType)} className={\`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 \${['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType) ? 'bg-gray-100' : 'bg-white'}\`} />
+                  <input type="date" required min={minDate} max={maxDate} value={formEnd} onChange={handleEndChange} readOnly={['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType)} className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType) ? 'bg-gray-100' : 'bg-white'}`} />
                 </div>
               </div>
               
@@ -1108,7 +1093,7 @@ No further action is required.`,
               
               <div className="flex justify-end space-x-2 pt-3 border-t border-gray-100">
                 <button type="button" onClick={() => setIsLeaveModalOpen(false)} disabled={isSubmitting} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition">Cancel</button>
-                <button type="submit" disabled={isSubmitting || !!nonWorkingError} className={\`px-5 py-2 \${(isSubmitting || !!nonWorkingError) ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white text-xs font-semibold rounded-lg transition\`}>
+                <button type="submit" disabled={isSubmitting || !!nonWorkingError} className={`px-5 py-2 ${(isSubmitting || !!nonWorkingError) ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white text-xs font-semibold rounded-lg transition`}>
                   {isSubmitting ? 'Submitting...' : 'Submit Request'}
                 </button>
               </div>
@@ -1132,7 +1117,7 @@ No further action is required.`,
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-lg font-bold text-gray-900">Leave Request Details</h3>
-                  <span className={\`px-2.5 py-0.5 rounded-full text-[10px] font-bold border \${
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                     (() => {
                       const st = (getPropCaseInsensitive(selectedRecord, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval')).toLowerCase();
                       if (st.includes('approve') || st.includes('setuju')) return 'bg-green-100 text-green-700 border-green-200';
@@ -1140,7 +1125,7 @@ No further action is required.`,
                       if (st.includes('cancel')) return 'bg-purple-100 text-purple-700 border-purple-200';
                       return 'bg-yellow-100 text-yellow-800 border-yellow-200';
                     })()
-                  }\`}>
+                  }`}>
                     {getPropCaseInsensitive(selectedRecord, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval')}
                   </span>
                 </div>
@@ -1158,8 +1143,6 @@ No further action is required.`,
 
             {/* Modal Body / Information Grid */}
             <div className="space-y-3.5 text-xs">
-              
-              {/* Highlight Card: Type & Period */}
               <div className="bg-blue-50/70 border border-blue-200/60 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Leave Type</span>
@@ -1178,13 +1161,12 @@ No further action is required.`,
                         if (dS && dE) dur = Math.ceil(Math.abs(dE - dS) / (1000 * 60 * 60 * 24)) + 1;
                         else dur = 1;
                       }
-                      return \`\${dur} Day(s)\`;
+                      return `${dur} Day(s)`;
                     })()}
                   </p>
                 </div>
               </div>
 
-              {/* Detail Rows */}
               <div className="bg-gray-50/70 rounded-xl border border-gray-200 divide-y divide-gray-200/70 p-3 space-y-2.5">
                 <div className="flex justify-between items-center pt-1">
                   <span className="text-gray-500 font-medium">Employee Name</span>
@@ -1238,7 +1220,6 @@ No further action is required.`,
                 )}
               </div>
 
-              {/* Attachment Preview (if any) */}
               {(() => {
                 const att = getPropCaseInsensitive(selectedRecord, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'Link', 'link'], '');
                 if (att && att.startsWith('http')) {
@@ -1274,7 +1255,6 @@ No further action is required.`,
 
             </div>
 
-            {/* Modal Actions Footer */}
             <div className="mt-5 pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
               <div>
                 {(() => {
@@ -1336,19 +1316,18 @@ No further action is required.`,
             className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-5 sm:p-6 border border-gray-100 max-h-[92vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
             <div className="flex justify-between items-start mb-4 pb-3 border-b border-gray-100">
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-lg font-bold text-gray-900">Holiday Details</h3>
-                  <span className={\`px-2.5 py-0.5 rounded-full text-[10px] font-bold border \${
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                     (() => {
                       const st = (getPropCaseInsensitive(selectedHoliday, ['status', 'Status', 'STATUS'], '-')).toLowerCase();
                       if (st === 'unused') return 'bg-green-100 text-green-700 border-green-200';
                       if (st === 'used') return 'bg-blue-100 text-blue-700 border-blue-200';
                       return 'bg-gray-100 text-gray-700 border-gray-200';
                     })()
-                  }\`}>
+                  }`}>
                     {getPropCaseInsensitive(selectedHoliday, ['status', 'Status', 'STATUS'], '-')}
                   </span>
                 </div>
@@ -1364,10 +1343,7 @@ No further action is required.`,
               </button>
             </div>
 
-            {/* Modal Body / Information Grid */}
             <div className="space-y-3.5 text-xs">
-              
-              {/* Highlight Card: Holiday Type & Days */}
               <div className="bg-purple-50/70 border border-purple-200/60 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600">Type Holiday</span>
@@ -1380,13 +1356,12 @@ No further action is required.`,
                   <p className="text-base font-extrabold text-purple-900 mt-0.5">
                     {(() => {
                       const d = getPropCaseInsensitive(selectedHoliday, ['Days', 'days', 'Amount', 'amount', 'Total', 'total'], '1');
-                      return \`\${d} Day(s)\`;
+                      return `${d} Day(s)`;
                     })()}
                   </p>
                 </div>
               </div>
 
-              {/* Detail Rows */}
               <div className="bg-gray-50/70 rounded-xl border border-gray-200 divide-y divide-gray-200/70 p-3 space-y-2.5">
                 <div className="flex justify-between items-center pt-1">
                   <span className="text-gray-500 font-medium">Earned Date</span>
@@ -1426,7 +1401,6 @@ No further action is required.`,
 
             </div>
 
-            {/* Modal Actions Footer */}
             <div className="mt-5 pt-3 border-t border-gray-100 flex justify-end">
               <button 
                 type="button" 
