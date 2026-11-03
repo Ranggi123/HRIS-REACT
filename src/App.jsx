@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Attendance from './pages/Attendance';
 import Leave from './pages/Leave';
+import Approval from './pages/Approval';
 import EmployeeDirectory from './pages/EmployeeDirectory';
 import Account from './pages/Account';
 
@@ -16,6 +17,7 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="attendance" element={<Attendance />} />
           <Route path="leave" element={<Leave />} />
+          <Route path="approval" element={<Approval />} />
           <Route path="directory" element={<EmployeeDirectory />} />
           <Route path="account" element={<Account />} />
         </Route>
