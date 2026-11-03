@@ -426,11 +426,16 @@ export default function Approval() {
         [statusCol]: newStatus
       };
 
-      const approverCol = resolveTableColumn(cols, ['approved_by', 'Approved By', 'action_by', 'Action By', 'lasteditby', 'last_edit_by']);
+      const approverCol = resolveTableColumn(cols, ['approved_by', 'Approved By', 'action_by', 'Action By']);
       if (approverCol) payload[approverCol] = userWorkEmail;
 
-      const dateCol = resolveTableColumn(cols, ['approved_date', 'Approved Date', 'approved_at', 'lasteditdate', 'last_editdate', 'last_edit_date']);
+      const dateCol = resolveTableColumn(cols, ['approved_date', 'Approved Date', 'approved_at']);
       if (dateCol) payload[dateCol] = nowIso;
+
+      const editByCol = resolveTableColumn(cols, ['LastEditBy', 'lasteditby', 'last_edit_by']) || 'LastEditBy';
+      const editDateCol = resolveTableColumn(cols, ['LastEditDate', 'lasteditdate', 'last_edit_date', 'last_editdate']) || 'LastEditDate';
+      payload[editByCol] = userWorkEmail;
+      payload[editDateCol] = nowIso;
 
       if (newStatus === 'Rejected' && reason) {
         const reasonCol = resolveTableColumn(cols, ['rejection_reason', 'Rejection Reason', 'reject_reason', 'reason', 'Reason', 'notes', 'Notes']);
@@ -466,6 +471,8 @@ export default function Approval() {
           const schedTypeCol = resolveTableColumn(schedCols, ['Type', 'type', 'schedule_type']) || 'Type';
           const schedEmpCol = resolveTableColumn(schedCols, ['Employee', 'employee']) || 'Employee';
           const schedDateCol = resolveTableColumn(schedCols, ['Date', 'date']) || 'Date';
+          const schedEditByCol = resolveTableColumn(schedCols, ['LastEditBy', 'lasteditby', 'last_edit_by']) || 'LastEditBy';
+          const schedEditDateCol = resolveTableColumn(schedCols, ['LastEditDate', 'lasteditdate', 'last_edit_date', 'last_editdate']) || 'LastEditDate';
 
           const { data: dirSample } = await supabase.from('employee_directory').select('*').limit(1);
           const dirCols = dirSample && dirSample.length > 0 ? Object.keys(dirSample[0]) : [];
@@ -489,13 +496,22 @@ export default function Approval() {
           } catch (e) {}
           validKeys = Array.from(new Set(validKeys.filter(Boolean)));
 
-          // 1 & 2: Day Off Payment & Extra Off
+                    // 1 & 2: Day Off Payment & Extra Off
           if (leaveType === 'Day Off Payment' || leaveType === 'Extra Off') {
-            // Fetch holiday_balance records and filter in JavaScript for robust matching
-            const { data: allHolidays, error: holFetchErr } = await supabase
-              .from('holiday_balance')
-              .select('*')
-              .limit(2000);
+            
+            // Dapatkan kolom tabel secara presisi
+            const { data: hSample } = await supabase.from('holiday_balance').select('*').limit(1);
+            const hCols = hSample && hSample.length > 0 ? Object.keys(hSample[0]) : [];
+            const exHolEmpCol = resolveTableColumn(hCols, ['Employee', 'employee', 'user_uid', 'email', 'Name', 'name']) || 'Employee';
+            
+            // Bangun query efisien untuk menghindari batas limit rows
+            let holQuery = supabase.from('holiday_balance').select('*').limit(5000);
+            const orConditions = validKeys.map(k => `${exHolEmpCol}.ilike.%${k}%`).join(',');
+            if (orConditions) {
+               holQuery = holQuery.or(orConditions);
+            }
+            
+            const { data: allHolidays, error: holFetchErr } = await holQuery;
 
             if (holFetchErr) {
               console.error("Gagal membaca holiday_balance:", holFetchErr);
@@ -534,9 +550,13 @@ export default function Approval() {
               const currentStatusRaw = String(targetHol[holStatusCol] || '').trim();
               const newStatusVal = currentStatusRaw === 'unused' ? 'used' : 'Used';
 
+              const holEditByCol = resolveTableColumn(holCols, ['LastEditBy', 'lasteditby', 'last_edit_by']) || 'LastEditBy';
+              const holEditDateCol = resolveTableColumn(holCols, ['LastEditDate', 'lasteditdate', 'last_edit_date', 'last_editdate']) || 'LastEditDate';
               const holUpdatePayload = {
                 [holStatusCol]: newStatusVal,
-                [holUsedDateCol]: fromDate
+                [holUsedDateCol]: fromDate,
+                [holEditByCol]: userWorkEmail,
+                [holEditDateCol]: nowIso
               };
 
               let updateRes;
@@ -571,20 +591,29 @@ export default function Approval() {
 
             if (schedMatches && schedMatches.length > 0) {
               await supabase.from('schedule').update({
-                [schedTypeCol]: leaveType
+                [schedTypeCol]: leaveType,
+                [schedEditByCol]: userWorkEmail,
+                [schedEditDateCol]: nowIso
               })
               .ilike(schedEmpCol, `%${empEmail}%`)
               .eq(schedDateCol, fromDate);
             } else if (empName) {
               await supabase.from('schedule').update({
-                [schedTypeCol]: leaveType
+                [schedTypeCol]: leaveType,
+                [schedEditByCol]: userWorkEmail,
+                [schedEditDateCol]: nowIso
               })
               .ilike(schedEmpCol, `%${empName}%`)
               .eq(schedDateCol, fromDate);
             }
 
-            // Recalculate Balance in holiday_balance
-            const { data: recheckHolidays } = await supabase.from('holiday_balance').select('*').limit(2000);
+                        // Recalculate Balance in holiday_balance
+            let recheckQuery = supabase.from('holiday_balance').select('*').limit(5000);
+            if (orConditions) {
+               recheckQuery = recheckQuery.or(orConditions);
+            }
+            const { data: recheckHolidays } = await recheckQuery;
+            
             let unusedCount = 0;
             if (recheckHolidays) {
               unusedCount = recheckHolidays.filter(row => {
@@ -613,7 +642,9 @@ export default function Approval() {
           // 3: Annual Leave
           else if (leaveType === 'Annual Leave') {
             await supabase.from('schedule').update({
-              [schedTypeCol]: leaveType
+              [schedTypeCol]: leaveType,
+              [schedEditByCol]: userWorkEmail,
+              [schedEditDateCol]: nowIso
             })
             .ilike(schedEmpCol, `%${empEmail}%`)
             .gte(schedDateCol, fromDate)
@@ -633,7 +664,9 @@ export default function Approval() {
           // 4, 5, 6, 7: Other Leaves
           else if (['Sick Leave', 'Maternity Leave', 'Compassionate Leave', 'Unpaid Leave'].includes(leaveType)) {
             await supabase.from('schedule').update({
-              [schedTypeCol]: leaveType
+              [schedTypeCol]: leaveType,
+              [schedEditByCol]: userWorkEmail,
+              [schedEditDateCol]: nowIso
             })
             .ilike(schedEmpCol, `%${empEmail}%`)
             .gte(schedDateCol, fromDate)
