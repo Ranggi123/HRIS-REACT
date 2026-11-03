@@ -307,7 +307,61 @@ export default function Leave() {
     }
   }, [formStart, formEnd]);
 
+
+  const { todayFormatted, minStartDate } = useMemo(() => {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    
+    const minStartObj = new Date(now);
+    minStartObj.setDate(minStartObj.getDate() - 7);
+    const minStart = `${minStartObj.getFullYear()}-${String(minStartObj.getMonth() + 1).padStart(2, '0')}-${String(minStartObj.getDate()).padStart(2, '0')}`;
+    
+    return { todayFormatted: today, minStartDate: minStart };
+  }, []);
+
+  const { minDate, maxDate } = useMemo(() => {
+    let min = formStart || todayFormatted;
+    let max = undefined;
+
+    if (formStart) {
+      const startDate = new Date(formStart);
+      let maxDays = 0;
+
+      if (formType === 'Annual Leave' && balances.annual > 0) {
+        maxDays = balances.annual;
+      } else if (formType === 'Extra Off' && balances.extraOff > 0) {
+        maxDays = balances.extraOff;
+      } else if (formType === 'Sick Leave' || formType === 'Compassionate Leave') {
+        maxDays = 3;
+      } else if (formType === 'Day Off Payment') {
+        maxDays = 1;
+      } else if (formType === 'Maternity Leave') {
+        maxDays = 90;
+      }
+
+      if (maxDays > 0) {
+        const maxDateObj = new Date(startDate);
+        maxDateObj.setDate(maxDateObj.getDate() + (maxDays - 1));
+        const y = maxDateObj.getFullYear();
+        const m = String(maxDateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(maxDateObj.getDate()).padStart(2, '0');
+        max = `${y}-${m}-${d}`;
+      }
+    }
+    return { minDate: min, maxDate: max };
+  }, [formStart, formType, balances, todayFormatted]);
+
+  // Effect to auto-correct formEnd if it exceeds maxDate or goes below minDate
+  useEffect(() => {
+    if (formEnd && maxDate && formEnd > maxDate) {
+      setFormEnd(maxDate);
+    } else if (formEnd && minDate && formEnd < minDate) {
+      setFormEnd(minDate);
+    }
+  }, [formEnd, minDate, maxDate]);
+
   // Upload Logic Mock
+
   const uploadToGoogleDrive = async (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -747,11 +801,11 @@ export default function Leave() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">From Date <span className="text-red-500">*</span></label>
-                  <input type="date" required value={formStart} onChange={handleStartChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input type="date" required min={minStartDate} value={formStart} onChange={handleStartChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">To Date <span className="text-red-500">*</span></label>
-                  <input type="date" required value={formEnd} onChange={handleEndChange} readOnly={['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType)} className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType) ? 'bg-gray-100' : 'bg-white'}`} />
+                  <input type="date" required min={minDate} max={maxDate} value={formEnd} onChange={handleEndChange} readOnly={['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType)} className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType) ? 'bg-gray-100' : 'bg-white'}`} />
                 </div>
               </div>
 
