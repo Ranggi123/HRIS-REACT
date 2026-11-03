@@ -450,16 +450,17 @@ export default function Approval() {
       const { error } = await query;
       if (error) throw error;
 
-      // --- NEW LEAVE APPROVAL LOGIC ---
+            // --- NEW LEAVE APPROVAL LOGIC ---
       if (newStatus === 'Approved' && item._category === 'Leave') {
         const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'user_uid', 'email']);
+        const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name']);
         const leaveType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '');
         const fromDate = getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']);
         const toDate = getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']);
         const totalDays = parseInt(getPropCaseInsensitive(item, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration']) || '1', 10);
 
         try {
-          // Check Schema for Exact Columns
+          // Check Schema for Exact Columns in schedule and employee_directory
           const { data: schedSample } = await supabase.from('schedule').select('*').limit(1);
           const schedCols = schedSample && schedSample.length > 0 ? Object.keys(schedSample[0]) : [];
           const schedTypeCol = resolveTableColumn(schedCols, ['Type', 'type', 'schedule_type']) || 'Type';
@@ -470,68 +471,142 @@ export default function Approval() {
           const dirCols = dirSample && dirSample.length > 0 ? Object.keys(dirSample[0]) : [];
           const dirEmailCol = resolveTableColumn(dirCols, ['Email', 'email', 'Employee work email', 'work_email']) || 'Email';
 
+          // Build all possible employee identifiers (email, name, empId) to guarantee matching in holiday_balance
+          let validKeys = [empEmail, empName].filter(Boolean).map(v => String(v).trim().toLowerCase());
+          try {
+            const { data: empDirMatch } = await supabase
+              .from('employee_directory')
+              .select('*')
+              .ilike(dirEmailCol, empEmail)
+              .limit(1);
+            if (empDirMatch && empDirMatch.length > 0) {
+              const ed = empDirMatch[0];
+              const eId = getPropCaseInsensitive(ed, ['Employee ID', 'employee_id', 'employeeid', 'id', 'Barcode', 'barcode']);
+              const eName = getPropCaseInsensitive(ed, ['Name', 'name', 'nama', 'fullname', 'full_name']);
+              if (eId) validKeys.push(eId.trim().toLowerCase());
+              if (eName) validKeys.push(eName.trim().toLowerCase());
+            }
+          } catch (e) {}
+          validKeys = Array.from(new Set(validKeys.filter(Boolean)));
+
           // 1 & 2: Day Off Payment & Extra Off
           if (leaveType === 'Day Off Payment' || leaveType === 'Extra Off') {
-            const { data: holSample } = await supabase.from('holiday_balance').select('*').limit(1);
-            const holCols = holSample && holSample.length > 0 ? Object.keys(holSample[0]) : [];
-            const holIdCol = resolveTableColumn(holCols, ['id', 'ID', 'Id', 'UID', 'uid']) || 'id';
-            const holStatusCol = resolveTableColumn(holCols, ['status', 'Status', 'STATUS']) || 'status';
-            const holUsedDateCol = resolveTableColumn(holCols, ['Used Date', 'used_date']) || 'Used Date';
-            const holTypeCol = resolveTableColumn(holCols, ['Type Holiday', 'type_holiday', 'Type', 'type']) || 'Type Holiday';
-            const holEmpCol = resolveTableColumn(holCols, ['Employee', 'employee']) || 'Employee';
-            const holExpDateCol = resolveTableColumn(holCols, ['Expiration Date', 'expiration_date', 'Expired Date']) || 'Expiration Date';
-
-            // Find nearest unused holiday
-            const { data: activeHolidays } = await supabase
+            // Fetch holiday_balance records and filter in JavaScript for robust matching
+            const { data: allHolidays, error: holFetchErr } = await supabase
               .from('holiday_balance')
               .select('*')
-              .ilike(holEmpCol, `%${empEmail}%`)
-              .ilike(holTypeCol, leaveType)
-              .eq(holStatusCol, 'Unused')
-              .order(holExpDateCol, { ascending: true })
-              .limit(1);
+              .limit(2000);
 
-            if (activeHolidays && activeHolidays.length > 0) {
-              const targetHol = activeHolidays[0];
+            if (holFetchErr) {
+              console.error("Gagal membaca holiday_balance:", holFetchErr);
+              throw new Error("Gagal membaca data holiday_balance: " + holFetchErr.message);
+            }
+
+            const candidateHolidays = (allHolidays || []).filter(row => {
+              const s = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
+              if (s !== 'unused') return false;
+
+              const t = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
+              const isTypeMatch = leaveType.toLowerCase().includes('extra')
+                ? (t.includes('extra off') || t.includes('extra'))
+                : (t.includes('day off') || t.includes('dayoff'));
+              if (!isTypeMatch) return false;
+
+              const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
+              return validKeys.some(k => empVal === k || empVal.includes(k) || k.includes(empVal));
+            });
+
+            // Sort by earliest expiration date
+            candidateHolidays.sort((a, b) => {
+              const dtA = parseFlexibleDate(getPropCaseInsensitive(a, ['Expiration Date', 'expiration_date', 'exp_date', 'Expired Date', 'expired', 'Date', 'date'])) || new Date(9999, 11, 31);
+              const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['Expiration Date', 'expiration_date', 'exp_date', 'Expired Date', 'expired', 'Date', 'date'])) || new Date(9999, 11, 31);
+              return dtA.getTime() - dtB.getTime();
+            });
+
+            if (candidateHolidays.length > 0) {
+              const targetHol = candidateHolidays[0];
+              const holCols = Object.keys(targetHol);
+
+              const holStatusCol = resolveTableColumn(holCols, ['Status', 'status', 'STATUS']) || 'Status';
+              const holUsedDateCol = resolveTableColumn(holCols, ['Used Date', 'used_date', 'UsedDate', 'tanggal_digunakan']) || 'Used Date';
+              const holIdCol = resolveTableColumn(holCols, ['UID', 'uid', 'id', 'ID', 'Id', '_id', 'Holiday ID', 'holiday_id', 'no', 'No']);
+
+              const currentStatusRaw = String(targetHol[holStatusCol] || '').trim();
+              const newStatusVal = currentStatusRaw === 'unused' ? 'used' : 'Used';
+
               const holUpdatePayload = {
-                [holStatusCol]: 'Used',
+                [holStatusCol]: newStatusVal,
                 [holUsedDateCol]: fromDate
               };
-              
-              if (holIdCol && targetHol[holIdCol]) {
-                await supabase.from('holiday_balance').update(holUpdatePayload).eq(holIdCol, targetHol[holIdCol]);
+
+              let updateRes;
+              if (holIdCol && targetHol[holIdCol] !== undefined && targetHol[holIdCol] !== null) {
+                updateRes = await supabase.from('holiday_balance').update(holUpdatePayload).eq(holIdCol, targetHol[holIdCol]);
               } else {
-                 // Fallback if ID column is not found
-                 await supabase.from('holiday_balance').update(holUpdatePayload)
-                   .eq(holEmpCol, targetHol[holEmpCol])
-                   .eq(holTypeCol, targetHol[holTypeCol])
-                   .eq(holStatusCol, 'unused')
-                   .eq(holExpDateCol, targetHol[holExpDateCol]);
+                const holEmpCol = resolveTableColumn(holCols, ['Employee', 'employee', 'user_uid', 'email']) || 'Employee';
+                const holTypeCol = resolveTableColumn(holCols, ['Type Holiday', 'type_holiday', 'Type', 'type']) || 'Type Holiday';
+                const holExpDateCol = resolveTableColumn(holCols, ['Expiration Date', 'expiration_date', 'Expired Date']) || 'Expiration Date';
+
+                updateRes = await supabase.from('holiday_balance').update(holUpdatePayload)
+                  .eq(holEmpCol, targetHol[holEmpCol])
+                  .eq(holTypeCol, targetHol[holTypeCol])
+                  .eq(holStatusCol, targetHol[holStatusCol])
+                  .eq(holExpDateCol, targetHol[holExpDateCol]);
               }
+
+              if (updateRes && updateRes.error) {
+                console.error("Gagal update holiday_balance:", updateRes.error);
+                throw new Error("Gagal update holiday_balance: " + updateRes.error.message);
+              }
+            } else {
+              console.warn("Tidak ada kuota Unused yang cocok di holiday_balance untuk:", validKeys, leaveType);
             }
 
             // Update schedule
-            await supabase.from('schedule').update({
-              [schedTypeCol]: leaveType
-            })
-            .ilike(schedEmpCol, `%${empEmail}%`)
-            .eq(schedDateCol, fromDate);
+            const { data: schedMatches } = await supabase
+              .from('schedule')
+              .select('*')
+              .ilike(schedEmpCol, `%${empEmail}%`)
+              .eq(schedDateCol, fromDate);
 
-            // Recalculate Balance
-            const { count: unusedCount } = await supabase
-              .from('holiday_balance')
-              .select('*', { count: 'exact', head: true })
-              .ilike(holEmpCol, `%${empEmail}%`)
-              .ilike(holTypeCol, leaveType)
-              .eq(holStatusCol, 'Unused');
+            if (schedMatches && schedMatches.length > 0) {
+              await supabase.from('schedule').update({
+                [schedTypeCol]: leaveType
+              })
+              .ilike(schedEmpCol, `%${empEmail}%`)
+              .eq(schedDateCol, fromDate);
+            } else if (empName) {
+              await supabase.from('schedule').update({
+                [schedTypeCol]: leaveType
+              })
+              .ilike(schedEmpCol, `%${empName}%`)
+              .eq(schedDateCol, fromDate);
+            }
 
-            const balColCandidates = leaveType === 'Day Off Payment' 
-              ? ['Day Off Payment Balance', 'day_off_payment_balance'] 
-              : ['Extra Off Balance', 'extra_off_balance'];
+            // Recalculate Balance in holiday_balance
+            const { data: recheckHolidays } = await supabase.from('holiday_balance').select('*').limit(2000);
+            let unusedCount = 0;
+            if (recheckHolidays) {
+              unusedCount = recheckHolidays.filter(row => {
+                const s = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
+                if (s !== 'unused') return false;
+                const t = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
+                const isTypeMatch = leaveType.toLowerCase().includes('extra')
+                  ? (t.includes('extra off') || t.includes('extra'))
+                  : (t.includes('day off') || t.includes('dayoff'));
+                if (!isTypeMatch) return false;
+                const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
+                return validKeys.some(k => empVal === k || empVal.includes(k) || k.includes(empVal));
+              }).length;
+            }
+
+            const balColCandidates = leaveType.toLowerCase().includes('extra') 
+              ? ['Extra Off Balance', 'extra_off_balance', 'Extra Off', 'extraoffbalance'] 
+              : ['Day Off Payment Balance', 'day_off_payment_balance', 'Day Off Payment', 'dayoffbalance'];
             const balCol = resolveTableColumn(dirCols, balColCandidates) || balColCandidates[0];
             
             await supabase.from('employee_directory').update({
-              [balCol]: unusedCount || 0
+              [balCol]: unusedCount
             }).ilike(dirEmailCol, empEmail);
           }
 
@@ -567,6 +642,7 @@ export default function Approval() {
 
         } catch (sideErr) {
           console.error('Error applying post-approval side effects:', sideErr);
+          alert('Catatan Sinkronisasi: ' + sideErr.message);
         }
       }
       // --- END NEW LEAVE APPROVAL LOGIC ---
