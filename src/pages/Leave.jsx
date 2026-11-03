@@ -474,13 +474,13 @@ export default function Leave() {
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto p-4 sm:p-6 text-gray-800 font-sans">
+    <div className="w-full text-gray-800 font-sans">
       
       {/* Profile Summary Card */}
-      <div className="bg-white p-3 sm:p-6 rounded-xl sm:rounded-2xl shadow-sm border border-gray-200 mb-4 sm:mb-6 flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-4">
+      <div className="bg-white p-3.5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 mb-4 sm:mb-6 flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-4">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-lg font-bold text-gray-900">Hello, <span className="text-blue-600">{profileName}</span>!</h2>
+            <h2 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">Hello, <span className="text-blue-600 font-extrabold">{profileName}</span>!</h2>
           </div>
           <p className="text-xs sm:text-sm text-gray-500 mt-1 leading-relaxed">
             Department: <strong className="text-gray-900 font-semibold">{profileDept}</strong> 
@@ -489,16 +489,16 @@ export default function Leave() {
             Job Title: <strong className="text-gray-900 font-semibold">{profileJobTitle}</strong>
           </p>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 mt-1 sm:mt-0">
           <span className="text-xs sm:text-sm text-gray-500">Account Status:</span>
-          <span className={`px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-xs sm:text-sm font-medium ${profileStatus.toLowerCase() !== 'active' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${profileStatus.toLowerCase() !== 'active' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
             {profileStatus}
           </span>
         </div>
       </div>
 
       {/* Leave Records Container */}
-      <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-200 p-3 sm:p-6 relative mb-6">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-3 sm:p-6 relative mb-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 mb-3 sm:mb-5 border-b border-gray-200 gap-2 sm:gap-4">
           <div>
             <h3 className="text-base sm:text-lg font-bold text-gray-800 flex flex-wrap items-center gap-2 pr-10 sm:pr-0">Leave Records</h3>
@@ -678,7 +678,7 @@ export default function Leave() {
       </div>
 
       {/* Holiday List Container */}
-      <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-200 p-3 sm:p-6 mb-4">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-3 sm:p-6 mb-4">
         <div className="pb-4 mb-3 sm:mb-5 border-b border-gray-200">
           <h3 className="text-base sm:text-lg font-bold text-gray-800 flex items-center gap-2">Holiday List</h3>
           <p className="text-xs text-gray-500 mt-1">List of available holiday balances</p>
@@ -739,7 +739,7 @@ export default function Leave() {
       {/* Modal Request Leave */}
       {isLeaveModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 px-4">
-          <div className="bg-white w-full max-w-md rounded-xl sm:rounded-2xl shadow-2xl p-4 sm:p-6 border border-gray-100 max-h-[92vh] overflow-y-auto">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-4 sm:p-6 border border-gray-100 max-h-[92vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100">
               <h3 className="text-lg font-bold text-gray-800">Request Leave</h3>
               <button onClick={() => setIsLeaveModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
