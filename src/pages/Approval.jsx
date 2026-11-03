@@ -450,6 +450,116 @@ export default function Approval() {
       const { error } = await query;
       if (error) throw error;
 
+      // --- NEW LEAVE APPROVAL LOGIC ---
+      if (newStatus === 'Approved' && item._category === 'Leave') {
+        const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'user_uid', 'email']);
+        const leaveType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '');
+        const fromDate = getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']);
+        const toDate = getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']);
+        const totalDays = parseInt(getPropCaseInsensitive(item, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration']) || '1', 10);
+
+        try {
+          // Check Schema for Exact Columns
+          const { data: schedSample } = await supabase.from('schedule').select('*').limit(1);
+          const schedCols = schedSample && schedSample.length > 0 ? Object.keys(schedSample[0]) : [];
+          const schedTypeCol = resolveTableColumn(schedCols, ['Type', 'type', 'schedule_type']) || 'Type';
+          const schedEmpCol = resolveTableColumn(schedCols, ['Employee', 'employee']) || 'Employee';
+          const schedDateCol = resolveTableColumn(schedCols, ['Date', 'date']) || 'Date';
+
+          const { data: dirSample } = await supabase.from('employee_directory').select('*').limit(1);
+          const dirCols = dirSample && dirSample.length > 0 ? Object.keys(dirSample[0]) : [];
+          const dirEmailCol = resolveTableColumn(dirCols, ['Email', 'email', 'Employee work email', 'work_email']) || 'Email';
+
+          // 1 & 2: Day Off Payment & Extra Off
+          if (leaveType === 'Day Off Payment' || leaveType === 'Extra Off') {
+            const { data: holSample } = await supabase.from('holiday_balance').select('*').limit(1);
+            const holCols = holSample && holSample.length > 0 ? Object.keys(holSample[0]) : [];
+            const holIdCol = resolveTableColumn(holCols, ['id', 'ID', 'Id', 'UID', 'uid']) || 'id';
+            const holStatusCol = resolveTableColumn(holCols, ['status', 'Status', 'STATUS']) || 'status';
+            const holUsedDateCol = resolveTableColumn(holCols, ['Used Date', 'used_date']) || 'Used Date';
+            const holTypeCol = resolveTableColumn(holCols, ['Type Holiday', 'type_holiday', 'Type', 'type']) || 'Type Holiday';
+            const holEmpCol = resolveTableColumn(holCols, ['Employee', 'employee']) || 'Employee';
+            const holExpDateCol = resolveTableColumn(holCols, ['Expiration Date', 'expiration_date', 'Expired Date']) || 'Expiration Date';
+
+            // Find nearest unused holiday
+            const { data: activeHolidays } = await supabase
+              .from('holiday_balance')
+              .select('*')
+              .ilike(holEmpCol, `%${empEmail}%`)
+              .ilike(holTypeCol, leaveType)
+              .ilike(holStatusCol, 'unused')
+              .order(holExpDateCol, { ascending: true })
+              .limit(1);
+
+            if (activeHolidays && activeHolidays.length > 0) {
+              const targetHol = activeHolidays[0];
+              await supabase.from('holiday_balance').update({
+                [holStatusCol]: 'used',
+                [holUsedDateCol]: fromDate
+              }).eq(holIdCol, targetHol[holIdCol]);
+            }
+
+            // Update schedule
+            await supabase.from('schedule').update({
+              [schedTypeCol]: leaveType
+            })
+            .ilike(schedEmpCol, `%${empEmail}%`)
+            .eq(schedDateCol, fromDate);
+
+            // Recalculate Balance
+            const { count: unusedCount } = await supabase
+              .from('holiday_balance')
+              .select('*', { count: 'exact', head: true })
+              .ilike(holEmpCol, `%${empEmail}%`)
+              .ilike(holTypeCol, leaveType)
+              .ilike(holStatusCol, 'unused');
+
+            const balColCandidates = leaveType === 'Day Off Payment' 
+              ? ['Day Off Payment Balance', 'day_off_payment_balance'] 
+              : ['Extra Off Balance', 'extra_off_balance'];
+            const balCol = resolveTableColumn(dirCols, balColCandidates) || balColCandidates[0];
+            
+            await supabase.from('employee_directory').update({
+              [balCol]: unusedCount || 0
+            }).ilike(dirEmailCol, empEmail);
+          }
+
+          // 3: Annual Leave
+          else if (leaveType === 'Annual Leave') {
+            await supabase.from('schedule').update({
+              [schedTypeCol]: leaveType
+            })
+            .ilike(schedEmpCol, `%${empEmail}%`)
+            .gte(schedDateCol, fromDate)
+            .lte(schedDateCol, toDate);
+
+            const { data: emps } = await supabase.from('employee_directory').select('*').ilike(dirEmailCol, empEmail).limit(1);
+            if (emps && emps.length > 0) {
+              const empData = emps[0];
+              const annBalCol = resolveTableColumn(dirCols, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave']) || 'Annual Leave Balance';
+              const currBal = parseFloat(empData[annBalCol]) || 0;
+              await supabase.from('employee_directory').update({
+                [annBalCol]: Math.max(0, currBal - totalDays)
+              }).ilike(dirEmailCol, empEmail);
+            }
+          }
+
+          // 4, 5, 6, 7: Other Leaves
+          else if (['Sick Leave', 'Maternity Leave', 'Compassionate Leave', 'Unpaid Leave'].includes(leaveType)) {
+            await supabase.from('schedule').update({
+              [schedTypeCol]: leaveType
+            })
+            .ilike(schedEmpCol, `%${empEmail}%`)
+            .gte(schedDateCol, fromDate)
+            .lte(schedDateCol, toDate);
+          }
+
+        } catch (sideErr) {
+          console.error('Error applying post-approval side effects:', sideErr);
+        }
+      }
+      // --- END NEW LEAVE APPROVAL LOGIC ---
+
       await sendNotificationEmail(item, newStatus, reason);
 
       alert(`Request successfully ${newStatus === 'Approved' ? 'approved' : 'rejected'}!`);
