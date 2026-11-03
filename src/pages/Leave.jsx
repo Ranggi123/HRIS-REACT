@@ -240,15 +240,20 @@ export default function Leave() {
         extraOff: Math.max(0, totalExtraOff - pExt)
       });
 
-      // 5. Fetch Schedule Aman dari Database berdasarkan input user (tabel 'schedule') - Filternya menggunakan kolom employee = userEmail
+      // 5. Fetch Schedule Aman dari Database (Menghindari 400 Bad Request)
+      // Karena nama kolom untuk email mungkin bukan tepat 'employee' (bisa email, user_uid, dll),
+      // kita fetch data (limit 3000) dan memfilternya di JavaScript seperti sebelumnya
       try {
-        const { data, error } = await supabase.from('schedule')
-          .select('*')
-          .eq('employee', userEmail)
-          .limit(3000);
+        const { data, error } = await supabase.from('schedule').select('*').limit(3000);
           
         if (!error && Array.isArray(data)) {
-          setScheduleRecords(data);
+          const schedulesFound = data.filter(row => {
+            const empVal = (getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id']) || '').toLowerCase();
+            return validKeys.some(key => empVal === key || empVal.includes(key) || key.includes(empVal));
+          });
+          setScheduleRecords(schedulesFound);
+        } else if (error) {
+          console.warn('Gagal memuat tabel schedule:', error);
         }
       } catch (e) {
         console.warn('Schedule lookup skipped:', e);
@@ -320,7 +325,7 @@ export default function Leave() {
     }
   };
 
-  // Validasi Jadwal Kerja (Working Day) berdasarkan Database
+  // Validasi Jadwal Kerja (Working Day) berdasarkan Database (Hanya Kolom Type)
   useEffect(() => {
     let durationStr = 'Invalid';
     let errorMsg = '';
@@ -356,7 +361,7 @@ export default function Leave() {
               // Only check the 'type' column to determine if it is a working day
               const rawType = (getPropCaseInsensitive(match, ['type', 'Type', 'tipe', 'Tipe']) || '').trim().toLowerCase();
 
-              // If type is not explicitly 'working day' (e.g. 'off day', 'non working day', etc), then block it
+              // If type is not explicitly 'working day', block it
               if (rawType && rawType !== 'working day') {
                 isWorking = false;
               }
@@ -365,8 +370,7 @@ export default function Leave() {
                 nonWorkingFound.push(formatDateDisplay(dateStr, lang));
               }
             } else {
-              // Opsional: Jika tidak ada jadwal sama sekali di database
-              // nonWorkingFound.push(formatDateDisplay(dateStr, lang));
+              // Jika tidak ada di schedule, bisa diatur behaviornya (default = aman)
             }
             curr.setDate(curr.getDate() + 1);
           }
