@@ -99,10 +99,23 @@ export default function TopNav({
   
   const showSuperAdminToggle = isSuperAdminEligible || isSuperAdminMode;
 
-  const handleLogout = () => {
-    localStorage.removeItem('hris_session_data');
-    localStorage.removeItem('hris_super_admin_active');
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      // 1. Matikan sesi Supabase terlebih dahulu agar event INITIAL_SESSION tidak memicu auto-login
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('Gagal sign out Supabase:', err);
+    } finally {
+      // 2. Hapus seluruh data sesi lokal
+      localStorage.removeItem('hris_session_data');
+      localStorage.removeItem('hris_super_admin_active');
+      localStorage.removeItem('hris_original_super_admin');
+
+      // 3. Arahkan kembali ke /login
+      // Gunakan window.location.href jika ingin memastikan state React benar-benar bersih,
+      // atau gunakan navigate('/login', { replace: true })
+      window.location.href = '/login';
+    }
   };
 
   const handleToggleClick = (e) => {
