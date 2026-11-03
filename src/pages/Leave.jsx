@@ -263,7 +263,8 @@ export default function Leave() {
     if (t === 'Day Off Payment' || t === 'Extra Off') {
       setFormEnd(formStart);
     } else if (t === 'Maternity Leave' && formStart) {
-      const dt = new Date(formStart);
+      const parts = formStart.split('-');
+      const dt = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
       dt.setDate(dt.getDate() + 89);
       setFormEnd(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`);
     }
@@ -276,7 +277,8 @@ export default function Leave() {
     if (formType === 'Day Off Payment' || formType === 'Extra Off') {
       setFormEnd(s);
     } else if (formType === 'Maternity Leave' && s) {
-      const dt = new Date(s);
+      const parts = s.split('-');
+      const dt = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
       dt.setDate(dt.getDate() + 89);
       setFormEnd(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`);
     } else if (formEnd && s > formEnd) {
@@ -286,7 +288,7 @@ export default function Leave() {
 
   const handleEndChange = (e) => {
     const ed = e.target.value;
-    if (formType === 'Day Off Payment' || formType === 'Extra Off' || formType === 'Maternity Leave') return;
+    if (['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType)) return;
     if (ed < formStart) {
       setFormEnd(formStart);
     } else {
@@ -320,21 +322,20 @@ export default function Leave() {
   }, []);
 
   const { minDate, maxDate } = useMemo(() => {
-    let min = formStart || todayFormatted;
+    let min = formStart || minStartDate;
     let max = undefined;
 
-    if (formStart) {
-      const startDate = new Date(formStart);
+    if (formStart && formType) {
+      const parts = formStart.split('-');
+      const startDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
       let maxDays = 0;
 
-      if (formType === 'Annual Leave' && balances.annual > 0) {
+      if (formType === 'Annual Leave') {
         maxDays = balances.annual;
-      } else if (formType === 'Extra Off' && balances.extraOff > 0) {
-        maxDays = balances.extraOff;
+      } else if (formType === 'Day Off Payment' || formType === 'Extra Off') {
+        maxDays = 1;
       } else if (formType === 'Sick Leave' || formType === 'Compassionate Leave') {
         maxDays = 3;
-      } else if (formType === 'Day Off Payment') {
-        maxDays = 1;
       } else if (formType === 'Maternity Leave') {
         maxDays = 90;
       }
@@ -348,8 +349,8 @@ export default function Leave() {
         max = `${y}-${m}-${d}`;
       }
     }
-    return { minDate: min, maxDate: max };
-  }, [formStart, formType, balances, todayFormatted]);
+    return { minDate: min, maxDate: max || '' };
+  }, [formStart, formType, balances, minStartDate]);
 
   // Effect to auto-correct formEnd if it exceeds maxDate or goes below minDate
   useEffect(() => {
@@ -406,8 +407,8 @@ export default function Leave() {
     const dtEnd = new Date(formEnd);
     const totalDays = Math.ceil(Math.abs(dtEnd - dtStart) / (1000 * 60 * 60 * 24)) + 1;
 
-    if ((formType === 'Day Off Payment' || formType === 'Extra Off') && totalDays > 1) {
-      return alert('This leave type can only be requested for 1 day per request.');
+    if (formType === 'Day Off Payment' && totalDays > balances.dayOff) {
+      return alert(`Total days (${totalDays}) exceeds your Day Off Payment balance (${balances.dayOff}).`);
     }
     if (formType === 'Extra Off' && totalDays > balances.extraOff) {
       return alert(`Total days (${totalDays}) exceeds your Extra Off balance (${balances.extraOff}).`);
@@ -796,6 +797,8 @@ export default function Leave() {
                 {formType === 'Annual Leave' && balances.annual > 0 && <p className="text-[10px] text-blue-600 mt-1 font-semibold bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit">Available Balance: {balances.annual} day(s)</p>}
                 {formType === 'Day Off Payment' && balances.dayOff > 0 && <p className="text-[10px] text-blue-600 mt-1 font-semibold bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit">Available Balance: {balances.dayOff} day(s)</p>}
                 {formType === 'Extra Off' && balances.extraOff > 0 && <p className="text-[10px] text-blue-600 mt-1 font-semibold bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit">Available Balance: {balances.extraOff} day(s)</p>}
+                {(formType === 'Day Off Payment' || formType === 'Extra Off') && <p className="text-[10px] text-orange-600 mt-1 font-semibold bg-orange-50 px-2 py-1 rounded border border-orange-100 w-fit">Note: You can only request 1 day per submission.</p>}
+                {(formType === 'Sick Leave' || formType === 'Compassionate Leave') && <p className="text-[10px] text-orange-600 mt-1 font-semibold bg-orange-50 px-2 py-1 rounded border border-orange-100 w-fit">Note: Maximum 3 consecutive days allowed.</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
