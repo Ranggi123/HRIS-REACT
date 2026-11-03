@@ -19,6 +19,9 @@ export default function TopNav({
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
 
+  // State untuk menghitung approvalCount secara independen dalam TopNav
+  const [calculatedApprovalCount, setCalculatedApprovalCount] = useState(approvalCount);
+
   // Close dropdown when clicked outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -82,6 +85,58 @@ export default function TopNav({
     fetchWeather();
   }, []);
 
+  // Effect untuk menghitung jumlah approval jika prop tidak dipassing dengan benar dari parent
+  useEffect(() => {
+    // Ambil data work_email dari user yang sedang login
+    const workEmail = currentUser?.work_email || currentUser?.['work email'] || currentUser?.Work_Email || currentUser?.email;
+    
+    // Jika tidak ada user email, skip
+    if (!workEmail) return;
+
+    // Ambil data leave requests dan attendance dari localStorage jika tidak menggunakan API fetching real-time
+    // Asumsi: data tersimpan di localStorage. Jika dari API, ganti dengan fetch API.
+    try {
+      const dbData = localStorage.getItem('hris_database');
+      if (dbData) {
+        const parsedDb = JSON.parse(dbData);
+        
+        let pendingCount = 0;
+        const normalizedWorkEmail = workEmail.trim().toLowerCase();
+
+        // Cek tabel leave_requests
+        const leaveRequests = parsedDb.tables?.leave_requests || [];
+        leaveRequests.forEach(req => {
+          const status = (req.Status || req.status || '').trim().toLowerCase();
+          const lineManager = (req['Line Manager'] || req.line_manager || req.Line_Manager || '').trim().toLowerCase();
+          
+          if ((status === 'pending approval' || status === 'pending') && lineManager === normalizedWorkEmail) {
+            pendingCount++;
+          }
+        });
+
+        // Cek tabel attendance
+        const attendances = parsedDb.tables?.attendance || [];
+        attendances.forEach(att => {
+          const status = (att.Status || att.status || '').trim().toLowerCase();
+          const lineManager = (att['Line Manager'] || att.line_manager || att.Line_Manager || '').trim().toLowerCase();
+          
+          if ((status === 'pending approval' || status === 'pending') && lineManager === normalizedWorkEmail) {
+            pendingCount++;
+          }
+        });
+
+        setCalculatedApprovalCount(pendingCount);
+      } else {
+        // Jika tidak ada data db di localstorage, gunakan approvalCount dari props
+        setCalculatedApprovalCount(approvalCount);
+      }
+    } catch (e) {
+      console.error("Error calculating approval count:", e);
+      setCalculatedApprovalCount(approvalCount);
+    }
+  }, [currentUser, approvalCount]);
+
+
   // Debugging log untuk mengecek isi data user di Console Browser
   console.log("Data User TopNav:", currentUser);
   console.log("isSuperAdminEligible prop:", isSuperAdminEligible);
@@ -121,6 +176,10 @@ export default function TopNav({
       onToggleSuperAdmin(nextVal);
     }
   };
+
+  // Gunakan calculatedApprovalCount untuk tampilan (atau fallback ke approvalCount dari props jika 0)
+  const displayApprovalCount = calculatedApprovalCount > 0 ? calculatedApprovalCount : (approvalCount > 0 ? approvalCount : 0);
+
 
   return (
     <nav className="bg-blue-600 p-2 sm:p-4 text-white shadow-md sticky top-0 z-50 w-full transition-all">
@@ -187,9 +246,9 @@ export default function TopNav({
                   className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-inner bg-blue-100" 
                   onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }}
                 />
-                {approvalCount > 0 && (
+                {displayApprovalCount > 0 && (
                   <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center border-2 border-blue-700 shadow-sm animate-bounce">
-                    {approvalCount}
+                    {displayApprovalCount}
                   </span>
                 )}
               </div>
@@ -270,9 +329,9 @@ export default function TopNav({
                     </svg>
                     <span className="font-medium text-gray-700">{currentLang === 'id' ? 'Persetujuan' : 'Approval'}</span>
                   </div>
-                  {approvalCount > 0 && (
+                  {displayApprovalCount > 0 && (
                     <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-xs">
-                      {approvalCount}
+                      {displayApprovalCount}
                     </span>
                   )}
                 </Link>
