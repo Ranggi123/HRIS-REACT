@@ -39,8 +39,9 @@ export default function BottomNav({ attendanceBadge = false, leaveBadgeCount = 0
   ];
 
   return (
-    <div className="md:hidden fixed bottom-0 left-1/2 transform -translate-x-1/2 w-full bg-white border-t border-gray-200 shadow-[0_-4px_25px_rgba(0,0,0,0.1)] z-40 transition-transform max-w-[480px]">
-      <div className="w-full grid grid-cols-5 items-center px-1 pb-3 pt-1.5">
+    // Container dibuat mengambang (bottom-5), memiliki efek kaca (backdrop-blur), membulat sempurna (rounded-[2rem]), dan bayangan 3D
+    <div className="md:hidden fixed bottom-5 left-1/2 transform -translate-x-1/2 w-[calc(100%-2rem)] max-w-[440px] bg-white/70 backdrop-blur-xl border border-white/60 shadow-[0_15px_35px_rgba(0,0,0,0.15),inset_0_1px_1px_rgba(255,255,255,1)] rounded-[2rem] z-40 overflow-visible">
+      <div className="w-full grid grid-cols-5 items-center px-2 h-[68px]">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = path === item.to;
@@ -49,30 +50,25 @@ export default function BottomNav({ attendanceBadge = false, leaveBadgeCount = 0
             <Link
               key={item.to}
               to={item.to}
-              className={`flex flex-col items-center justify-center p-1 transition-all duration-200 ${
-                isActive ? 'relative -top-3' : 'text-gray-500 hover:text-blue-600'
-              }`}
+              className="relative flex flex-col items-center justify-center w-full h-full"
             >
-              <div className="relative">
-                {isActive ? (
-                  <div className="bg-blue-600 rounded-full p-3 shadow-lg text-white mb-0.5 hover:bg-blue-700 transition transform hover:scale-105 active:scale-95">
-                    <Icon size={22} />
-                  </div>
-                ) : (
-                  <div className="p-1 mb-0.5 transition-colors">
-                    <Icon size={22} />
-                  </div>
-                )}
+              {/* Pembungkus Ikon (Posisi absolut untuk animasi 3D Pop-out) */}
+              <div
+                className={`absolute transition-all duration-300 ease-out z-10 flex items-center justify-center ${
+                  isActive
+                    ? '-top-6 w-14 h-14 bg-gradient-to-b from-blue-400 to-blue-600 rounded-full shadow-[0_10px_20px_rgba(37,99,235,0.4),inset_0_2px_4px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.2)] border border-blue-300 text-white'
+                    : 'top-2 text-gray-500 hover:text-blue-600 w-10 h-10'
+                }`}
+              >
+                <Icon size={isActive ? 24 : 22} />
 
                 {/* Badge Notifikasi */}
                 {item.badge && (
                   <span
-                    className={`absolute ${
-                      isActive ? '-top-1 -right-1' : '-top-1.5 -right-2'
-                    } bg-red-500 text-white rounded-full border border-white shadow-xs animate-pulse ${
+                    className={`absolute -top-1 -right-1 bg-red-500 text-white rounded-full border-[1.5px] border-white shadow-md animate-pulse flex items-center justify-center ${
                       item.isAlertBadge
-                        ? 'text-[10px] font-black px-1.5 py-0.2'
-                        : 'text-[9px] font-bold px-1.5 py-0.2'
+                        ? 'min-w-[16px] h-4 px-1 text-[10px] font-black'
+                        : 'min-w-[16px] h-4 px-1 text-[9px] font-bold'
                     }`}
                   >
                     {item.badge}
@@ -80,11 +76,12 @@ export default function BottomNav({ attendanceBadge = false, leaveBadgeCount = 0
                 )}
               </div>
 
+              {/* Teks Label (Tetap berada di bawah dalam kotak putih) */}
               <span
-                className={`leading-tight truncate max-w-full text-center ${
+                className={`absolute bottom-1.5 leading-tight truncate w-full text-center transition-all duration-300 ${
                   isActive
-                    ? 'text-[11px] font-bold text-blue-600'
-                    : 'text-[10px]'
+                    ? 'text-[11px] font-extrabold text-blue-600'
+                    : 'text-[10px] text-gray-500'
                 }`}
               >
                 {item.label}
