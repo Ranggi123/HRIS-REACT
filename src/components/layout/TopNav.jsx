@@ -1,5 +1,7 @@
+// src/components/layout/TopNav.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
 
 export default function TopNav({ 
   currentUser, 
@@ -16,7 +18,6 @@ export default function TopNav({
   const [timeStr, setTimeStr] = useState('');
   const [locationName, setLocationName] = useState('Kelurahan Benoa, ID');
   const [weatherText, setWeatherText] = useState('⛅ 29°C');
-  const navigate = useNavigate();
   const dropdownRef = useRef(null);
 
   // Close dropdown when clicked outside
@@ -82,39 +83,39 @@ export default function TopNav({
     fetchWeather();
   }, []);
 
-  // Debugging log untuk mengecek isi data user di Console Browser
-  console.log("Data User TopNav:", currentUser);
-
-  // Fallback nama dan email
   const userName = currentUser?.Name || currentUser?.name || currentUser?.fullname || 'Guest';
   const userEmail = currentUser?.email || currentUser?.Email || currentUser?.USER_UID || 'Tidak ada email';
-  
-  // Profile picture strictly from employee_directory column "link"
   const userAvatar = currentUser?.link || currentUser?.Link || currentUser?.photo || currentUser?.avatar || 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png';
 
-  // LOGIKA FINAL YANG DIBUTUHKAN:
-  // Toggle muncul JIKA: 
-  // 1. Akun aslinya (yang sedang login dan punya tag SUPER ADMIN di dashboard) mengirimkan isSuperAdminEligible = true dari MainLayout
-  // 2. ATAU mode super admin sedang aktif (isSuperAdminMode) sehingga user bisa mematikannya lagi
-  
   const showSuperAdminToggle = isSuperAdminEligible || isSuperAdminMode;
 
+  // FUNGSI LOGOUT BERSIH TOTAL
   const handleLogout = async () => {
     try {
-      // 1. Matikan sesi Supabase terlebih dahulu agar event INITIAL_SESSION tidak memicu auto-login
-      await supabase.auth.signOut();
+      // 1. Sign out Supabase secara local agar session dihentikan langsung
+      await supabase.auth.signOut({ scope: 'local' });
     } catch (err) {
       console.error('Gagal sign out Supabase:', err);
     } finally {
-      // 2. Hapus seluruh data sesi lokal
+      // 2. Hapus seluruh data sesi lokal HRIS
       localStorage.removeItem('hris_session_data');
       localStorage.removeItem('hris_super_admin_active');
       localStorage.removeItem('hris_original_super_admin');
 
-      // 3. Arahkan kembali ke /login
-      // Gunakan window.location.href jika ingin memastikan state React benar-benar bersih,
-      // atau gunakan navigate('/login', { replace: true })
-      window.location.href = '/login';
+      // 3. Bersihkan seluruh token bawaan Supabase di browser
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('sb-') || key.includes('supabase')) {
+          localStorage.removeItem(key);
+        }
+      });
+      Object.keys(sessionStorage).forEach((key) => {
+        if (key.startsWith('sb-') || key.includes('supabase')) {
+          sessionStorage.removeItem(key);
+        }
+      });
+
+      // 4. Reset total dengan redirect replace
+      window.location.replace('/login');
     }
   };
 
@@ -177,11 +178,11 @@ export default function TopNav({
             </button>
           </div>
 
-          {/* User Profile Menu with outside click ref */}
+          {/* User Profile Menu */}
           <div className="relative" ref={dropdownRef}>
             <button 
               onClick={() => setDropdownOpen(!dropdownOpen)} 
-              className="relative flex items-center space-x-1 sm:space-x-2 bg-blue-700 hover:bg-blue-800 py-1 sm:py-1.5 px-2 sm:px-3 rounded-xl transition focus:outline-none"
+              className="relative flex items-center space-x-1 sm:space-x-2 bg-blue-700 hover:bg-blue-800 py-1 sm:py-1.5 px-2 sm:px-3 rounded-xl transition focus:outline-none cursor-pointer"
             >
               <div className="relative">
                 <img 
@@ -207,7 +208,6 @@ export default function TopNav({
               <div 
                 className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 text-gray-700 z-50 animate-fadeIn"
               >
-                {/* Header: Logged in as email */}
                 <div className="px-4 py-2 border-b border-gray-100">
                   <p className="text-xs text-gray-400 font-medium">{currentLang === 'id' ? 'Masuk sebagai' : 'Logged in as'}</p>
                   <p className="text-xs font-bold text-gray-800 truncate mt-0.5">{userEmail}</p>
@@ -227,7 +227,6 @@ export default function TopNav({
                         Super Admin
                       </span>
                       
-                      {/* Pill toggle switch */}
                       <label className="relative inline-flex items-center cursor-pointer select-none">
                         <input 
                           type="checkbox" 
@@ -240,7 +239,6 @@ export default function TopNav({
                       </label>
                     </div>
 
-                    {/* Switch Account Button */}
                     {isSuperAdminMode && (
                       <button 
                         type="button" 
@@ -298,11 +296,12 @@ export default function TopNav({
 
                 {/* Log Out Menu Item */}
                 <button 
+                  type="button"
                   onClick={() => {
                     setDropdownOpen(false);
                     handleLogout();
                   }}
-                  className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2.5 transition border-t border-gray-100"
+                  className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2.5 transition border-t border-gray-100 cursor-pointer"
                 >
                   <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>

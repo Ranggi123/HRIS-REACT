@@ -300,21 +300,57 @@ export default function Login() {
   }, [navigate, isSuperAdminMode]);
 
   // 5. OAuth redirection listener (HANYA saat user benar-benar login baru)
-  useEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user?.email) {
-        const currentSession = localStorage.getItem('hris_session_data');
-        if (!currentSession) {
-          await validateAndLoginOAuth(session.user.email);
-        }
+useEffect(() => {
+  // Hanya proses jika URL memang mengandung token dari Google OAuth (code / access_token)
+  // ATAU tombol Google Login baru saja ditekan
+  const isOAuthRedirect = 
+    window.location.hash.includes('access_token') || 
+    window.location.search.includes('code') ||
+    sessionStorage.getItem('hris_oauth_pending') === 'true';
+
+  // JIKA BUKAN DARI PROSES GOOGLE LOGIN, JANGAN JALANKAN LISTENER AUTO-LOGIN INI
+  if (!isOAuthRedirect) {
+    return;
+  }
+
+  const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session?.user?.email) {
+      sessionStorage.removeItem('hris_oauth_pending');
+      const currentSession = localStorage.getItem('hris_session_data');
+      if (!currentSession) {
+        await validateAndLoginOAuth(session.user.email);
+      }
+    }
+  });
+
+  return () => {
+    authListener?.subscription?.unsubscribe();
+  };
+}, []);
+
+// Di fungsi Google Login, tandai bahwa user sedang melakukan proses OAuth
+const handleGoogleLogin = async () => {
+  setAlert(null);
+  try {
+    sessionStorage.setItem('hris_oauth_pending', 'true'); // <-- Kunci penanda
+    let redirectTarget = window.location.origin;
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      redirectTarget = 'http://localhost:5173';
+    }
+    
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectTarget,
+        queryParams: { prompt: 'select_account' }
       }
     });
-
-    return () => {
-      authListener?.subscription?.unsubscribe();
-    };
-  }, []);
-
+    if (error) throw error;
+  } catch (err) {
+    sessionStorage.removeItem('hris_oauth_pending');
+    setAlert({ message: err.message, type: 'error' });
+  }
+};
   // 6. Muat data Super Admin jika mode aktif
   useEffect(() => {
     if (isSuperAdminMode && canAccessSuperAdmin) {
