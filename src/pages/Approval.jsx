@@ -519,18 +519,18 @@ export default function Approval() {
         
         {/* Top Header Row & Filters */}
         <div className="p-4 sm:p-6 pb-4 border-b border-gray-100">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+          <div className="flex flex-row justify-between items-start sm:items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 flex-1 pr-2 sm:pr-3">
+              <div className="hidden sm:flex p-2.5 bg-blue-50 text-blue-600 rounded-xl">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h2 className="text-lg sm:text-xl font-bold text-gray-900">Approval Requests</h2>
+              <h2 className="text-base sm:text-xl font-bold text-gray-900 break-words">Approval Requests</h2>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-              <div className="bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs">
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              <div className="hidden md:flex bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs">
                 <span className="text-gray-400 mr-1.5 font-medium">Line Manager:</span>
                 <span className="font-semibold text-gray-700">{userWorkEmail || 'Not Logged In'}</span>
               </div>
@@ -758,30 +758,30 @@ export default function Approval() {
 
       {/* 2. Team Working Calendar Card (Dipindahkan ke paling bawah) */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 w-full">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 mb-4 border-b border-gray-100 gap-3">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-              Team Working Calendar
+        <div className="flex flex-row justify-between items-start sm:items-center pb-4 mb-4 border-b border-gray-100 gap-2 sm:gap-3">
+          <div className="flex-1 pr-2 sm:pr-3">
+            <h3 className="text-sm sm:text-lg font-bold text-gray-900 flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <svg className="w-5 h-5 text-blue-600 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+              Team Calendar
             </h3>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 break-words">
               {selectedEmployee === 'all' 
-                ? 'Showing schedules for all team members under your supervision' 
+                ? 'Showing schedules for all team members' 
                 : `Showing schedule for: ${teamMembers.find(m => m.email === selectedEmployee)?.name || selectedEmployee}`}
             </p>
           </div>
           
-          <div className="flex items-center gap-2">
-            <button onClick={prevMonth} className="p-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Previous Month">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <button onClick={prevMonth} className="p-1 sm:p-2 border border-gray-200 hover:bg-gray-50 rounded-lg sm:rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Previous Month">
+              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
             </button>
-            <span className="text-sm sm:text-base font-bold text-gray-800 min-w-[120px] text-center">
+            <span className="text-[10px] sm:text-base font-bold text-gray-800 min-w-[65px] sm:min-w-[120px] text-center">
               {monthNames[month]} {year}
             </span>
-            <button onClick={nextMonth} className="p-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Next Month">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+            <button onClick={nextMonth} className="p-1 sm:p-2 border border-gray-200 hover:bg-gray-50 rounded-lg sm:rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Next Month">
+              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
             </button>
-            <button onClick={setThisMonth} className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition shadow-sm active:scale-95 ml-1">
+            <button onClick={setThisMonth} className="hidden sm:block px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition shadow-sm active:scale-95 ml-1">
               This Month
             </button>
           </div>
