@@ -19,12 +19,6 @@ export default function TopNav({
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
 
-  // State untuk menghitung approvalCount secara independen dalam TopNav
-  const [calculatedApprovalCount, setCalculatedApprovalCount] = useState(approvalCount);
-  
-  // State untuk melacak apakah kita menggunakan calculated atau props
-  const [isCalculated, setIsCalculated] = useState(false);
-
   // Close dropdown when clicked outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -88,113 +82,6 @@ export default function TopNav({
     fetchWeather();
   }, []);
 
-  // Effect untuk menghitung jumlah approval secara berkala (polling)
-  useEffect(() => {
-    let lastLog = ''; // Untuk mencegah spam console.log
-
-    const calculatePendingCount = () => {
-      // 1. Ambil HANYA Work Email dari akun yang sedang login
-      const rawUserWorkEmail = 
-        currentUser?.['Work Email'] ||
-        currentUser?.['work email'] || 
-        currentUser?.Work_Email ||
-        currentUser?.work_email || 
-        currentUser?.['Employee work email'] || 
-        currentUser?.Employee_work_email ||
-        currentUser?.email || // Fallback jika tidak ada field khusus
-        currentUser?.Email;
-
-      if (!rawUserWorkEmail) return;
-
-      const normalizedWorkEmail = String(rawUserWorkEmail).trim().toLowerCase();
-      let pendingCount = 0;
-      let dataFound = false;
-
-      // Fungsi bantuan untuk memeriksa array data
-      const checkArrayForPending = (dataArray, arrayName) => {
-        if (!Array.isArray(dataArray) || dataArray.length === 0) return 0;
-        dataFound = true;
-        let count = 0;
-        
-        dataArray.forEach(item => {
-          // 2. Ambil nilai status
-          const status = String(item?.Status || item?.status || '').trim().toLowerCase();
-          
-          // 3. Ambil HANYA nilai dari kolom Line Manager
-          const lineManager = String(
-            item?.['Line Manager'] || 
-            item?.Line_Manager || 
-            item?.line_manager || 
-            item?.['line manager'] || 
-            ''
-          ).trim().toLowerCase();
-          
-          // 4. Validasi Status (Berdasarkan instruksi: Pending Approval / Pending_Approval / pending)
-          const isPending = 
-            status === 'pending approval' || 
-            status === 'pending_approval' || 
-            status === 'pending' || 
-            status === 'waiting approval';
-            
-          // 5. Pencocokan Ketat: Line Manager === User Work Email
-          if (isPending && lineManager === normalizedWorkEmail) {
-            count++;
-          }
-        });
-        return count;
-      };
-
-      try {
-        // Cek data di Window (global)
-        if (window.globalLeaveRequests) pendingCount += checkArrayForPending(window.globalLeaveRequests, 'window.leave');
-        if (window.globalAttendance) pendingCount += checkArrayForPending(window.globalAttendance, 'window.attendance');
-        
-        // Cek dari hris_database
-        const dbData = localStorage.getItem('hris_database');
-        if (dbData) {
-          const parsedDb = JSON.parse(dbData);
-          pendingCount += checkArrayForPending(parsedDb?.tables?.leave_requests || parsedDb?.leave_requests, 'db.leave_requests');
-          pendingCount += checkArrayForPending(parsedDb?.tables?.attendance || parsedDb?.attendance, 'db.attendance');
-        } 
-        
-        // Cek key localStorage individual
-        const leaveDataStr = localStorage.getItem('leave_requests') || localStorage.getItem('leaveData');
-        if (leaveDataStr) pendingCount += checkArrayForPending(JSON.parse(leaveDataStr), 'local.leave_requests');
-
-        const attDataStr = localStorage.getItem('attendance') || localStorage.getItem('attendanceData');
-        if (attDataStr) pendingCount += checkArrayForPending(JSON.parse(attDataStr), 'local.attendance');
-        
-        // Update State
-        if (dataFound) {
-            setIsCalculated(true);
-            setCalculatedApprovalCount(pendingCount);
-
-            // Log untuk debugging (Hanya print jika nilainya berubah atau pertama kali untuk hindari spam)
-            const currentLog = `[TopNav Badge] Target WorkEmail: "${normalizedWorkEmail}" | Total Pending Ditemukan: ${pendingCount}`;
-            if (currentLog !== lastLog) {
-              console.log(`%c${currentLog}`, 'color: #10b981; font-weight: bold;');
-              lastLog = currentLog;
-            }
-
-        } else {
-            setIsCalculated(false);
-            if (lastLog !== 'No Data') {
-              console.log('%c[TopNav Badge] Data Leave/Attendance tidak ditemukan di localStorage.', 'color: #ef4444;');
-              lastLog = 'No Data';
-            }
-        }
-
-      } catch (e) {
-        console.error("Error saat menghitung data approval:", e);
-      }
-    };
-
-    calculatePendingCount();
-    const intervalId = setInterval(calculatePendingCount, 2000);
-    return () => clearInterval(intervalId);
-  }, [currentUser]);
-
-
   // Fallback nama dan email
   const userName = currentUser?.Name || currentUser?.name || currentUser?.fullname || 'Guest';
   const userEmail = currentUser?.email || currentUser?.Email || currentUser?.USER_UID || 'Tidak ada email';
@@ -228,9 +115,6 @@ export default function TopNav({
       onToggleSuperAdmin(nextVal);
     }
   };
-
-  // Logika final untuk tampilan Badge
-  const displayApprovalCount = isCalculated ? calculatedApprovalCount : (approvalCount > 0 ? approvalCount : 0);
 
   return (
     <nav className="bg-blue-600 p-2 sm:p-4 text-white shadow-md sticky top-0 z-50 w-full transition-all">
@@ -297,9 +181,9 @@ export default function TopNav({
                   className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-inner bg-blue-100" 
                   onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }}
                 />
-                {displayApprovalCount > 0 && (
+                {approvalCount > 0 && (
                   <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center border-2 border-blue-700 shadow-sm animate-bounce">
-                    {displayApprovalCount}
+                    {approvalCount}
                   </span>
                 )}
               </div>
@@ -380,9 +264,9 @@ export default function TopNav({
                     </svg>
                     <span className="font-medium text-gray-700">{currentLang === 'id' ? 'Persetujuan' : 'Approval'}</span>
                   </div>
-                  {displayApprovalCount > 0 && (
+                  {approvalCount > 0 && (
                     <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-xs">
-                      {displayApprovalCount}
+                      {approvalCount}
                     </span>
                   )}
                 </Link>

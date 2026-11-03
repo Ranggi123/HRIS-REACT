@@ -27,9 +27,12 @@ const i18n = {
 
 export default function MainLayout() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [approvalCount, setApprovalCount] = useState(0); // for TopNav dropdown
+  
+  // States untuk berbagai badge (termasuk approvalCount untuk TopNav)
+  const [approvalCount, setApprovalCount] = useState(0); 
   const [attendanceBadge, setAttendanceBadge] = useState(false);
   const [leaveBadgeCount, setLeaveBadgeCount] = useState(0);
+  
   const [currentLang, setCurrentLang] = useState(localStorage.getItem('hris_lang') || 'en');
   const [isSuperAdminMode, setIsSuperAdminMode] = useState(localStorage.getItem('hris_super_admin_active') === 'true');
   const [isSuperAdminEligible, setIsSuperAdminEligible] = useState(false);
@@ -72,14 +75,13 @@ export default function MainLayout() {
     return isTrue;
   };
 
+  // 1. Fungsi Utama untuk memuat user dan data approval secara berurutan
   useEffect(() => {
-    const loadUserFromDatabase = async () => {
+    const initializeData = async () => {
       let activeUser = null;
       let saved = localStorage.getItem('hris_session_data');
       if (saved) {
-        try {
-          activeUser = JSON.parse(saved);
-        } catch (e) {}
+        try { activeUser = JSON.parse(saved); } catch (e) {}
       }
 
       let emailToMatch = activeUser 
@@ -93,7 +95,6 @@ export default function MainLayout() {
         }
       }
 
-      // HANYA cari ke database jika ada email user login aktif
       if (emailToMatch) {
         try {
           for (const tbl of TABLE_EMPLOYEES) {
@@ -118,17 +119,77 @@ export default function MainLayout() {
 
       if (activeUser) {
         setCurrentUser(activeUser);
-        const isEligible = checkSuperAdmin(activeUser);
-        setIsSuperAdminEligible(isEligible);
+        setIsSuperAdminEligible(checkSuperAdmin(activeUser));
+        
+        // SETELAH user ditemukan, hitung badge approval
+        await fetchApprovalCount(activeUser);
       } else {
-        // Jika tidak ada user login, pastikan currentUser null agar fallback Guest terpakai
         setCurrentUser(null);
         setIsSuperAdminEligible(false);
       }
     };
 
-    loadUserFromDatabase();
+    initializeData();
   }, []);
+
+  // 2. Fungsi untuk menghitung badge PENDING APPROVAL langsung dari tabel database
+  const fetchApprovalCount = async (user) => {
+    if (!user) return;
+
+    try {
+      // Ambil work email user yang sedang login
+      const rawUserWorkEmail = 
+        user['Work Email'] ||
+        user['work email'] || 
+        user.Work_Email ||
+        user.work_email || 
+        user['Employee work email'] || 
+        user.Employee_work_email ||
+        user.email || 
+        user.Email;
+
+      if (!rawUserWorkEmail) return;
+      const normalizedWorkEmail = String(rawUserWorkEmail).trim().toLowerCase();
+
+      let pendingCount = 0;
+
+      // Filter function standar
+      const countPendingInArray = (dataArray) => {
+        let count = 0;
+        dataArray.forEach(item => {
+          const status = String(item?.Status || item?.status || '').trim().toLowerCase();
+          const lineManager = String(
+            item?.['Line Manager'] || 
+            item?.Line_Manager || 
+            item?.line_manager || 
+            item?.['line manager'] || 
+            ''
+          ).trim().toLowerCase();
+          
+          const isPending = status === 'pending approval' || status === 'pending_approval' || status === 'pending' || status === 'waiting approval';
+          if (isPending && lineManager === normalizedWorkEmail) {
+            count++;
+          }
+        });
+        return count;
+      };
+
+      // Query tabel Cuti
+      const { data: leaveData } = await supabase.from('leave_requests').select('*');
+      if (leaveData) pendingCount += countPendingInArray(leaveData);
+
+      // Query tabel Attendance (jika ada form/tabel terpisah untuk request)
+      const { data: attReqData } = await supabase.from('attendance').select('*');
+      if (attReqData) pendingCount += countPendingInArray(attReqData);
+
+      // Update state TopNav badge
+      setApprovalCount(pendingCount);
+
+    } catch (error) {
+      console.warn("Error calculating approval count from database:", error);
+    }
+  };
+
 
   const handleToggleSuperAdmin = async (active) => {
     if (active) {
@@ -204,10 +265,10 @@ export default function MainLayout() {
   const empId = getProp(['employee id', 'employee_id', 'id'], '-');
   const companyName = getProp(['company', 'Company Name'], '-');
   const email = getProp(['email', 'email address', 'user_uid'], '-');
-  const workEmail = getProp(['Employee work email', 'work_email', 'work email'], '-');
+  const workEmail = getProp(['Employee work email', 'work_email', 'work email', 'Work Email'], '-');
   const phone = getProp(['Phone Number', 'phone_number', 'phone'], '-');
   
-  // Status akun murni dari database employee_directory kolom status (Dideklarasikan dengan aman)
+  // Status akun murni dari database employee_directory kolom status
   const userStatus = String(getProp(['status', 'Status', 'STATUS'], 'Active') || 'Active');
   
   // Foto murni dari kolom 'link'
@@ -219,7 +280,6 @@ export default function MainLayout() {
 
   // =========================================================================
   // FUNGSI ANALISIS & PARSER TANGGAL & WAKTU (AKURAT BAHASA INDONESIA & INGGRIS)
-  // Menghitung timestamp kronologis hingga tingkat Jam & Menit
   // =========================================================================
   const monthsMap = {
     jan: 1, feb: 2, mar: 3, apr: 4,
@@ -233,21 +293,14 @@ export default function MainLayout() {
   const parseRowTimestamp = (row) => {
     if (!row) return { timestamp: 0, y: 0, m: 0, d: 0 };
 
-    // 1. Cek created_at jika ada format ISO baku
     const createdStr = row.created_at || row.createddate || row.created_date;
     if (createdStr) {
       const parsedIso = new Date(createdStr);
       if (!isNaN(parsedIso.getTime())) {
-        return {
-          timestamp: parsedIso.getTime(),
-          y: parsedIso.getFullYear(),
-          m: parsedIso.getMonth() + 1,
-          d: parsedIso.getDate()
-        };
+        return { timestamp: parsedIso.getTime(), y: parsedIso.getFullYear(), m: parsedIso.getMonth() + 1, d: parsedIso.getDate() };
       }
     }
 
-    // 2. Kumpulkan field tanggal & waktu dari kolom-kolom yang relevan
     let dateStr = '';
     let timeStr = '';
 
@@ -262,8 +315,6 @@ export default function MainLayout() {
     }
 
     const combined = `${dateStr} ${timeStr}`.trim();
-
-    // Ekstrak Jam & Menit jika tersedia (misal: "20:37" dari "30-10-2026 20:37")
     let hh = 0, mm = 0, ss = 0;
     const timeMatch = combined.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
     if (timeMatch) {
@@ -273,48 +324,28 @@ export default function MainLayout() {
     }
 
     let y = 0, m = 0, d = 0;
-
-    // A. Format teks bulan (misal: "Friday, 30-Oct-2026", "30-Okt-2026", "30 Oct 2026")
     const mText = combined.match(/(\d{1,2})[-\s/]+([a-zA-Z]{3,10})[-\s/]+(\d{4})/i);
     if (mText) {
       d = parseInt(mText[1], 10);
       const monStr = mText[2].toLowerCase().slice(0, 3);
       y = parseInt(mText[3], 10);
-      if (monthsMap[monStr]) {
-        m = monthsMap[monStr];
-      }
+      if (monthsMap[monStr]) m = monthsMap[monStr];
     }
 
-    // B. Format DD-MM-YYYY atau DD/MM/YYYY
     if (!y || !m || !d) {
       const mDmy = combined.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
-      if (mDmy) {
-        d = parseInt(mDmy[1], 10);
-        m = parseInt(mDmy[2], 10);
-        y = parseInt(mDmy[3], 10);
-      }
+      if (mDmy) { d = parseInt(mDmy[1], 10); m = parseInt(mDmy[2], 10); y = parseInt(mDmy[3], 10); }
     }
 
-    // C. Format ISO YYYY-MM-DD
     if (!y || !m || !d) {
       const mIso = combined.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-      if (mIso) {
-        y = parseInt(mIso[1], 10);
-        m = parseInt(mIso[2], 10);
-        d = parseInt(mIso[3], 10);
-      }
+      if (mIso) { y = parseInt(mIso[1], 10); m = parseInt(mIso[2], 10); d = parseInt(mIso[3], 10); }
     }
 
     if (y && m && d) {
       const dateObj = new Date(y, m - 1, d, hh, mm, ss);
-      return {
-        timestamp: dateObj.getTime(),
-        y,
-        m,
-        d
-      };
+      return { timestamp: dateObj.getTime(), y, m, d };
     }
-
     return { timestamp: 0, y: 0, m: 0, d: 0 };
   };
 
@@ -350,7 +381,6 @@ export default function MainLayout() {
                  || typeCol;
         }
 
-        // Ambil riwayat absensi user
         let myAttendance = [];
         const { data: qData, error: qErr } = await supabase
           .from('attendance')
@@ -361,7 +391,6 @@ export default function MainLayout() {
         if (!qErr && qData && qData.length > 0) {
           myAttendance = qData;
         } else {
-          // Fallback pencarian alternatif jika email disimpan dengan id / nama
           for (const key of validUserKeys) {
             if (key === userEmail) continue;
             const { data: altData } = await supabase.from('attendance').select('*').ilike(empCol, `%${key}%`).limit(100);
@@ -376,17 +405,12 @@ export default function MainLayout() {
           myAttendance.sort((a, b) => {
             const timeA = parseRowTimestamp(a).timestamp;
             const timeB = parseRowTimestamp(b).timestamp;
-            if (timeA !== timeB) {
-              return timeB - timeA;
-            }
-            if (a.id && b.id && typeof a.id === 'number') {
-              return b.id - a.id;
-            }
+            if (timeA !== timeB) return timeB - timeA;
+            if (a.id && b.id && typeof a.id === 'number') return b.id - a.id;
             return 0;
           });
 
           const latestRecord = myAttendance[0];
-
           const typeVal = String(latestRecord[typeCol] || latestRecord['Are you checking out or Checking in?'] || '').trim().toLowerCase();
           const isCheckOut = typeVal.includes('out') || typeVal.includes('pulang');
           const isCheckIn = (typeVal.includes('in') || typeVal.includes('masuk')) && !isCheckOut;
@@ -488,7 +512,6 @@ export default function MainLayout() {
               <h2 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">
                 {t.greeting}, <span className="text-blue-600 font-extrabold">{displayName}</span>!
               </h2>
-              {/* SUPER ADMIN badge HANYA muncul saat isSuperAdminMode bernilai true */}
               {isSuperAdminMode && (
                 <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-indigo-100 text-indigo-700 border border-indigo-200 uppercase tracking-wider">
                   SUPER ADMIN
@@ -503,7 +526,6 @@ export default function MainLayout() {
             </p>
           </div>
           
-          {/* Status Akun dari database employee_directory kolom status */}
           <div className="flex items-center space-x-2 mt-1 sm:mt-0">
             <span className="text-xs sm:text-sm text-gray-500">{t.statusLabel}</span>
             <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
