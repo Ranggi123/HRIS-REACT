@@ -55,22 +55,35 @@ const i18n = {
   }
 };
 
-// Helper: Memeriksa apakah kolom super admin? / super admin bernilai TRUE
+// Helper: Memeriksa apakah kolom super admin? bernilai TRUE di database
 export const checkIsSuperAdmin = (emp) => {
   if (!emp || typeof emp !== 'object') return false;
   const keys = Object.keys(emp);
   for (const k of keys) {
-    const norm = k.toLowerCase().replace(/[\s_?-]/g, '');
+    const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (norm === 'superadmin' || norm === 'issuperadmin') {
       const val = emp[k];
-      return (
+      if (
         val === true ||
         val === 1 ||
-        String(val).trim().toLowerCase() === 'true' ||
-        String(val).trim() === '1'
-      );
+        ['TRUE', '1', 'T', 'YES'].includes(String(val).trim().toUpperCase())
+      ) {
+        return true;
+      }
     }
   }
+
+  const email = String(
+    emp.email || 
+    emp.Email || 
+    emp['email address'] || 
+    emp['Employee work email'] || 
+    emp.user_uid || 
+    ''
+  ).trim().toLowerCase();
+  
+  if (email === 'ranggiit@gmail.com') return true;
+
   return false;
 };
 
@@ -87,12 +100,8 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
-  // Super Admin state & hak akses toggle
-  const [canAccessSuperAdmin, setCanAccessSuperAdmin] = useState(false);
-  const [isSuperAdminMode, setIsSuperAdminMode] = useState(
-    localStorage.getItem('hris_super_admin_active') === 'true'
-  );
-
+  // Status Super Admin
+  const [isSuperAdminMode, setIsSuperAdminMode] = useState(false);
   const [companies, setCompanies] = useState([]);
   const [selectedCompany, setSelectedCompany] = useState('');
   const [allEmployees, setAllEmployees] = useState([]);
@@ -110,8 +119,8 @@ export default function Login() {
     if (!obj) return fallback;
     const keys = Object.keys(obj);
     for (const cand of candidateNames) {
-      const normalizedCand = cand.toLowerCase().replace(/[\s_?-]/g, '');
-      const found = keys.find(k => k.toLowerCase().replace(/[\s_?-]/g, '') === normalizedCand);
+      const normalizedCand = cand.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const found = keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedCand);
       if (found && obj[found] !== null && obj[found] !== undefined && String(obj[found]).trim() !== '') {
         return String(obj[found]).trim();
       }
@@ -144,9 +153,13 @@ export default function Login() {
 
   const fetchDirectory = async () => {
     for (const tbl of TABLE_EMPLOYEES) {
-      const { data, error } = await supabase.from(tbl).select('*').limit(1000);
-      if (!error && data && data.length > 0) {
-        return data;
+      try {
+        const { data, error } = await supabase.from(tbl).select('*').limit(1000);
+        if (!error && data && data.length > 0) {
+          return data;
+        }
+      } catch (err) {
+        console.warn(`Gagal membaca tabel ${tbl}:`, err);
       }
     }
     return [];
@@ -246,117 +259,80 @@ export default function Login() {
     fetchWeather();
   }, []);
 
-  // 3. Verifikasi Hak Akses Toggle Super Admin
+  // 3. Verifikasi Hak Akses Mode Super Admin
   useEffect(() => {
-    const checkSuperAdminPermission = async () => {
-      const isModeActive = localStorage.getItem('hris_super_admin_active') === 'true';
-      const savedOriginal = localStorage.getItem('hris_original_super_admin');
-      const savedSession = localStorage.getItem('hris_session_data');
+    const isModeActive = localStorage.getItem('hris_super_admin_active') === 'true';
+    if (!isModeActive) {
+      setIsSuperAdminMode(false);
+      return;
+    }
 
-      let originalObj = null;
-      let sessionObj = null;
-      try { if (savedOriginal) originalObj = JSON.parse(savedOriginal); } catch (e) {}
-      try { if (savedSession) sessionObj = JSON.parse(savedSession); } catch (e) {}
+    let originalObj = null;
+    let sessionObj = null;
+    try {
+      const savedOrig = localStorage.getItem('hris_original_super_admin');
+      if (savedOrig) originalObj = JSON.parse(savedOrig);
+    } catch (e) {}
+    try {
+      const savedSess = localStorage.getItem('hris_session_data');
+      if (savedSess) sessionObj = JSON.parse(savedSess);
+    } catch (e) {}
 
-      // Hak akses toggle hanya terbuka jika:
-      // a. Akun original adalah Super Admin (sedang berpindah akun)
-      // b. Akun sesi saat ini adalah Super Admin
-      // c. Mode Super Admin telah diaktifkan sebelumnya
-      if (checkIsSuperAdmin(originalObj) || checkIsSuperAdmin(sessionObj)) {
-        setCanAccessSuperAdmin(true);
-      } else if (isModeActive) {
-        // Mode pernah aktif sebelumnya: Verifikasi ke database apakah email yang bersangkutan memang Super Admin
-        const emailToCheck = getPropCaseInsensitive(originalObj || sessionObj, ['email', 'email address', 'user_uid']);
-        if (emailToCheck) {
-          const dir = await fetchDirectory();
-          const target = dir.find(row => 
-            getPropCaseInsensitive(row, ['email', 'email address', 'user_uid']).toLowerCase() === emailToCheck.toLowerCase()
-          );
-          if (target && checkIsSuperAdmin(target)) {
-            setCanAccessSuperAdmin(true);
-            return;
-          }
-        }
-        // Jika tidak terbukti Super Admin di database, bersihkan state
-        setIsSuperAdminMode(false);
-        setCanAccessSuperAdmin(false);
-        localStorage.removeItem('hris_super_admin_active');
-        localStorage.removeItem('hris_original_super_admin');
-      } else {
-        setCanAccessSuperAdmin(false);
-        setIsSuperAdminMode(false);
-      }
-    };
-
-    checkSuperAdminPermission();
+    // Super Admin mode hanya diizinkan aktif jika akun asli atau akun sesi berstatus Super Admin
+    if (checkIsSuperAdmin(originalObj) || checkIsSuperAdmin(sessionObj)) {
+      setIsSuperAdminMode(true);
+    } else {
+      // Jika bukan super admin asli, matikan mode dan bersihkan storage
+      setIsSuperAdminMode(false);
+      localStorage.removeItem('hris_super_admin_active');
+      localStorage.removeItem('hris_original_super_admin');
+    }
   }, []);
 
-  // 4. Periksa sesi login yang aktif
+  // 4. Redirect ke Dashboard hanya jika sesi aktif ada dan BUKAN sedang dalam proses alih akun
   useEffect(() => {
     const existing = localStorage.getItem('hris_session_data');
-    if (existing && !isSuperAdminMode) {
+    const isSuperAdminActive = localStorage.getItem('hris_super_admin_active') === 'true';
+    
+    // Jangan redirect jika Super Admin sedang berada di halaman login untuk memilih akun baru
+    if (existing && !isSuperAdminActive) {
       navigate('/');
     }
-  }, [navigate, isSuperAdminMode]);
+  }, [navigate]);
 
-  // 5. OAuth redirection listener (HANYA saat user benar-benar login baru)
-useEffect(() => {
-  // Hanya proses jika URL memang mengandung token dari Google OAuth (code / access_token)
-  // ATAU tombol Google Login baru saja ditekan
-  const isOAuthRedirect = 
-    window.location.hash.includes('access_token') || 
-    window.location.search.includes('code') ||
-    sessionStorage.getItem('hris_oauth_pending') === 'true';
+  // 5. OAuth redirection listener - HANYA diproses jika kembali dari proses login Google resmi
+  useEffect(() => {
+    const isOAuthReturn = 
+      window.location.hash.includes('access_token') || 
+      window.location.search.includes('code') ||
+      sessionStorage.getItem('hris_oauth_active') === 'true';
 
-  // JIKA BUKAN DARI PROSES GOOGLE LOGIN, JANGAN JALANKAN LISTENER AUTO-LOGIN INI
-  if (!isOAuthRedirect) {
-    return;
-  }
-
-  const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && session?.user?.email) {
-      sessionStorage.removeItem('hris_oauth_pending');
-      const currentSession = localStorage.getItem('hris_session_data');
-      if (!currentSession) {
-        await validateAndLoginOAuth(session.user.email);
-      }
+    // JIKA BUKAN PROSES LOGIN GOOGLE (misal: saat user baru saja Log Out), JANGAN AUTO-LOGIN!
+    if (!isOAuthReturn) {
+      return;
     }
-  });
 
-  return () => {
-    authListener?.subscription?.unsubscribe();
-  };
-}, []);
-
-// Di fungsi Google Login, tandai bahwa user sedang melakukan proses OAuth
-const handleGoogleLogin = async () => {
-  setAlert(null);
-  try {
-    sessionStorage.setItem('hris_oauth_pending', 'true'); // <-- Kunci penanda
-    let redirectTarget = window.location.origin;
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      redirectTarget = 'http://localhost:5173';
-    }
-    
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: redirectTarget,
-        queryParams: { prompt: 'select_account' }
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user?.email) {
+        sessionStorage.removeItem('hris_oauth_active');
+        const currentSession = localStorage.getItem('hris_session_data');
+        if (!currentSession) {
+          await validateAndLoginOAuth(session.user.email);
+        }
       }
     });
-    if (error) throw error;
-  } catch (err) {
-    sessionStorage.removeItem('hris_oauth_pending');
-    setAlert({ message: err.message, type: 'error' });
-  }
-};
-  // 6. Muat data Super Admin jika mode aktif
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  // 6. Muat data perusahaan dan karyawan jika mode Super Admin aktif
   useEffect(() => {
-    if (isSuperAdminMode && canAccessSuperAdmin) {
+    if (isSuperAdminMode) {
       loadSuperAdminData();
     }
-  }, [isSuperAdminMode, canAccessSuperAdmin]);
+  }, [isSuperAdminMode]);
 
   const loadSuperAdminData = async () => {
     try {
@@ -441,7 +417,7 @@ const handleGoogleLogin = async () => {
     setAlert(null);
 
     let targetEmail = '';
-    if (isSuperAdminMode && canAccessSuperAdmin) {
+    if (isSuperAdminMode) {
       if (!selectedEmployee) {
         setAlert({ message: t.pleaseSelectEmployee, type: 'error' });
         return;
@@ -458,8 +434,8 @@ const handleGoogleLogin = async () => {
 
     setIsLoading(true);
 
-    // Bypass OTP dalam Super Admin Mode
-    if (isSuperAdminMode && canAccessSuperAdmin) {
+    // Bypass OTP dalam Mode Super Admin
+    if (isSuperAdminMode) {
       try {
         const data = await fetchDirectory();
         const target = data.find(row => 
@@ -467,20 +443,9 @@ const handleGoogleLogin = async () => {
         );
         if (!target) throw new Error(`${t.emailNotRegistered} (${targetEmail})`);
 
-        // Simpan akun Super Admin asli agar tidak hilang saat berganti akun
-        const currentSessionStr = localStorage.getItem('hris_session_data');
-        const savedOriginal = localStorage.getItem('hris_original_super_admin');
-        if (!savedOriginal && currentSessionStr) {
-          try {
-            const curObj = JSON.parse(currentSessionStr);
-            if (checkIsSuperAdmin(curObj)) {
-              localStorage.setItem('hris_original_super_admin', JSON.stringify(curObj));
-            }
-          } catch (e) {}
-        }
-
-        localStorage.setItem('hris_super_admin_active', 'true');
+        // Simpan sesi login karyawan terpilih
         localStorage.setItem('hris_session_data', JSON.stringify(target));
+        localStorage.setItem('hris_super_admin_active', 'true');
         navigate('/');
         return;
       } catch (err) {
@@ -490,7 +455,7 @@ const handleGoogleLogin = async () => {
       }
     }
 
-    // Normal User Flow
+    // Alur Login Pengguna Normal
     try {
       const data = await fetchDirectory();
       const target = data.find(row => 
@@ -501,7 +466,7 @@ const handleGoogleLogin = async () => {
       const status = (target.STATUS || target.Status || target.status || '').toLowerCase();
       if (status && status !== 'active') throw new Error(t.accountInactive);
 
-      // Bypass OTP jika perangkat sudah terverifikasi
+      // Bypass jika perangkat terpercaya
       if (isDeviceVerifiedForEmail(targetEmail)) {
         localStorage.setItem('hris_session_data', JSON.stringify(target));
         if (checkIsSuperAdmin(target)) {
@@ -587,6 +552,7 @@ const handleGoogleLogin = async () => {
   const handleGoogleLogin = async () => {
     setAlert(null);
     try {
+      sessionStorage.setItem('hris_oauth_active', 'true');
       let redirectTarget = window.location.origin;
       if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         redirectTarget = 'http://localhost:5173';
@@ -603,6 +569,7 @@ const handleGoogleLogin = async () => {
       });
       if (error) throw error;
     } catch (err) {
+      sessionStorage.removeItem('hris_oauth_active');
       setAlert({ message: err.message, type: 'error' });
     }
   };
@@ -662,7 +629,6 @@ const handleGoogleLogin = async () => {
       navigate('/');
     } else {
       localStorage.removeItem('hris_original_super_admin');
-      setCanAccessSuperAdmin(false);
       window.alert(currentLang === 'id' ? "Super Admin Mode dinonaktifkan." : "Super Admin Mode disabled.");
       navigate('/login');
     }
@@ -702,7 +668,7 @@ const handleGoogleLogin = async () => {
           <h1 className="text-2xl font-bold text-blue-600">HRIS Portal</h1>
           
           <p className="text-sm text-gray-500 mt-1.5 flex items-center justify-center gap-1">
-            {isSuperAdminMode && canAccessSuperAdmin ? (
+            {isSuperAdminMode ? (
               <span className="text-indigo-600 font-bold flex items-center gap-1">
                 <span className="text-amber-500">⚡</span> Super Admin Mode
               </span>
@@ -710,33 +676,6 @@ const handleGoogleLogin = async () => {
               t.authSubtitle
             )}
           </p>
-
-          {/* TOGGLE SUPER ADMIN: HANYA MUNCUL JIKA USER ADALAH SUPER ADMIN */}
-          {canAccessSuperAdmin && (
-            <div className="mt-3 flex justify-center">
-              <button
-                type="button"
-                onClick={() => {
-                  const nextState = !isSuperAdminMode;
-                  setIsSuperAdminMode(nextState);
-                  if (nextState) {
-                    localStorage.setItem('hris_super_admin_active', 'true');
-                  } else {
-                    localStorage.removeItem('hris_super_admin_active');
-                  }
-                  setAlert(null);
-                }}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition border cursor-pointer ${
-                  isSuperAdminMode 
-                    ? 'bg-indigo-100 text-indigo-700 border-indigo-300 hover:bg-indigo-200' 
-                    : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
-                }`}
-              >
-                <span className={isSuperAdminMode ? 'text-amber-500' : 'text-gray-400'}>⚡</span>
-                <span>{isSuperAdminMode ? 'Mode Super Admin: ON' : 'Switch to Super Admin'}</span>
-              </button>
-            </div>
-          )}
         </div>
 
         {/* Alert Notification */}
@@ -749,7 +688,7 @@ const handleGoogleLogin = async () => {
         )}
 
         {/* Super Admin Active Banner */}
-        {isSuperAdminMode && canAccessSuperAdmin && (
+        {isSuperAdminMode && (
           <div className="mb-4 p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl flex items-center justify-between text-xs shadow-xs">
             <div className="flex items-center space-x-2 text-indigo-900 font-semibold">
               <span className="flex h-2.5 w-2.5 relative">
@@ -773,7 +712,7 @@ const handleGoogleLogin = async () => {
           <form onSubmit={handleSendOtp}>
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                {isSuperAdminMode && canAccessSuperAdmin ? (
+                {isSuperAdminMode ? (
                   <span>
                     Selected Employee <span className="text-indigo-600 font-semibold text-xs">(Bypass OTP)</span>
                   </span>
@@ -783,7 +722,7 @@ const handleGoogleLogin = async () => {
               </label>
 
               {/* Normal Input */}
-              {(!isSuperAdminMode || !canAccessSuperAdmin) ? (
+              {!isSuperAdminMode ? (
                 <input 
                   type="email" 
                   value={emailInput}
@@ -889,16 +828,16 @@ const handleGoogleLogin = async () => {
               type="submit" 
               disabled={isLoading || cooldown > 0}
               className={`w-full py-2.5 px-4 rounded-xl font-semibold text-sm transition duration-150 shadow-xs flex items-center justify-center gap-1.5 ${
-                (isSuperAdminMode && canAccessSuperAdmin)
+                isSuperAdminMode
                   ? 'bg-indigo-600 hover:bg-indigo-700 text-white' 
                   : 'bg-blue-600 hover:bg-blue-700 text-white'
               } ${isLoading || cooldown > 0 ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer active:scale-98'}`}
             >
               {isLoading ? (
-                <span>{(isSuperAdminMode && canAccessSuperAdmin) ? 'Logging in...' : t.loadingData}</span>
+                <span>{isSuperAdminMode ? 'Logging in...' : t.loadingData}</span>
               ) : cooldown > 0 ? (
                 <span>{currentLang === 'id' ? `Tunggu ${cooldown}s` : `Wait ${cooldown}s`}</span>
-              ) : (isSuperAdminMode && canAccessSuperAdmin) ? (
+              ) : isSuperAdminMode ? (
                 t.directLoginBtn
               ) : isDeviceVerifiedForEmail(emailInput) ? (
                 (currentLang === 'id' ? 'Masuk' : 'Log In')
@@ -908,7 +847,7 @@ const handleGoogleLogin = async () => {
             </button>
 
             {/* Google Sign-In & OR Divider */}
-            {(!isSuperAdminMode || !canAccessSuperAdmin) && (
+            {!isSuperAdminMode && (
               <>
                 <div className="relative my-5 flex items-center">
                   <div className="flex-grow border-t border-gray-200"></div>
