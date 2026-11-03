@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "type": "module",
   "overrides": {
-  "glob": "^11.0.0"
+    "glob": "^11.0.0"
   },
   "scripts": {
     "dev": "vite",
@@ -16,7 +16,6 @@
     "deploy": "gh-pages -d dist",
     "start": "node your-script.js"
   },
- 
   "dependencies": {
     "@supabase/supabase-js": "^2.39.3",
     "lucide-react": "^0.344.0",

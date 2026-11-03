@@ -614,23 +614,55 @@ export default function Attendance() {
       }
 
       if (attendanceType === 'Checking out') {
+
+
         if (isOvertime === 'Yes') {
+
+
           const otDateToUse = overtimeDate || finalSubmissionDate;
+
+
           const otTimeToUse = `${overtimeTime}:00`;
+
+
           
+
+
           otEmailText = `
 Overtime : User requesting overtime
 Real check out at : ${todayDateStr}, ${timeStr}`;
+
+
           otEmailHtml = `<strong>Overtime :</strong> User requesting overtime<br><strong>Real check out at :</strong> ${todayDateStr}, ${timeStr}<br>`;
+
+
           
+
+
           safeAssign(payload, ['Checkout Time', 'checkout_time', 'Check Out Time'], `${otDateToUse} ${otTimeToUse}`);
+
+
           safeAssign(payload, ['Overtime', 'overtime', 'is_overtime'], true);
+
+
         } else if (lateCheckoutWarning && isOvertime === 'No') {
+
+
           const manualDateToUse = overtimeDate || finalSubmissionDate;
+
+
           const manualTimeToUse = `${overtimeTime}:00`;
+
+
           
+
+
           safeAssign(payload, ['Checkout Time', 'checkout_time', 'Check Out Time'], `${manualDateToUse} ${manualTimeToUse}`);
+
+
         }
+
+
       }
 
       const gasUploadPromise = fetch('https://script.google.com/macros/s/AKfycby28F424Ikd21T4yf0MkGFXdQvgSBKJWXYO5-dQ582lOSxH-kxau6myCtGjulEUleo0RA/exec', {
@@ -814,13 +846,12 @@ Photo : ${photoUrl}`;
             <button 
               onClick={() => { fetchAttendanceData(activeUser); fetchTodaySchedule(activeUser); }} 
               disabled={loading}
-              className="px-3.5 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
-              title="Refresh Data"
+              className="p-2.5 border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 rounded-xl shadow-xs transition flex items-center justify-center active:scale-95"
+              title="Refresh"
             >
-              <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              <span className="hidden sm:inline">{loading ? 'Loading...' : 'Refresh'}</span>
             </button>
           </div>
         </div>
