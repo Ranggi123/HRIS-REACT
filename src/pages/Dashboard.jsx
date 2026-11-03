@@ -496,7 +496,7 @@ export default function Dashboard() {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 relative">
         
         {/* Top Header Row with Refresh Button */}
-        <div className="flex justify-between items-start mb-3 sm:mb-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 mb-4 sm:mb-5 border-b border-gray-200 gap-3 sm:gap-4">
           <div>
             <h3 className="text-base sm:text-lg font-bold text-gray-900">
               {calendarMode === 'public_holiday' 
