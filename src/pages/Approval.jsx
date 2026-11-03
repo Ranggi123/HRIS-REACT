@@ -66,7 +66,13 @@ const resolveTableColumn = (knownCols, candidates) => {
 const isPendingApprovalStatus = (status) => {
   if (!status) return false;
   const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
-  return s === 'pendingapproval' || s === 'pending';
+  return s === 'pendingapproval' || s === 'pending' || s === 'requesttocancel';
+};
+
+const isApprovedStatus = (status) => {
+  if (!status) return false;
+  const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
+  return s === 'approved' || s === 'approve' || s === 'setuju';
 };
 
 const matchesLineManager = (record, targetEmail) => {
@@ -151,6 +157,7 @@ export default function Approval() {
   const [teamScheduleModalData, setTeamScheduleModalData] = useState(null);
 
   // Filter States
+  const [statusTab, setStatusTab] = useState('pending'); // 'pending' | 'approved'
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'leave' | 'attendance'
   const [selectedEmployee, setSelectedEmployee] = useState('all');
 
@@ -185,7 +192,7 @@ export default function Approval() {
     return getPropCaseInsensitive(currentUser, ['Name', 'name', 'nama', 'fullname', 'full_name'], userWorkEmail.split('@')[0] || 'Manager');
   }, [currentUser, userWorkEmail]);
 
-  // Fetch Pending Approval Requests, Directory, and Schedule for this Line Manager
+  // Fetch Requests, Directory, and Schedule for this Line Manager
   const refreshAllData = useCallback(async () => {
     if (!userWorkEmail) return;
     setLoading(true);
@@ -230,18 +237,19 @@ export default function Approval() {
         console.warn("Could not query employee_directory:", err);
       }
 
-      // 2. Fetch Leave Requests
+      // 2. Fetch Leave Requests (Pending and Approved)
       const { data: lvData, error: lvError } = await supabase
         .from('leave_requests')
         .select('*')
-        .limit(1000);
+        .limit(2000);
 
-      let pendingLeaves = [];
+      let myLeaves = [];
       if (!lvError && lvData) {
-        pendingLeaves = lvData
+        myLeaves = lvData
           .filter(row => {
             const status = getPropCaseInsensitive(row, ['Status', 'status', 'Approval Status', 'approval_status'], '');
-            return isPendingApprovalStatus(status) && matchesLineManager(row, userWorkEmail);
+            const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
+            return isRelevant && matchesLineManager(row, userWorkEmail);
           })
           .map(row => ({
             ...row,
@@ -250,19 +258,20 @@ export default function Approval() {
           }));
       }
 
-      // 3. Fetch Attendance Requests
-      let pendingAttendance = [];
+      // 3. Fetch Attendance Requests (Pending and Approved)
+      let myAttendance = [];
       try {
         const { data: attData, error: attErr } = await supabase
           .from('attendance')
           .select('*')
-          .limit(1000);
+          .limit(2000);
 
         if (!attErr && attData && attData.length > 0) {
-          pendingAttendance = attData
+          myAttendance = attData
             .filter(row => {
               const status = getPropCaseInsensitive(row, ['Status', 'status', 'Approval Status', 'approval_status'], '');
-              return isPendingApprovalStatus(status) && matchesLineManager(row, userWorkEmail);
+              const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
+              return isRelevant && matchesLineManager(row, userWorkEmail);
             })
             .map(row => ({
               ...row,
@@ -292,8 +301,8 @@ export default function Approval() {
         console.warn("Could not query schedule table:", e);
       }
 
-      setLeaveRequests(pendingLeaves);
-      setAttendanceRequests(pendingAttendance);
+      setLeaveRequests(myLeaves);
+      setAttendanceRequests(myAttendance);
       setTeamScheduleRecords(teamSched);
     } catch (err) {
       console.error('Error fetching approval records:', err);
@@ -369,7 +378,7 @@ export default function Approval() {
     return { calendarDays: days };
   }, [year, month, totalDays, filteredScheduleRecords, today]);
 
-  // Send email notification upon Approve / Reject
+  // Send email notification upon Approve / Reject / Cancel
   const sendNotificationEmail = async (item, newStatus, reason = '') => {
     const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']);
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'employee_name'], 'Employee');
@@ -379,13 +388,15 @@ export default function Approval() {
 
     if (!empEmail || !empEmail.includes('@')) return;
 
-    const statusColor = newStatus === 'Approved' ? '#16a34a' : '#dc2626';
+    let statusColor = '#16a34a';
+    if (newStatus === 'Rejected' || newStatus === 'Cancelled') statusColor = '#dc2626';
+
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
         <h2 style="color: ${statusColor}; margin-top: 0; font-size: 18px;">Request ${newStatus}</h2>
         <p style="font-size: 14px;">Hello <strong>${empName}</strong>,</p>
-        <p style="font-size: 14px;">Your <strong>${reqType} (${item._category})</strong> request has been <strong>${newStatus.toLowerCase()}</strong> by your Line Manager (<strong>${userName}</strong>).</p>
-        ${reason ? `<p style="font-size: 14px; background: #fef2f2; border-left: 4px solid #ef4444; padding: 10px; margin: 15px 0;"><strong>Rejection Reason:</strong> ${reason}</p>` : ''}
+        <p style="font-size: 14px;">Your <strong>${reqType} (${item._category})</strong> request status has been updated to <strong>${newStatus}</strong> by your Line Manager (<strong>${userName}</strong>).</p>
+        ${reason ? `<p style="font-size: 14px; background: #fef2f2; border-left: 4px solid #ef4444; padding: 10px; margin: 15px 0;"><strong>Notes:</strong> ${reason}</p>` : ''}
         <div style="margin-top: 20px; padding: 12px; background: #f8fafc; border-radius: 8px; font-size: 13px;">
           <p style="margin: 4px 0;"><strong>Status:</strong> <span style="color: ${statusColor}; font-weight: bold;">${newStatus}</span></p>
           <p style="margin: 4px 0;"><strong>Line Manager:</strong> ${userWorkEmail}</p>
@@ -426,16 +437,11 @@ export default function Approval() {
         [statusCol]: newStatus
       };
 
-      const approverCol = resolveTableColumn(cols, ['approved_by', 'Approved By', 'action_by', 'Action By']);
+      const approverCol = resolveTableColumn(cols, ['approved_by', 'Approved By', 'action_by', 'Action By', 'lasteditby', 'last_edit_by']);
       if (approverCol) payload[approverCol] = userWorkEmail;
 
-      const dateCol = resolveTableColumn(cols, ['approved_date', 'Approved Date', 'approved_at']);
+      const dateCol = resolveTableColumn(cols, ['approved_date', 'Approved Date', 'approved_at', 'lasteditdate', 'last_editdate', 'last_edit_date']);
       if (dateCol) payload[dateCol] = nowIso;
-
-      const editByCol = resolveTableColumn(cols, ['LastEditBy', 'lasteditby', 'last_edit_by']) || 'LastEditBy';
-      const editDateCol = resolveTableColumn(cols, ['LastEditDate', 'lasteditdate', 'last_edit_date', 'last_editdate']) || 'LastEditDate';
-      payload[editByCol] = userWorkEmail;
-      payload[editDateCol] = nowIso;
 
       if (newStatus === 'Rejected' && reason) {
         const reasonCol = resolveTableColumn(cols, ['rejection_reason', 'Rejection Reason', 'reject_reason', 'reason', 'Reason', 'notes', 'Notes']);
@@ -455,7 +461,7 @@ export default function Approval() {
       const { error } = await query;
       if (error) throw error;
 
-            // --- NEW LEAVE APPROVAL LOGIC ---
+      // --- LEAVE APPROVAL POST-LOGIC ---
       if (newStatus === 'Approved' && item._category === 'Leave') {
         const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'user_uid', 'email']);
         const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name']);
@@ -465,27 +471,19 @@ export default function Approval() {
         const totalDays = parseInt(getPropCaseInsensitive(item, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration']) || '1', 10);
 
         try {
-          // Check Schema for Exact Columns in schedule and employee_directory
           const { data: schedSample } = await supabase.from('schedule').select('*').limit(1);
           const schedCols = schedSample && schedSample.length > 0 ? Object.keys(schedSample[0]) : [];
           const schedTypeCol = resolveTableColumn(schedCols, ['Type', 'type', 'schedule_type']) || 'Type';
           const schedEmpCol = resolveTableColumn(schedCols, ['Employee', 'employee']) || 'Employee';
           const schedDateCol = resolveTableColumn(schedCols, ['Date', 'date']) || 'Date';
-          const schedEditByCol = resolveTableColumn(schedCols, ['LastEditBy', 'lasteditby', 'last_edit_by']) || 'LastEditBy';
-          const schedEditDateCol = resolveTableColumn(schedCols, ['LastEditDate', 'lasteditdate', 'last_edit_date', 'last_editdate']) || 'LastEditDate';
 
           const { data: dirSample } = await supabase.from('employee_directory').select('*').limit(1);
           const dirCols = dirSample && dirSample.length > 0 ? Object.keys(dirSample[0]) : [];
           const dirEmailCol = resolveTableColumn(dirCols, ['Email', 'email', 'Employee work email', 'work_email']) || 'Email';
 
-          // Build all possible employee identifiers (email, name, empId) to guarantee matching in holiday_balance
           let validKeys = [empEmail, empName].filter(Boolean).map(v => String(v).trim().toLowerCase());
           try {
-            const { data: empDirMatch } = await supabase
-              .from('employee_directory')
-              .select('*')
-              .ilike(dirEmailCol, empEmail)
-              .limit(1);
+            const { data: empDirMatch } = await supabase.from('employee_directory').select('*').ilike(dirEmailCol, empEmail).limit(1);
             if (empDirMatch && empDirMatch.length > 0) {
               const ed = empDirMatch[0];
               const eId = getPropCaseInsensitive(ed, ['Employee ID', 'employee_id', 'employeeid', 'id', 'Barcode', 'barcode']);
@@ -496,27 +494,20 @@ export default function Approval() {
           } catch (e) {}
           validKeys = Array.from(new Set(validKeys.filter(Boolean)));
 
-                    // 1 & 2: Day Off Payment & Extra Off
+          // 1 & 2: Day Off Payment & Extra Off
           if (leaveType === 'Day Off Payment' || leaveType === 'Extra Off') {
-            
-            // Dapatkan kolom tabel secara presisi
             const { data: hSample } = await supabase.from('holiday_balance').select('*').limit(1);
             const hCols = hSample && hSample.length > 0 ? Object.keys(hSample[0]) : [];
             const exHolEmpCol = resolveTableColumn(hCols, ['Employee', 'employee', 'user_uid', 'email', 'Name', 'name']) || 'Employee';
             
-            // Bangun query efisien untuk menghindari batas limit rows
             let holQuery = supabase.from('holiday_balance').select('*').limit(5000);
             const orConditions = validKeys.map(k => `${exHolEmpCol}.ilike.%${k}%`).join(',');
             if (orConditions) {
                holQuery = holQuery.or(orConditions);
             }
-            
             const { data: allHolidays, error: holFetchErr } = await holQuery;
 
-            if (holFetchErr) {
-              console.error("Gagal membaca holiday_balance:", holFetchErr);
-              throw new Error("Gagal membaca data holiday_balance: " + holFetchErr.message);
-            }
+            if (holFetchErr) throw new Error("Gagal membaca holiday_balance: " + holFetchErr.message);
 
             const candidateHolidays = (allHolidays || []).filter(row => {
               const s = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
@@ -532,7 +523,6 @@ export default function Approval() {
               return validKeys.some(k => empVal === k || empVal.includes(k) || k.includes(empVal));
             });
 
-            // Sort by earliest expiration date
             candidateHolidays.sort((a, b) => {
               const dtA = parseFlexibleDate(getPropCaseInsensitive(a, ['Expiration Date', 'expiration_date', 'exp_date', 'Expired Date', 'expired', 'Date', 'date'])) || new Date(9999, 11, 31);
               const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['Expiration Date', 'expiration_date', 'exp_date', 'Expired Date', 'expired', 'Date', 'date'])) || new Date(9999, 11, 31);
@@ -542,72 +532,38 @@ export default function Approval() {
             if (candidateHolidays.length > 0) {
               const targetHol = candidateHolidays[0];
               const holCols = Object.keys(targetHol);
-
               const holStatusCol = resolveTableColumn(holCols, ['Status', 'status', 'STATUS']) || 'Status';
               const holUsedDateCol = resolveTableColumn(holCols, ['Used Date', 'used_date', 'UsedDate', 'tanggal_digunakan']) || 'Used Date';
               const holIdCol = resolveTableColumn(holCols, ['UID', 'uid', 'id', 'ID', 'Id', '_id', 'Holiday ID', 'holiday_id', 'no', 'No']);
 
-              const currentStatusRaw = String(targetHol[holStatusCol] || '').trim();
-              const newStatusVal = currentStatusRaw === 'unused' ? 'used' : 'Used';
-
-              const holEditByCol = resolveTableColumn(holCols, ['LastEditBy', 'lasteditby', 'last_edit_by']) || 'LastEditBy';
-              const holEditDateCol = resolveTableColumn(holCols, ['LastEditDate', 'lasteditdate', 'last_edit_date', 'last_editdate']) || 'LastEditDate';
               const holUpdatePayload = {
-                [holStatusCol]: newStatusVal,
-                [holUsedDateCol]: fromDate,
-                [holEditByCol]: userWorkEmail,
-                [holEditDateCol]: nowIso
+                [holStatusCol]: 'Used',
+                [holUsedDateCol]: fromDate
               };
 
-              let updateRes;
               if (holIdCol && targetHol[holIdCol] !== undefined && targetHol[holIdCol] !== null) {
-                updateRes = await supabase.from('holiday_balance').update(holUpdatePayload).eq(holIdCol, targetHol[holIdCol]);
+                await supabase.from('holiday_balance').update(holUpdatePayload).eq(holIdCol, targetHol[holIdCol]);
               } else {
                 const holEmpCol = resolveTableColumn(holCols, ['Employee', 'employee', 'user_uid', 'email']) || 'Employee';
                 const holTypeCol = resolveTableColumn(holCols, ['Type Holiday', 'type_holiday', 'Type', 'type']) || 'Type Holiday';
                 const holExpDateCol = resolveTableColumn(holCols, ['Expiration Date', 'expiration_date', 'Expired Date']) || 'Expiration Date';
 
-                updateRes = await supabase.from('holiday_balance').update(holUpdatePayload)
+                await supabase.from('holiday_balance').update(holUpdatePayload)
                   .eq(holEmpCol, targetHol[holEmpCol])
                   .eq(holTypeCol, targetHol[holTypeCol])
                   .eq(holStatusCol, targetHol[holStatusCol])
                   .eq(holExpDateCol, targetHol[holExpDateCol]);
               }
-
-              if (updateRes && updateRes.error) {
-                console.error("Gagal update holiday_balance:", updateRes.error);
-                throw new Error("Gagal update holiday_balance: " + updateRes.error.message);
-              }
-            } else {
-              console.warn("Tidak ada kuota Unused yang cocok di holiday_balance untuk:", validKeys, leaveType);
             }
 
             // Update schedule
-            const { data: schedMatches } = await supabase
-              .from('schedule')
-              .select('*')
-              .ilike(schedEmpCol, `%${empEmail}%`)
-              .eq(schedDateCol, fromDate);
+            await supabase.from('schedule').update({
+              [schedTypeCol]: leaveType
+            })
+            .ilike(schedEmpCol, `%${empEmail}%`)
+            .eq(schedDateCol, fromDate);
 
-            if (schedMatches && schedMatches.length > 0) {
-              await supabase.from('schedule').update({
-                [schedTypeCol]: leaveType,
-                [schedEditByCol]: userWorkEmail,
-                [schedEditDateCol]: nowIso
-              })
-              .ilike(schedEmpCol, `%${empEmail}%`)
-              .eq(schedDateCol, fromDate);
-            } else if (empName) {
-              await supabase.from('schedule').update({
-                [schedTypeCol]: leaveType,
-                [schedEditByCol]: userWorkEmail,
-                [schedEditDateCol]: nowIso
-              })
-              .ilike(schedEmpCol, `%${empName}%`)
-              .eq(schedDateCol, fromDate);
-            }
-
-                        // Recalculate Balance in holiday_balance
+            // Recalculate Balance
             let recheckQuery = supabase.from('holiday_balance').select('*').limit(5000);
             if (orConditions) {
                recheckQuery = recheckQuery.or(orConditions);
@@ -642,9 +598,7 @@ export default function Approval() {
           // 3: Annual Leave
           else if (leaveType === 'Annual Leave') {
             await supabase.from('schedule').update({
-              [schedTypeCol]: leaveType,
-              [schedEditByCol]: userWorkEmail,
-              [schedEditDateCol]: nowIso
+              [schedTypeCol]: leaveType
             })
             .ilike(schedEmpCol, `%${empEmail}%`)
             .gte(schedDateCol, fromDate)
@@ -664,9 +618,7 @@ export default function Approval() {
           // 4, 5, 6, 7: Other Leaves
           else if (['Sick Leave', 'Maternity Leave', 'Compassionate Leave', 'Unpaid Leave'].includes(leaveType)) {
             await supabase.from('schedule').update({
-              [schedTypeCol]: leaveType,
-              [schedEditByCol]: userWorkEmail,
-              [schedEditDateCol]: nowIso
+              [schedTypeCol]: leaveType
             })
             .ilike(schedEmpCol, `%${empEmail}%`)
             .gte(schedDateCol, fromDate)
@@ -678,7 +630,6 @@ export default function Approval() {
           alert('Catatan Sinkronisasi: ' + sideErr.message);
         }
       }
-      // --- END NEW LEAVE APPROVAL LOGIC ---
 
       await sendNotificationEmail(item, newStatus, reason);
 
@@ -692,6 +643,222 @@ export default function Approval() {
     } catch (err) {
       console.error(err);
       alert('Failed to process request: ' + err.message);
+    }
+    setIsProcessing(false);
+  };
+
+  // Action: Cancel Approved Request and Revert Balances to Unused
+  const handleCancelApproved = async (item) => {
+    const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Employee');
+    const reqCategory = item._category || 'Leave';
+    const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], reqCategory);
+
+    if (!window.confirm(`Batalkan persetujuan ${reqType} untuk ${empName} dan kembalikan kuota/saldo ke Unused?`)) {
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const table = item._sourceTable || (reqCategory === 'Attendance' ? 'attendance' : 'leave_requests');
+      const cols = Object.keys(item);
+
+      const statusCol = resolveTableColumn(cols, ['Status', 'status', 'Approval Status', 'approval_status']) || 'Status';
+      const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'attendance_id', 'Attendance ID', 'no', '_id']);
+
+      const nowIso = new Date().toISOString();
+      const payload = {
+        [statusCol]: 'Cancelled'
+      };
+
+      const approverCol = resolveTableColumn(cols, ['approved_by', 'Approved By', 'action_by', 'Action By', 'lasteditby', 'last_edit_by']);
+      if (approverCol) payload[approverCol] = userWorkEmail;
+
+      const dateCol = resolveTableColumn(cols, ['approved_date', 'Approved Date', 'approved_at', 'lasteditdate', 'last_editdate', 'last_edit_date']);
+      if (dateCol) payload[dateCol] = nowIso;
+
+      let query = supabase.from(table).update(payload);
+      if (idCol && item[idCol] !== undefined && item[idCol] !== null) {
+        query = query.eq(idCol, item[idCol]);
+      } else {
+        const empCol = resolveTableColumn(cols, ['Employee', 'employee', 'user_uid', 'email']) || 'Employee';
+        const createdCol = resolveTableColumn(cols, ['CreatedDate', 'created_date', 'Date', 'date']) || 'CreatedDate';
+        query = query.eq(empCol, item[empCol]).eq(createdCol, item[createdCol]);
+      }
+
+      const { error: cancelErr } = await query;
+      if (cancelErr) throw cancelErr;
+
+      // REVERT BALANCE & SCHEDULE IF LEAVE
+      if (reqCategory === 'Leave') {
+        const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'user_uid', 'email']);
+        const leaveType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '');
+        const fromDate = getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']);
+        const toDate = getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']);
+        const totalDays = parseInt(getPropCaseInsensitive(item, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration']) || '1', 10);
+
+        const { data: schedSample } = await supabase.from('schedule').select('*').limit(1);
+        const schedCols = schedSample && schedSample.length > 0 ? Object.keys(schedSample[0]) : [];
+        const schedTypeCol = resolveTableColumn(schedCols, ['Type', 'type', 'schedule_type']) || 'Type';
+        const schedEmpCol = resolveTableColumn(schedCols, ['Employee', 'employee']) || 'Employee';
+        const schedDateCol = resolveTableColumn(schedCols, ['Date', 'date']) || 'Date';
+
+        const { data: dirSample } = await supabase.from('employee_directory').select('*').limit(1);
+        const dirCols = dirSample && dirSample.length > 0 ? Object.keys(dirSample[0]) : [];
+        const dirEmailCol = resolveTableColumn(dirCols, ['Email', 'email', 'Employee work email', 'work_email']) || 'Email';
+
+        let validKeys = [empEmail, empName].filter(Boolean).map(v => String(v).trim().toLowerCase());
+        try {
+          const { data: empDirMatch } = await supabase.from('employee_directory').select('*').ilike(dirEmailCol, empEmail).limit(1);
+          if (empDirMatch && empDirMatch.length > 0) {
+            const ed = empDirMatch[0];
+            const eId = getPropCaseInsensitive(ed, ['Employee ID', 'employee_id', 'employeeid', 'id', 'Barcode', 'barcode']);
+            const eName = getPropCaseInsensitive(ed, ['Name', 'name', 'nama', 'fullname', 'full_name']);
+            if (eId) validKeys.push(eId.trim().toLowerCase());
+            if (eName) validKeys.push(eName.trim().toLowerCase());
+          }
+        } catch (e) {}
+        validKeys = Array.from(new Set(validKeys.filter(Boolean)));
+
+        // 1 & 2: Day Off Payment & Extra Off -> Revert to Unused
+        if (leaveType === 'Day Off Payment' || leaveType === 'Extra Off') {
+          const { data: hSample } = await supabase.from('holiday_balance').select('*').limit(1);
+          const hCols = hSample && hSample.length > 0 ? Object.keys(hSample[0]) : [];
+          const exHolEmpCol = resolveTableColumn(hCols, ['Employee', 'employee', 'user_uid', 'email', 'Name', 'name']) || 'Employee';
+
+          let holQuery = supabase.from('holiday_balance').select('*').limit(5000);
+          const orConditions = validKeys.map(k => `${exHolEmpCol}.ilike.%${k}%`).join(',');
+          if (orConditions) {
+            holQuery = holQuery.or(orConditions);
+          }
+          const { data: userHolidays } = await holQuery;
+
+          const usedCandidates = (userHolidays || []).filter(row => {
+            const s = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
+            if (s !== 'used') return false;
+
+            const t = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
+            const isTypeMatch = leaveType.toLowerCase().includes('extra')
+              ? (t.includes('extra off') || t.includes('extra'))
+              : (t.includes('day off') || t.includes('dayoff'));
+            if (!isTypeMatch) return false;
+
+            const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
+            return validKeys.some(k => empVal === k || empVal.includes(k) || k.includes(empVal));
+          });
+
+          usedCandidates.sort((a, b) => {
+            const uA = getPropCaseInsensitive(a, ['Used Date', 'used_date', 'UsedDate', 'tanggal_digunakan']);
+            const uB = getPropCaseInsensitive(b, ['Used Date', 'used_date', 'UsedDate', 'tanggal_digunakan']);
+            if (uA === fromDate && uB !== fromDate) return -1;
+            if (uB === fromDate && uA !== fromDate) return 1;
+            return 0;
+          });
+
+          if (usedCandidates.length > 0) {
+            const targetUsedHol = usedCandidates[0];
+            const holCols = Object.keys(targetUsedHol);
+            const holStatusCol = resolveTableColumn(holCols, ['Status', 'status', 'STATUS']) || 'Status';
+            const holUsedDateCol = resolveTableColumn(holCols, ['Used Date', 'used_date', 'UsedDate', 'tanggal_digunakan']) || 'Used Date';
+            const holIdCol = resolveTableColumn(holCols, ['UID', 'uid', 'id', 'ID', 'Id', '_id', 'Holiday ID', 'holiday_id', 'no', 'No']);
+
+            const holRevertPayload = {
+              [holStatusCol]: 'Unused',
+              [holUsedDateCol]: null
+            };
+
+            if (holIdCol && targetUsedHol[holIdCol] !== undefined && targetUsedHol[holIdCol] !== null) {
+              await supabase.from('holiday_balance').update(holRevertPayload).eq(holIdCol, targetUsedHol[holIdCol]);
+            } else {
+              const holEmpCol = resolveTableColumn(holCols, ['Employee', 'employee', 'user_uid', 'email']) || 'Employee';
+              const holTypeCol = resolveTableColumn(holCols, ['Type Holiday', 'type_holiday', 'Type', 'type']) || 'Type Holiday';
+              const holExpDateCol = resolveTableColumn(holCols, ['Expiration Date', 'expiration_date', 'Expired Date']) || 'Expiration Date';
+
+              await supabase.from('holiday_balance').update(holRevertPayload)
+                .eq(holEmpCol, targetUsedHol[holEmpCol])
+                .eq(holTypeCol, targetUsedHol[holTypeCol])
+                .eq(holStatusCol, targetUsedHol[holStatusCol])
+                .eq(holExpDateCol, targetUsedHol[holExpDateCol]);
+            }
+          }
+
+          // Reset schedule back to Working Day
+          await supabase.from('schedule').update({
+            [schedTypeCol]: 'Working Day'
+          })
+          .ilike(schedEmpCol, `%${empEmail}%`)
+          .eq(schedDateCol, fromDate);
+
+          // Recount Unused in holiday_balance
+          let recheckQuery = supabase.from('holiday_balance').select('*').limit(5000);
+          if (orConditions) {
+            recheckQuery = recheckQuery.or(orConditions);
+          }
+          const { data: recheckHolidays } = await recheckQuery;
+          let unusedCount = 0;
+          if (recheckHolidays) {
+            unusedCount = recheckHolidays.filter(row => {
+              const s = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
+              if (s !== 'unused') return false;
+              const t = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
+              const isTypeMatch = leaveType.toLowerCase().includes('extra')
+                ? (t.includes('extra off') || t.includes('extra'))
+                : (t.includes('day off') || t.includes('dayoff'));
+              if (!isTypeMatch) return false;
+              const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
+              return validKeys.some(k => empVal === k || empVal.includes(k) || k.includes(empVal));
+            }).length;
+          }
+
+          const balColCandidates = leaveType.toLowerCase().includes('extra')
+            ? ['Extra Off Balance', 'extra_off_balance', 'Extra Off', 'extraoffbalance']
+            : ['Day Off Payment Balance', 'day_off_payment_balance', 'Day Off Payment', 'dayoffbalance'];
+          const balCol = resolveTableColumn(dirCols, balColCandidates) || balColCandidates[0];
+
+          await supabase.from('employee_directory').update({
+            [balCol]: unusedCount
+          }).ilike(dirEmailCol, empEmail);
+        }
+
+        // 3: Annual Leave -> Restore balance in employee_directory & reset schedule
+        else if (leaveType === 'Annual Leave') {
+          await supabase.from('schedule').update({
+            [schedTypeCol]: 'Working Day'
+          })
+          .ilike(schedEmpCol, `%${empEmail}%`)
+          .gte(schedDateCol, fromDate)
+          .lte(schedDateCol, toDate);
+
+          const { data: emps } = await supabase.from('employee_directory').select('*').ilike(dirEmailCol, empEmail).limit(1);
+          if (emps && emps.length > 0) {
+            const empData = emps[0];
+            const annBalCol = resolveTableColumn(dirCols, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave']) || 'Annual Leave Balance';
+            const currBal = parseFloat(empData[annBalCol]) || 0;
+            await supabase.from('employee_directory').update({
+              [annBalCol]: currBal + totalDays
+            }).ilike(dirEmailCol, empEmail);
+          }
+        }
+
+        // 4, 5, 6, 7: Other Leaves -> Reset schedule
+        else if (['Sick Leave', 'Maternity Leave', 'Compassionate Leave', 'Unpaid Leave'].includes(leaveType)) {
+          await supabase.from('schedule').update({
+            [schedTypeCol]: 'Working Day'
+          })
+          .ilike(schedEmpCol, `%${empEmail}%`)
+          .gte(schedDateCol, fromDate)
+          .lte(schedDateCol, toDate);
+        }
+      }
+
+      await sendNotificationEmail(item, 'Cancelled', 'Persetujuan cuti telah dibatalkan oleh Line Manager dan kuota/saldo telah dikembalikan.');
+
+      alert('Persetujuan berhasil dibatalkan dan kuota/saldo telah dikembalikan!');
+      setIsDetailModalOpen(false);
+      setSelectedRequest(null);
+      refreshAllData();
+    } catch (err) {
+      console.error(err);
+      alert('Gagal membatalkan persetujuan: ' + err.message);
     }
     setIsProcessing(false);
   };
@@ -713,7 +880,28 @@ export default function Approval() {
     handleUpdateStatus(itemToReject, 'Rejected', rejectReason);
   };
 
-  // Filtered List based on tab and selected employee
+  // Counts for Badges
+  const pendingLeavesCount = useMemo(() => {
+    return leaveRequests.filter(r => isPendingApprovalStatus(getPropCaseInsensitive(r, ['Status', 'status', 'Approval Status']))).length;
+  }, [leaveRequests]);
+
+  const approvedLeavesCount = useMemo(() => {
+    return leaveRequests.filter(r => isApprovedStatus(getPropCaseInsensitive(r, ['Status', 'status', 'Approval Status']))).length;
+  }, [leaveRequests]);
+
+  const pendingAttCount = useMemo(() => {
+    return attendanceRequests.filter(r => isPendingApprovalStatus(getPropCaseInsensitive(r, ['Status', 'status', 'Approval Status']))).length;
+  }, [attendanceRequests]);
+
+  const approvedAttCount = useMemo(() => {
+    return attendanceRequests.filter(r => isApprovedStatus(getPropCaseInsensitive(r, ['Status', 'status', 'Approval Status']))).length;
+  }, [attendanceRequests]);
+
+  const currentLeaveCount = statusTab === 'approved' ? approvedLeavesCount : pendingLeavesCount;
+  const currentAttCount = statusTab === 'approved' ? approvedAttCount : pendingAttCount;
+  const currentTotalCount = currentLeaveCount + currentAttCount;
+
+  // Filtered List based on status tab, category tab, and selected employee
   const combinedList = useMemo(() => {
     let list = [];
     if (activeTab === 'all' || activeTab === 'leave') {
@@ -721,6 +909,19 @@ export default function Approval() {
     }
     if (activeTab === 'all' || activeTab === 'attendance') {
       list.push(...attendanceRequests);
+    }
+
+    // Filter by Status Tab
+    if (statusTab === 'pending') {
+      list = list.filter(item => {
+        const s = getPropCaseInsensitive(item, ['Status', 'status', 'Approval Status', 'approval_status'], '');
+        return isPendingApprovalStatus(s);
+      });
+    } else if (statusTab === 'approved') {
+      list = list.filter(item => {
+        const s = getPropCaseInsensitive(item, ['Status', 'status', 'Approval Status', 'approval_status'], '');
+        return isApprovedStatus(s);
+      });
     }
 
     if (selectedEmployee && selectedEmployee !== 'all') {
@@ -745,7 +946,7 @@ export default function Approval() {
       const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'created_at'])) || new Date(0);
       return dtB.getTime() - dtA.getTime();
     });
-  }, [activeTab, leaveRequests, attendanceRequests, selectedEmployee]);
+  }, [statusTab, activeTab, leaveRequests, attendanceRequests, selectedEmployee]);
 
   return (
     <div className="w-full text-gray-800 font-sans">
@@ -785,26 +986,52 @@ export default function Approval() {
             </div>
           </div>
 
-          {/* Filter Tabs & Employee Dropdown */}
-          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-4">
+          {/* Status Tabs: Pending Approval vs Approved */}
+          <div className="flex items-center gap-2 mt-4 pt-3 border-t border-gray-100">
+            <button
+              onClick={() => setStatusTab('pending')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                statusTab === 'pending'
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span>Pending ({pendingLeavesCount + pendingAttCount})</span>
+            </button>
+            <button
+              onClick={() => setStatusTab('approved')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                statusTab === 'approved'
+                  ? 'bg-green-600 text-white shadow-xs'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span>Approved ({approvedLeavesCount + approvedAttCount})</span>
+            </button>
+          </div>
+
+          {/* Category Filter Tabs & Employee Dropdown */}
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-3">
             <div className="flex p-1 bg-gray-100 rounded-xl space-x-1">
               <button
                 onClick={() => setActiveTab('all')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
-                All ({leaveRequests.length + attendanceRequests.length})
+                All ({currentTotalCount})
               </button>
               <button
                 onClick={() => setActiveTab('leave')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'leave' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'leave' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
-                Leave ({leaveRequests.length})
+                Leave ({currentLeaveCount})
               </button>
               <button
                 onClick={() => setActiveTab('attendance')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'attendance' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'attendance' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
-                Attendance ({attendanceRequests.length})
+                Attendance ({currentAttCount})
               </button>
             </div>
 
@@ -856,7 +1083,7 @@ export default function Approval() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                       </svg>
-                      <p className="text-xs">Loading pending requests...</p>
+                      <p className="text-xs">Loading requests...</p>
                     </div>
                   </td>
                 </tr>
@@ -868,7 +1095,7 @@ export default function Approval() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       <p className="font-semibold text-gray-600 text-sm">No requests found.</p>
-                      <p className="text-xs text-gray-400 mt-1">There are no pending requests matching your current filter.</p>
+                      <p className="text-xs text-gray-400 mt-1">There are no {statusTab} requests matching your current filter.</p>
                     </div>
                   </td>
                 </tr>
@@ -937,9 +1164,19 @@ export default function Approval() {
                         {durationInfo}
                       </td>
                       <td className="px-4 py-3 text-center whitespace-nowrap">
-                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-yellow-100 text-yellow-800 border border-yellow-200">
-                          {status}
-                        </span>
+                        {(() => {
+                          let badgeClass = 'bg-yellow-100 text-yellow-800 border-yellow-200';
+                          if (isApprovedStatus(status)) {
+                            badgeClass = 'bg-green-100 text-green-700 border-green-200';
+                          } else if (status.toLowerCase().includes('reject') || status.toLowerCase().includes('cancel')) {
+                            badgeClass = 'bg-red-100 text-red-700 border-red-200';
+                          }
+                          return (
+                            <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${badgeClass}`}>
+                              {status}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                         {attachmentUrl && attachmentUrl.startsWith('http') ? (
@@ -958,30 +1195,72 @@ export default function Approval() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-center space-x-1.5">
-                          <button
-                            disabled={isProcessing}
-                            onClick={() => {
-                              if (window.confirm(`Approve request from ${employeeName}?`)) {
-                                handleUpdateStatus(item, 'Approved');
-                              }
-                            }}
-                            className="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1 cursor-pointer"
-                            title="Approve"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                            <span>Approve</span>
-                          </button>
-                          <button
-                            disabled={isProcessing}
-                            onClick={(e) => openRejectDialog(item, e)}
-                            className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 active:scale-95 text-red-600 border border-red-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
-                            title="Reject"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                            <span>Reject</span>
-                          </button>
-                        </div>
+                        {(() => {
+                          const s = getPropCaseInsensitive(item, ['Status', 'status', 'Approval Status'], '');
+                          if (isApprovedStatus(s)) {
+                            return (
+                              <button
+                                disabled={isProcessing}
+                                onClick={() => handleCancelApproved(item)}
+                                className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 active:scale-95 text-red-600 border border-red-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer mx-auto"
+                                title="Cancel Approval & Restore Balance"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                <span>Cancel Approval</span>
+                              </button>
+                            );
+                          }
+                          if (s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel') {
+                            return (
+                              <div className="flex items-center justify-center space-x-1.5">
+                                <button
+                                  disabled={isProcessing}
+                                  onClick={() => handleCancelApproved(item)}
+                                  className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 active:scale-95 text-purple-700 border border-purple-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
+                                  title="Approve Cancellation & Restore Balance"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                                  <span>Approve Cancel</span>
+                                </button>
+                                <button
+                                  disabled={isProcessing}
+                                  onClick={(e) => openRejectDialog(item, e)}
+                                  className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 active:scale-95 text-gray-700 border border-gray-300 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
+                                  title="Reject Cancel Request"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                  <span>Reject</span>
+                                </button>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="flex items-center justify-center space-x-1.5">
+                              <button
+                                disabled={isProcessing}
+                                onClick={() => {
+                                  if (window.confirm(`Approve request from ${employeeName}?`)) {
+                                    handleUpdateStatus(item, 'Approved');
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1 cursor-pointer"
+                                title="Approve"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                                <span>Approve</span>
+                              </button>
+                              <button
+                                disabled={isProcessing}
+                                onClick={(e) => openRejectDialog(item, e)}
+                                className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 active:scale-95 text-red-600 border border-red-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
+                                title="Reject"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                <span>Reject</span>
+                              </button>
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   );
@@ -992,7 +1271,7 @@ export default function Approval() {
         </div>
       </div>
 
-      {/* 2. Team Working Calendar Card (Dipindahkan ke paling bawah) */}
+      {/* 2. Team Working Calendar Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 w-full">
         <div className="flex flex-row justify-between items-start sm:items-center pb-4 mb-4 border-b border-gray-100 gap-2 sm:gap-3">
           <div className="flex-1 pr-2 sm:pr-3">
@@ -1186,7 +1465,7 @@ export default function Approval() {
                     <div className="p-3 bg-white border border-gray-200 rounded-xl">
                       <span className="text-[10px] text-gray-400 font-semibold block">Total Days Requested</span>
                       <span className="text-xs sm:text-sm font-black text-gray-800">
-                        {getPropCaseInsensitive(selectedRequest, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration', 'duration'], '1')} Day(s)
+                        {getPropCaseInsensitive(selectedRequest, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration'], '1')} Day(s)
                       </span>
                     </div>
                     <div className="p-3 bg-white border border-gray-200 rounded-xl">
@@ -1269,26 +1548,45 @@ export default function Approval() {
               >
                 Close
               </button>
-              <button
-                type="button"
-                disabled={isProcessing}
-                onClick={() => openRejectDialog(selectedRequest)}
-                className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition cursor-pointer"
-              >
-                Reject
-              </button>
-              <button
-                type="button"
-                disabled={isProcessing}
-                onClick={() => {
-                  if (window.confirm('Are you sure you want to approve this request?')) {
-                    handleUpdateStatus(selectedRequest, 'Approved');
-                  }
-                }}
-                className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl shadow-sm transition cursor-pointer"
-              >
-                {isProcessing ? 'Saving...' : 'Approve'}
-              </button>
+              {(() => {
+                const s = getPropCaseInsensitive(selectedRequest, ['Status', 'status', 'Approval Status'], '');
+                if (isApprovedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel') {
+                  return (
+                    <button
+                      type="button"
+                      disabled={isProcessing}
+                      onClick={() => handleCancelApproved(selectedRequest)}
+                      className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition cursor-pointer"
+                    >
+                      {s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel' ? 'Approve Cancellation' : 'Cancel Approval'}
+                    </button>
+                  );
+                }
+                return (
+                  <>
+                    <button
+                      type="button"
+                      disabled={isProcessing}
+                      onClick={() => openRejectDialog(selectedRequest)}
+                      className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition cursor-pointer"
+                    >
+                      Reject
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isProcessing}
+                      onClick={() => {
+                        if (window.confirm('Are you sure you want to approve this request?')) {
+                          handleUpdateStatus(selectedRequest, 'Approved');
+                        }
+                      }}
+                      className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl shadow-sm transition cursor-pointer"
+                    >
+                      {isProcessing ? 'Saving...' : 'Approve'}
+                    </button>
+                  </>
+                );
+              })()}
             </div>
 
           </div>
