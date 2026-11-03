@@ -363,6 +363,34 @@ export default function Leave() {
 
   // Upload Logic Mock
 
+  const getLineManagerEmail = async () => {
+    if (!currentUser) return "ranggi@vivre-group.com";
+    const rawMgr = getPropCaseInsensitive(currentUser, ['Line Manager Email', 'line_manager_email', 'Line Manager', 'line_manager', 'Manager Email', 'manager_email', 'Manager', 'manager', 'Reports To', 'reports_to', 'Atasan Email', 'atasan_email', 'Approver'], '').trim();
+    if (!rawMgr) return "ranggi@vivre-group.com";
+    if (rawMgr.includes('@')) return rawMgr.toLowerCase();
+
+    for (const tableName of ['employee_directory', 'employees']) {
+      try {
+        const { data, error } = await supabase.from(tableName).select('*').limit(2000);
+        if (!error && data && data.length > 0) {
+          const matched = data.find(row => {
+            const empId = getPropCaseInsensitive(row, ['employee id', 'employee_id', 'employeeid', 'id']);
+            const empName = getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name']);
+            const empEmail = getPropCaseInsensitive(row, ['email', 'Email', 'user_uid', 'USER_UID']);
+            return (empId && empId.toLowerCase() === rawMgr.toLowerCase()) ||
+                   (empName && empName.toLowerCase() === rawMgr.toLowerCase()) ||
+                   (empEmail && empEmail.toLowerCase() === rawMgr.toLowerCase());
+          });
+          if (matched) {
+            const foundEmail = getPropCaseInsensitive(matched, ['email', 'Email', 'user_uid', 'USER_UID', 'Employee work email', 'work_email']);
+            if (foundEmail && foundEmail.includes('@')) return foundEmail.trim().toLowerCase();
+          }
+        }
+      } catch (e) {}
+    }
+    return "ranggi@vivre-group.com";
+  };
+
   const uploadToGoogleDrive = async (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -477,6 +505,28 @@ export default function Leave() {
       const { error: insErr } = await supabase.from('leave_requests').insert([payload]);
       if (insErr) throw insErr;
 
+      // Send Submission Email
+      const lineManager = await getLineManagerEmail();
+      const formattedStart = formatDateDisplay(formStart, 'en');
+      const formattedEnd = formatDateDisplay(formEnd, 'en');
+      const durLabel = `${totalDays} Day(s)`;
+
+      try {
+        await fetch(GAS_WEB_APP_URL, {
+          method: 'POST',
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "sendEmail",
+            to: lineManager,
+            subject: `Leave Request: ${formType} - ${profileName}`,
+            body: `Hi,\n\nA new leave request has been submitted:\n\nEmployee: ${profileName}\nLeave Type: ${formType}\nPeriod: ${formattedStart} - ${formattedEnd} (${durLabel})\n\nPlease review via the HRIS Portal.`,
+            fromEmail: userEmail
+          })
+        });
+      } catch (mailErr) {
+        console.warn("Notice email could not be sent:", mailErr);
+      }
+
       alert('Leave request submitted successfully!');
       setIsLeaveModalOpen(false);
       refreshAllData();
@@ -500,6 +550,49 @@ export default function Leave() {
         const colCreated = resolveTableColumn(cols, ['CreatedDate', 'created_date', 'Created Date']) || 'CreatedDate';
         await supabase.from('leave_requests').delete().eq(colEmp, record[colEmp]).eq(colCreated, record[colCreated]);
       }
+      
+      // Send Cancellation Email
+      const rType = getPropCaseInsensitive(record, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '-');
+      const rStartRaw = getPropCaseInsensitive(record, ['From Date', 'from_date', 'Start Date', 'start_date'], '-');
+      const rEndRaw = getPropCaseInsensitive(record, ['To Date', 'to_date', 'End Date', 'end_date'], '-');
+      const rStart = formatDateDisplay(rStartRaw, 'en');
+      const rEnd = formatDateDisplay(rEndRaw, 'en');
+      
+      let rDur = getPropCaseInsensitive(record, ['Total Days', 'total_days', 'Duration', 'duration', 'Days', 'days'], '');
+      if (!rDur) {
+        const dS = parseFlexibleDate(rStartRaw);
+        const dE = parseFlexibleDate(rEndRaw);
+        if (dS && dE) rDur = Math.ceil(Math.abs(dE - dS) / (1000 * 60 * 60 * 24)) + 1;
+        else rDur = 1;
+      }
+      const durLabel = `${rDur} day(s)`;
+
+      const lineManager = getPropCaseInsensitive(currentUser, ['Line Manager', 'line_manager', 'Manager Email', 'Approver', 'Atasan Email'], 'ranggiit@gmail.com');
+      
+      try {
+        await fetch(GAS_WEB_APP_URL, {
+          method: 'POST',
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "sendEmail",
+            to: lineManager,
+            subject: `Cancel Leave Request: ${rType} - ${profileName}`,
+            body: `Hi,
+
+A pending leave request has been CANCELLED by the employee:
+
+Employee: ${profileName}
+Leave Type: ${rType}
+Period: ${rStart} to ${rEnd} (${durLabel})
+
+No further action is required.`,
+            fromEmail: userEmail
+          })
+        });
+      } catch (mailErr) {
+        console.warn("Notice email could not be sent:", mailErr);
+      }
+
       alert('Request cancelled successfully.');
       refreshAllData();
     } catch (e) {
