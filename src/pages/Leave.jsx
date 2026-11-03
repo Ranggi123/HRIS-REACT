@@ -544,7 +544,17 @@ export default function Leave() {
       const formattedEnd = formatDateDisplay(formEnd, 'en');
       const durLabel = `${totalDays} Day(s)`;
 
-      const emailText = `Hi,\n\nA new leave request has been submitted:\n\nEmployee: ${profileName}\nLeave Type: ${formType}\nPeriod: ${formattedStart} - ${formattedEnd} (${durLabel})\n\nPlease review via the HRIS Portal.\n\ngo to HRIS: https://hr.arratechs.com/approval`;
+      const emailText = `Hi,
+
+A new leave request has been submitted:
+
+Employee: ${profileName}
+Leave Type: ${formType}
+Period: ${formattedStart} - ${formattedEnd} (${durLabel})
+
+Please review via the HRIS Portal.
+
+go to HRIS: https://hr.arratechs.com/approval`;
 
       const emailHtml = `
 <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
@@ -636,7 +646,15 @@ export default function Leave() {
             action: "sendEmail",
             to: lineManager,
             subject: `Cancel Leave Request: ${rType} - ${profileName}`,
-            body: `Hi,\n\nA pending leave request has been CANCELLED by the employee:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nNo further action is required.`,
+            body: `Hi,
+
+A pending leave request has been CANCELLED by the employee:
+
+Employee: ${profileName}
+Leave Type: ${rType}
+Period: ${rStart} to ${rEnd} (${durLabel})
+
+No further action is required.`,
             fromEmail: userEmail
           })
         });
@@ -677,15 +695,15 @@ export default function Leave() {
       
       {/* Leave Records Container */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-3 sm:p-6 relative mb-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 mb-3 sm:mb-5 border-b border-gray-200 gap-2 sm:gap-4">
-          <div>
-            <h3 className="text-base sm:text-lg font-bold text-gray-800 flex flex-wrap items-center gap-2 pr-10 sm:pr-0">Leave Records</h3>
-            <p className="text-xs text-gray-500 mt-1">Manage and track your leave submissions</p>
+        <div className="flex flex-row justify-between items-start sm:items-center pb-4 mb-3 sm:mb-5 border-b border-gray-200 gap-2 sm:gap-4">
+          <div className="flex-1 pr-3">
+            <h3 className="text-base sm:text-lg font-bold text-gray-800 flex flex-wrap items-center gap-2">Leave Records</h3>
+            <p className="text-xs text-gray-500 mt-1 break-words">Manage and track your leave submissions</p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0 sm:gap-3">
             <button 
               onClick={handleOpenModal}
-              className="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 shadow-sm bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
               <span>Request Leave</span>
