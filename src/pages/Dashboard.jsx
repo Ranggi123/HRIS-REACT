@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { useNavigate } from 'react-router-dom'; // Tambahan navigasi
 
 const SUPABASE_URL = 'https://lfexpyqmjfkymvbacweo.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZXhweXFtamZreW12YmFjd2VvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2MzA3OTEsImV4cCI6MjEwNjIwNjc5MX0._e53PLDxsbN0aYM1mqSxLkVGnS0X85D9FYBvb1sQIWY';
@@ -10,6 +11,7 @@ const TABLE_PUBLIC_HOLIDAYS = 'public_holidays';
 const TABLE_EVENTS = ['events', 'event', 'company_events'];
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [calendarMode, setCalendarMode] = useState('schedule'); // 'schedule' | 'public_holiday' | 'event'
   const [calendarDate, setCalendarDate] = useState(new Date(2026, 9, 1)); // Default Oktober 2026
   const [loading, setLoading] = useState(false);
@@ -21,6 +23,14 @@ export default function Dashboard() {
 
   // Modal State
   const [scheduleModalData, setScheduleModalData] = useState(null);
+
+  // Cek sesi login di awal render (tambahan proteksi ganda)
+  useEffect(() => {
+    const session = localStorage.getItem('hris_session_data');
+    if (!session) {
+      navigate('/login', { replace: true });
+    }
+  }, [navigate]);
 
   // Helper case-insensitive prop
   const getPropCaseInsensitive = (obj, candidateKeys, fallback = '') => {
