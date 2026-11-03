@@ -30,7 +30,7 @@ const parseFlexibleDate = (dateVal) => {
   return null;
 };
 
-const formatDateDisplay = (dateVal, lang = 'id') => {
+const formatDateDisplay = (dateVal, lang = 'en') => {
   const parsed = parseFlexibleDate(dateVal);
   if (!parsed) return dateVal || '-';
   const locale = lang === 'id' ? 'id-ID' : 'en-US';
@@ -100,9 +100,9 @@ export default function Approval() {
     return null;
   });
 
-  const lang = localStorage.getItem('hris_lang') || 'id';
+  const lang = localStorage.getItem('hris_lang') || 'en';
 
-  // State Data
+  // Data States
   const [loading, setLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [leaveRequests, setLeaveRequests] = useState([]);
@@ -122,7 +122,7 @@ export default function Approval() {
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
 
-  // Line Manager Work Email dari akun yang sedang login
+  // Line Manager Work Email of current logged in user
   const userWorkEmail = useMemo(() => {
     return (
       getPropCaseInsensitive(currentUser, [
@@ -143,7 +143,7 @@ export default function Approval() {
     return getPropCaseInsensitive(currentUser, ['Name', 'name', 'nama', 'fullname', 'full_name'], userWorkEmail.split('@')[0] || 'Manager');
   }, [currentUser, userWorkEmail]);
 
-  // Fetch Leave & Attendance yang berstatus Pending Approval untuk Line Manager yang bersangkutan
+  // Fetch Pending Approval Requests for this Line Manager
   const refreshAllData = useCallback(async () => {
     if (!userWorkEmail) return;
     setLoading(true);
@@ -169,7 +169,7 @@ export default function Approval() {
           }));
       }
 
-      // 2. Fetch Attendance (langsung dari tabel 'attendance')
+      // 2. Fetch Attendance Requests
       let pendingAttendance = [];
       try {
         const { data: attData, error: attErr } = await supabase
@@ -205,7 +205,7 @@ export default function Approval() {
     refreshAllData();
   }, [refreshAllData]);
 
-  // Kirim email notifikasi ke karyawan saat di-approve / di-reject
+  // Send email notification upon Approve / Reject
   const sendNotificationEmail = async (item, newStatus, reason = '') => {
     const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']);
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'employee_name'], 'Employee');
@@ -219,9 +219,9 @@ export default function Approval() {
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
         <h2 style="color: ${statusColor}; margin-top: 0; font-size: 18px;">Request ${newStatus}</h2>
-        <p style="font-size: 14px;">Halo <strong>${empName}</strong>,</p>
-        <p style="font-size: 14px;">Pengajuan <strong>${reqType} (${item._category})</strong> Anda telah <strong>${newStatus.toLowerCase()}</strong> oleh Line Manager (<strong>${userName}</strong>).</p>
-        ${reason ? `<p style="font-size: 14px; background: #fef2f2; border-left: 4px solid #ef4444; padding: 10px; margin: 15px 0;"><strong>Alasan Penolakan:</strong> ${reason}</p>` : ''}
+        <p style="font-size: 14px;">Hello <strong>${empName}</strong>,</p>
+        <p style="font-size: 14px;">Your <strong>${reqType} (${item._category})</strong> request has been <strong>${newStatus.toLowerCase()}</strong> by your Line Manager (<strong>${userName}</strong>).</p>
+        ${reason ? `<p style="font-size: 14px; background: #fef2f2; border-left: 4px solid #ef4444; padding: 10px; margin: 15px 0;"><strong>Rejection Reason:</strong> ${reason}</p>` : ''}
         <div style="margin-top: 20px; padding: 12px; background: #f8fafc; border-radius: 8px; font-size: 13px;">
           <p style="margin: 4px 0;"><strong>Status:</strong> <span style="color: ${statusColor}; font-weight: bold;">${newStatus}</span></p>
           <p style="margin: 4px 0;"><strong>Line Manager:</strong> ${userWorkEmail}</p>
@@ -247,7 +247,7 @@ export default function Approval() {
     }
   };
 
-  // Fungsi Action: Approve atau Reject
+  // Action: Approve or Reject
   const handleUpdateStatus = async (item, newStatus, reason = '') => {
     setIsProcessing(true);
     try {
@@ -288,7 +288,7 @@ export default function Approval() {
 
       await sendNotificationEmail(item, newStatus, reason);
 
-      alert(`Permintaan berhasil di-${newStatus === 'Approved' ? 'setujui (Approved)' : 'tolak (Rejected)'}!`);
+      alert(`Request successfully ${newStatus === 'Approved' ? 'approved' : 'rejected'}!`);
       setIsDetailModalOpen(false);
       setIsRejectModalOpen(false);
       setItemToReject(null);
@@ -297,7 +297,7 @@ export default function Approval() {
       refreshAllData();
     } catch (err) {
       console.error(err);
-      alert('Gagal memproses permintaan: ' + err.message);
+      alert('Failed to process request: ' + err.message);
     }
     setIsProcessing(false);
   };
@@ -351,134 +351,97 @@ export default function Approval() {
   }, [activeTab, leaveRequests, attendanceRequests, searchTerm]);
 
   return (
-    <div className="w-full text-gray-800 font-sans p-2 sm:p-4 md:p-6">
+    <div className="w-full text-gray-800 font-sans">
       
-      {/* Header Container */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-100 gap-4">
-          <div>
+      {/* Unified Main Card: Controls, Filters, and Table */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-6 w-full">
+        
+        {/* Top Header Row & Filters */}
+        <div className="p-4 sm:p-6 pb-4 border-b border-gray-100">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <div>
-                <h2 className="text-lg sm:text-xl font-bold text-gray-900">Approval Requests</h2>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Tinjau dan setujui pengajuan Cuti & Kehadiran dari tim Anda.
-                </p>
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900">Approval Requests</h2>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+              <div className="bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs">
+                <span className="text-gray-400 mr-1.5 font-medium">Line Manager:</span>
+                <span className="font-semibold text-gray-700">{userWorkEmail || 'Not Logged In'}</span>
               </div>
+
+              <button
+                onClick={refreshAllData}
+                disabled={loading}
+                className="px-3.5 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
+                title="Refresh Data"
+              >
+                <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>{loading ? 'Loading...' : 'Refresh'}</span>
+              </button>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-            <div className="bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs">
-              <span className="text-gray-400 mr-1.5 font-medium">Line Manager:</span>
-              <span className="font-semibold text-gray-700">{userWorkEmail || 'Belum Login'}</span>
+          {/* Filter Tabs & Search Bar */}
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-4">
+            <div className="flex p-1 bg-gray-100 rounded-xl space-x-1">
+              <button
+                onClick={() => setActiveTab('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                All ({leaveRequests.length + attendanceRequests.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('leave')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'leave' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Leave ({leaveRequests.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('attendance')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'attendance' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Attendance ({attendanceRequests.length})
+              </button>
             </div>
 
-            <button
-              onClick={refreshAllData}
-              disabled={loading}
-              className="px-3.5 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
-              title="Refresh Data"
-            >
-              <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            <div className="relative min-w-[240px]">
+              <input
+                type="text"
+                placeholder="Search employee, type..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-xs border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+              />
+              <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              <span>{loading ? 'Memuat...' : 'Refresh'}</span>
-            </button>
+              {searchTerm && (
+                <button onClick={() => setSearchTerm('')} className="absolute right-3 top-2 text-gray-400 hover:text-gray-600 text-xs">✕</button>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Stats Summary Cards (Matching Image Style) */}
-        <div className="mt-5 w-full bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm flex items-center divide-x divide-gray-100">
-          <div 
-            onClick={() => setActiveTab('all')} 
-            className={`flex-1 flex flex-col items-center justify-center py-4 cursor-pointer transition ${activeTab === 'all' ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
-          >
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">TOTAL PENDING</span>
-            <span className="text-xl sm:text-2xl font-black text-[#d32f2f]">{leaveRequests.length + attendanceRequests.length}</span>
-          </div>
-          
-          <div 
-            onClick={() => setActiveTab('leave')} 
-            className={`flex-1 flex flex-col items-center justify-center py-4 cursor-pointer transition ${activeTab === 'leave' ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
-          >
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">LEAVE</span>
-            <span className="text-xl sm:text-2xl font-black text-[#388e3c]">{leaveRequests.length}</span>
-          </div>
-
-          <div 
-            onClick={() => setActiveTab('attendance')} 
-            className={`flex-1 flex flex-col items-center justify-center py-4 cursor-pointer transition ${activeTab === 'attendance' ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
-          >
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">ATTENDANCE</span>
-            <span className="text-xl sm:text-2xl font-black text-[#d81b60]">{attendanceRequests.length}</span>
-          </div>
-
-          <div className="flex-1 flex flex-col items-center justify-center py-4 cursor-default">
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">PROCESSED</span>
-            <span className="text-xl sm:text-2xl font-black text-slate-800">0</span>
-          </div>
-        </div>
-
-        {/* Filter Tabs & Search Bar */}
-        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-6 pt-4 border-t border-gray-100">
-          <div className="flex p-1 bg-gray-100 rounded-xl space-x-1">
-            <button
-              onClick={() => setActiveTab('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Semua ({leaveRequests.length + attendanceRequests.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('leave')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'leave' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Cuti / Leave ({leaveRequests.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('attendance')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab === 'attendance' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Absensi ({attendanceRequests.length})
-            </button>
-          </div>
-
-          <div className="relative min-w-[240px]">
-            <input
-              type="text"
-              placeholder="Cari karyawan, tipe..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-            />
-            <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            {searchTerm && (
-              <button onClick={() => setSearchTerm('')} className="absolute right-3 top-2 text-gray-400 hover:text-gray-600 text-xs">✕</button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Main List Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Main List Table */}
+        <div className="overflow-x-auto w-full">
           <table className="w-full text-sm text-left text-gray-600">
             <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-4 py-3">Kategori</th>
-                <th className="px-4 py-3">Karyawan</th>
-                <th className="px-4 py-3">Tipe Pengajuan</th>
-                <th className="px-4 py-3">Tanggal / Periode</th>
-                <th className="px-4 py-3 text-center">Durasi / Jam</th>
+                <th className="px-4 py-3">Category</th>
+                <th className="px-4 py-3">Employee</th>
+                <th className="px-4 py-3">Request Type</th>
+                <th className="px-4 py-3">Date / Period</th>
+                <th className="px-4 py-3 text-center">Duration / Time</th>
                 <th className="px-4 py-3 text-center">Status</th>
-                <th className="px-4 py-3 text-center">Bukti / Lampiran</th>
-                <th className="px-4 py-3 text-center">Aksi</th>
+                <th className="px-4 py-3 text-center">Attachment / Proof</th>
+                <th className="px-4 py-3 text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -490,7 +453,7 @@ export default function Approval() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                       </svg>
-                      <p className="text-xs">Memuat daftar pengajuan pending...</p>
+                      <p className="text-xs">Loading pending requests...</p>
                     </div>
                   </td>
                 </tr>
@@ -501,19 +464,19 @@ export default function Approval() {
                       <svg className="w-10 h-10 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      <p className="font-semibold text-gray-600 text-sm">Tidak ada permintaan yang menunggu persetujuan.</p>
-                      <p className="text-xs text-gray-400 mt-1">Semua pengajuan cuti dan absensi tim Anda telah diproses.</p>
+                      <p className="font-semibold text-gray-600 text-sm">No requests pending approval.</p>
+                      <p className="text-xs text-gray-400 mt-1">All leave and attendance requests from your team have been processed.</p>
                     </div>
                   </td>
                 </tr>
               ) : (
                 combinedList.map((item, idx) => {
                   const isLeave = item._category === 'Leave';
-                  const employeeName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Tanpa Nama');
+                  const employeeName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'No Name');
                   const employeeEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid'], '-');
                   
                   const reqType = isLeave
-                    ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], 'Cuti')
+                    ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], 'Leave')
                     : getPropCaseInsensitive(item, ['Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Attendance');
 
                   const status = getPropCaseInsensitive(item, ['Status', 'status', 'Approval Status'], 'Pending Approval');
@@ -534,16 +497,16 @@ export default function Approval() {
                       const dE = parseFlexibleDate(getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']));
                       dur = (dS && dE) ? Math.ceil(Math.abs(dE - dS) / (1000 * 60 * 60 * 24)) + 1 : '1';
                     }
-                    durationInfo = `${dur} Hari`;
+                    durationInfo = `${dur} Day${Number(dur) === 1 ? '' : 's'}`;
                   } else {
                     const attDate = formatDateDisplay(getPropCaseInsensitive(item, ['Date', 'date', 'attendance_date', 'CreatedDate', 'created_date']), lang);
                     dateInfo = attDate;
                     const clockIn = getPropCaseInsensitive(item, ['Clock In', 'clock_in', 'In Time', 'in_time'], '');
                     const clockOut = getPropCaseInsensitive(item, ['Clock Out', 'clock_out', 'Out Time', 'out_time'], '');
                     if (clockIn || clockOut) {
-                      durationInfo = `${clockIn || '--:--'} s/d ${clockOut || '--:--'}`;
+                      durationInfo = `${clockIn || '--:--'} to ${clockOut || '--:--'}`;
                     } else {
-                      durationInfo = 'Presensi';
+                      durationInfo = 'Attendance';
                     }
                   }
 
@@ -553,30 +516,30 @@ export default function Approval() {
                       onClick={() => openDetailModal(item)}
                       className="hover:bg-blue-50/40 transition cursor-pointer text-xs sm:text-sm border-b border-gray-100"
                     >
-                      {/* Kategori Badge */}
+                      {/* Category Badge */}
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className={`px-2 py-1 rounded-md text-[11px] font-bold border ${isLeave ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}>
                           {item._category}
                         </span>
                       </td>
 
-                      {/* Karyawan */}
+                      {/* Employee */}
                       <td className="px-4 py-3">
                         <div className="font-semibold text-gray-900">{employeeName}</div>
                         <div className="text-[11px] text-gray-400 truncate max-w-[150px]">{employeeEmail}</div>
                       </td>
 
-                      {/* Tipe Pengajuan */}
+                      {/* Request Type */}
                       <td className="px-4 py-3 font-medium text-gray-800">
                         <span className="font-semibold text-gray-800">{reqType}</span>
                       </td>
 
-                      {/* Tanggal / Periode */}
+                      {/* Date / Period */}
                       <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-700">
                         {dateInfo}
                       </td>
 
-                      {/* Durasi */}
+                      {/* Duration */}
                       <td className="px-4 py-3 text-center font-bold text-gray-800 whitespace-nowrap">
                         {durationInfo}
                       </td>
@@ -599,20 +562,20 @@ export default function Approval() {
                             className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100 hover:bg-blue-100 transition"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                            <span>Lihat</span>
+                            <span>View</span>
                           </button>
                         ) : (
                           <span className="text-gray-300">-</span>
                         )}
                       </td>
 
-                      {/* Aksi Button */}
+                      {/* Actions */}
                       <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center space-x-1.5">
                           <button
                             disabled={isProcessing}
                             onClick={() => {
-                              if (window.confirm(`Setujui (Approve) pengajuan dari ${employeeName}?`)) {
+                              if (window.confirm(`Approve request from ${employeeName}?`)) {
                                 handleUpdateStatus(item, 'Approved');
                               }
                             }}
@@ -642,18 +605,18 @@ export default function Approval() {
         </div>
       </div>
 
-      {/* Modal Detail Request */}
+      {/* Detail Request Modal */}
       {isDetailModalOpen && selectedRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-4 sm:p-6 border border-gray-100 max-h-[90vh] overflow-y-auto">
             
-            {/* Header Modal */}
+            {/* Modal Header */}
             <div className="flex justify-between items-center pb-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
                 <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${selectedRequest._category === 'Leave' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}>
                   {selectedRequest._category}
                 </span>
-                <h3 className="text-base sm:text-lg font-bold text-gray-800">Detail Pengajuan</h3>
+                <h3 className="text-base sm:text-lg font-bold text-gray-800">Request Detail</h3>
               </div>
               <button 
                 onClick={() => setIsDetailModalOpen(false)} 
@@ -663,9 +626,9 @@ export default function Approval() {
               </button>
             </div>
 
-            {/* Informasi Karyawan */}
+            {/* Employee Information */}
             <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Informasi Karyawan</span>
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Employee Information</span>
               <div className="text-sm font-bold text-gray-800">
                 {getPropCaseInsensitive(selectedRequest, ['Name', 'name', 'nama', 'fullname', 'full_name'], '-')}
               </div>
@@ -677,11 +640,11 @@ export default function Approval() {
               </div>
             </div>
 
-            {/* Parameter Detail Sesuai Cuti / Attendance */}
+            {/* Details according to Category */}
             <div className="mt-4 space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                  <span className="text-[10px] text-gray-400 font-semibold block">Tipe Pengajuan</span>
+                  <span className="text-[10px] text-gray-400 font-semibold block">Request Type</span>
                   <span className="text-xs sm:text-sm font-bold text-blue-700">
                     {selectedRequest._category === 'Leave'
                       ? getPropCaseInsensitive(selectedRequest, ['Leave Type', 'leave_type', 'Type', 'type'], '-')
@@ -689,7 +652,7 @@ export default function Approval() {
                   </span>
                 </div>
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                  <span className="text-[10px] text-gray-400 font-semibold block">Status Saat Ini</span>
+                  <span className="text-[10px] text-gray-400 font-semibold block">Current Status</span>
                   <span className="text-xs sm:text-sm font-bold text-yellow-600">
                     {getPropCaseInsensitive(selectedRequest, ['Status', 'status', 'Approval Status'], 'Pending Approval')}
                   </span>
@@ -700,13 +663,13 @@ export default function Approval() {
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                      <span className="text-[10px] text-gray-400 font-semibold block">Dari Tanggal</span>
+                      <span className="text-[10px] text-gray-400 font-semibold block">From Date</span>
                       <span className="text-xs sm:text-sm font-semibold text-gray-800">
                         {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['From Date', 'from_date', 'Start Date', 'start_date']), lang)}
                       </span>
                     </div>
                     <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                      <span className="text-[10px] text-gray-400 font-semibold block">Sampai Tanggal</span>
+                      <span className="text-[10px] text-gray-400 font-semibold block">To Date</span>
                       <span className="text-xs sm:text-sm font-semibold text-gray-800">
                         {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['To Date', 'to_date', 'End Date', 'end_date']), lang)}
                       </span>
@@ -715,13 +678,13 @@ export default function Approval() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                      <span className="text-[10px] text-gray-400 font-semibold block">Total Hari Pengajuan</span>
+                      <span className="text-[10px] text-gray-400 font-semibold block">Total Days Requested</span>
                       <span className="text-xs sm:text-sm font-black text-gray-800">
-                        {getPropCaseInsensitive(selectedRequest, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration', 'duration'], '1')} Hari
+                        {getPropCaseInsensitive(selectedRequest, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration', 'duration'], '1')} Day(s)
                       </span>
                     </div>
                     <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                      <span className="text-[10px] text-gray-400 font-semibold block">Sisa / Final Balance</span>
+                      <span className="text-[10px] text-gray-400 font-semibold block">Remaining / Final Balance</span>
                       <span className="text-xs sm:text-sm font-black text-gray-800">
                         {getPropCaseInsensitive(selectedRequest, ['Final balance', 'final_balance', 'Final Balance'], '-')}
                       </span>
@@ -731,7 +694,7 @@ export default function Approval() {
               ) : (
                 <>
                   <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                    <span className="text-[10px] text-gray-400 font-semibold block">Tanggal Presensi</span>
+                    <span className="text-[10px] text-gray-400 font-semibold block">Attendance Date</span>
                     <span className="text-xs sm:text-sm font-semibold text-gray-800">
                       {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['Date', 'date', 'attendance_date', 'CreatedDate']), lang)}
                     </span>
@@ -754,18 +717,18 @@ export default function Approval() {
                 </>
               )}
 
-              {/* Catatan / Alasan */}
+              {/* Notes / Reason */}
               <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                <span className="text-[10px] text-gray-400 font-semibold block">Alasan / Catatan Pengajuan</span>
+                <span className="text-[10px] text-gray-400 font-semibold block">Reason / Request Notes</span>
                 <p className="text-xs text-gray-700 mt-1 whitespace-pre-wrap">
-                  {getPropCaseInsensitive(selectedRequest, ['Reason', 'reason', 'Description', 'description', 'notes', 'Notes', 'keterangan'], 'Tidak ada keterangan tambahan.')}
+                  {getPropCaseInsensitive(selectedRequest, ['Reason', 'reason', 'Description', 'description', 'notes', 'Notes', 'keterangan'], 'No additional notes provided.')}
                 </p>
               </div>
 
-              {/* Lampiran / Dokumen */}
+              {/* Supporting Document / Attachment */}
               {getPropCaseInsensitive(selectedRequest, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo', 'Link']) && (
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                  <span className="text-[10px] text-gray-400 font-semibold block mb-2">Lampiran / Bukti</span>
+                  <span className="text-[10px] text-gray-400 font-semibold block mb-2">Attachment / Proof</span>
                   <div className="flex items-center gap-3">
                     <img
                       src={getPropCaseInsensitive(selectedRequest, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo'])}
@@ -785,23 +748,23 @@ export default function Approval() {
                         }}
                         className="text-xs text-blue-600 hover:underline font-bold"
                       >
-                        Klik untuk memperbesar preview
+                        Click to enlarge preview
                       </button>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Surat dokter / foto presensi / berkas pendukung</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">Medical certificate / attendance photo / supporting documents</p>
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Action Buttons Footer */}
+            {/* Modal Footer Actions */}
             <div className="flex justify-end gap-2.5 pt-4 mt-5 border-t border-gray-100">
               <button
                 type="button"
                 onClick={() => setIsDetailModalOpen(false)}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition"
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
               >
-                Tutup
+                Close
               </button>
               <button
                 type="button"
@@ -809,19 +772,19 @@ export default function Approval() {
                 onClick={() => openRejectDialog(selectedRequest)}
                 className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition cursor-pointer"
               >
-                Tolak (Reject)
+                Reject
               </button>
               <button
                 type="button"
                 disabled={isProcessing}
                 onClick={() => {
-                  if (window.confirm('Apakah Anda yakin ingin menyetujui (Approve) permintaan ini?')) {
+                  if (window.confirm('Are you sure you want to approve this request?')) {
                     handleUpdateStatus(selectedRequest, 'Approved');
                   }
                 }}
                 className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl shadow-sm transition cursor-pointer"
               >
-                {isProcessing ? 'Menyimpan...' : 'Setujui (Approve)'}
+                {isProcessing ? 'Saving...' : 'Approve'}
               </button>
             </div>
 
@@ -829,24 +792,24 @@ export default function Approval() {
         </div>
       )}
 
-      {/* Modal Dialog Reject dengan Input Alasan */}
+      {/* Reject Modal Dialog */}
       {isRejectModalOpen && itemToReject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-5 border border-gray-100">
-            <h3 className="text-base font-bold text-gray-900 mb-1">Konfirmasi Tolak Permintaan</h3>
+            <h3 className="text-base font-bold text-gray-900 mb-1">Confirm Request Rejection</h3>
             <p className="text-xs text-gray-500 mb-3">
-              Anda akan menolak pengajuan <strong>{itemToReject._category}</strong> dari{' '}
+              You are about to reject the <strong>{itemToReject._category}</strong> request from{' '}
               <strong>{getPropCaseInsensitive(itemToReject, ['Name', 'name', 'nama', 'fullname'])}</strong>.
             </p>
 
             <label className="block text-xs font-semibold text-gray-700 mb-1">
-              Alasan Penolakan <span className="text-gray-400 font-normal">(opsional / dikirim ke karyawan)</span>
+              Rejection Reason <span className="text-gray-400 font-normal">(optional / sent to employee)</span>
             </label>
             <textarea
               rows="3"
               value={rejectReason}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Contoh: Jadwal bertabrakan dengan shift lain / bukti tidak lengkap..."
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="e.g. Schedule conflict with another shift / incomplete proof documents..."
               className="w-full p-2.5 text-xs border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-400 focus:outline-none mb-4"
             />
 
@@ -857,23 +820,23 @@ export default function Approval() {
                   setIsRejectModalOpen(false);
                   setItemToReject(null);
                 }}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition"
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
               >
-                Batal
+                Cancel
               </button>
               <button
                 disabled={isProcessing}
                 onClick={handleConfirmReject}
                 className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition cursor-pointer"
               >
-                {isProcessing ? 'Memproses...' : 'Tolak Permintaan'}
+                {isProcessing ? 'Processing...' : 'Reject Request'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal Preview Gambar / Dokumen */}
+      {/* Proof / Image Preview Modal */}
       {isPhotoModalOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
@@ -884,7 +847,7 @@ export default function Approval() {
             onClick={e => e.stopPropagation()}
           >
             <div className="flex justify-between items-center p-3 border-b border-gray-100">
-              <span className="text-xs font-bold text-gray-700">Preview Lampiran / Bukti</span>
+              <span className="text-xs font-bold text-gray-700">Attachment / Proof Preview</span>
               <button 
                 onClick={() => setIsPhotoModalOpen(false)} 
                 className="text-gray-400 hover:text-gray-600 p-1"
@@ -896,7 +859,7 @@ export default function Approval() {
               <img 
                 src={photoPreviewUrl} 
                 referrerPolicy="no-referrer" 
-                alt="Bukti Lampiran" 
+                alt="Proof Attachment" 
                 className="max-h-[70vh] w-auto object-contain rounded-lg" 
               />
             </div>

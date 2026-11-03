@@ -92,21 +92,12 @@ export default function TopNav({
   // Profile picture strictly from employee_directory column "link"
   const userAvatar = currentUser?.link || currentUser?.Link || currentUser?.photo || currentUser?.avatar || 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png';
 
-  // Cek validasi hak milik original "super admin" dari akun asli
-  const rawSuperAdminVal = 
-    currentUser?.['super admin?'] ?? 
-    currentUser?.['Super Admin?'] ?? 
-    currentUser?.['super admin'] ?? 
-    currentUser?.['Super Admin'] ?? 
-    currentUser?.super_admin;
-
-  const isOriginalSuperAdmin = 
-    rawSuperAdminVal === true || 
-    String(rawSuperAdminVal).trim().toLowerCase() === 'true';
-
-  // Logika final: Toggle muncul JIKA akun aslinya adalah super admin (isOriginalSuperAdmin),
-  // ATAU sedang berada dalam mode "Switch Account" sebagai super admin (isSuperAdminMode aktif)
-  const showSuperAdminToggle = isOriginalSuperAdmin || isSuperAdminMode;
+  // LOGIKA FINAL YANG DIBUTUHKAN:
+  // Toggle muncul JIKA: 
+  // 1. Akun aslinya (yang sedang login dan punya tag SUPER ADMIN di dashboard) mengirimkan isSuperAdminEligible = true dari MainLayout
+  // 2. ATAU mode super admin sedang aktif (isSuperAdminMode) sehingga user bisa mematikannya lagi
+  
+  const showSuperAdminToggle = isSuperAdminEligible || isSuperAdminMode;
 
   const handleLogout = () => {
     localStorage.removeItem('hris_session_data');
@@ -209,7 +200,7 @@ export default function TopNav({
                   <p className="text-xs font-bold text-gray-800 truncate mt-0.5">{userEmail}</p>
                 </div>
 
-                {/* SUPER ADMIN TOGGLE: Muncul jika akun asli adalah Super Admin ATAU sedang impersonate */}
+                {/* SUPER ADMIN TOGGLE */}
                 {showSuperAdminToggle && (
                   <div 
                     className="px-4 py-2.5 border-b border-gray-100 bg-indigo-50/40"
