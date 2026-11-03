@@ -92,37 +92,38 @@ export default function MainLayout() {
           emailToMatch = sData.session.user.email.trim().toLowerCase();
         }
       }
-      if (!emailToMatch) emailToMatch = 'ranggiit@gmail.com';
 
-      // Selalu ambil data profil terbaru dari tabel employee_directory dengan kondisi email=user login
-      try {
-        for (const tbl of TABLE_EMPLOYEES) {
-          const { data, error } = await supabase.from(tbl).select('*').limit(200);
-          if (!error && data && data.length > 0) {
-            const matched = data.find(row => {
-              const rowEmail = String(getCleanProp(row, ['email', 'email address', 'user_uid']) || '').trim().toLowerCase();
-              return rowEmail === emailToMatch;
-            });
+      // HANYA cari ke database jika ada email user login aktif
+      if (emailToMatch) {
+        try {
+          for (const tbl of TABLE_EMPLOYEES) {
+            const { data, error } = await supabase.from(tbl).select('*').limit(200);
+            if (!error && data && data.length > 0) {
+              const matched = data.find(row => {
+                const rowEmail = String(getCleanProp(row, ['email', 'email address', 'user_uid']) || '').trim().toLowerCase();
+                return rowEmail === emailToMatch;
+              });
 
-            if (matched) {
-              activeUser = matched;
-              localStorage.setItem('hris_session_data', JSON.stringify(matched));
-              break;
-            } else if (!activeUser) {
-              activeUser = data[0];
-              localStorage.setItem('hris_session_data', JSON.stringify(data[0]));
-              break;
+              if (matched) {
+                activeUser = matched;
+                localStorage.setItem('hris_session_data', JSON.stringify(matched));
+                break;
+              }
             }
           }
+        } catch (err) {
+          console.warn("Error fetching user profile:", err);
         }
-      } catch (err) {
-        console.warn("Error fetching user profile:", err);
       }
 
       if (activeUser) {
         setCurrentUser(activeUser);
         const isEligible = checkSuperAdmin(activeUser);
         setIsSuperAdminEligible(isEligible);
+      } else {
+        // Jika tidak ada user login, pastikan currentUser null agar fallback Guest terpakai
+        setCurrentUser(null);
+        setIsSuperAdminEligible(false);
       }
     };
 
@@ -197,14 +198,14 @@ export default function MainLayout() {
 
   // Profile data extraction from employee_directory (currentUser)
   const getProp = (keys, fallback) => getCleanProp(currentUser, keys) || fallback;
-  const displayName = getProp(['name', 'nama', 'fullname', 'full_name'], 'Ranggi Tino Fambudi');
-  const deptName = getProp(['department', 'dept'], 'Admin & General');
-  const jobTitle = getProp(['job title', 'job_title', 'position'], 'Business Applications Manager');
-  const empId = getProp(['employee id', 'employee_id', 'id'], 'VGII81');
-  const companyName = getProp(['company', 'Company Name'], 'Arra');
-  const email = getProp(['email', 'email address', 'user_uid'], 'ranggiit@gmail.com');
-  const workEmail = getProp(['Employee work email', 'work_email', 'work email'], 'ranggiit@gmail.com');
-  const phone = getProp(['Phone Number', 'phone_number', 'phone'], '87899115218');
+  const displayName = getProp(['name', 'nama', 'fullname', 'full_name'], currentLang === 'id' ? 'Tamu' : 'Guest');
+  const deptName = getProp(['department', 'dept'], '-');
+  const jobTitle = getProp(['job title', 'job_title', 'position'], currentLang === 'id' ? 'Tamu' : 'Guest');
+  const empId = getProp(['employee id', 'employee_id', 'id'], '-');
+  const companyName = getProp(['company', 'Company Name'], '-');
+  const email = getProp(['email', 'email address', 'user_uid'], '-');
+  const workEmail = getProp(['Employee work email', 'work_email', 'work email'], '-');
+  const phone = getProp(['Phone Number', 'phone_number', 'phone'], '-');
   
   // Status akun murni dari database employee_directory kolom status (Dideklarasikan dengan aman)
   const userStatus = String(getProp(['status', 'Status', 'STATUS'], 'Active') || 'Active');
@@ -330,11 +331,6 @@ export default function MainLayout() {
 
       // =========================================================================
       // 1. LOGIKA BADGE ATTENDANCE
-      // Syarat:
-      // - employee = user login email
-      // - Data absensi TERBARU (berdasarkan kronologi tanggal + jam check in/out)
-      // - Status terbaru = "Checking In" (bukan checking out / pulang)
-      // - Tanggal data terbaru < hari ini (date < today)
       // =========================================================================
       try {
         const { data: sampleAtt } = await supabase.from('attendance').select('*').limit(1);
@@ -354,7 +350,7 @@ export default function MainLayout() {
                  || typeCol;
         }
 
-        // Ambil riwayat absensi user (tanpa memaksakan .order di Supabase yang dapat error jika kolom teks)
+        // Ambil riwayat absensi user
         let myAttendance = [];
         const { data: qData, error: qErr } = await supabase
           .from('attendance')
@@ -377,31 +373,24 @@ export default function MainLayout() {
         }
 
         if (myAttendance.length > 0) {
-          // URUTKAN SECARA KRONOLOGIS (Timestamp tertinggi / paling mutakhir berada di index 0)
-          // Memastikan jika ada Check-In jam 08:00 dan Check-Out jam 17:00 pada tanggal yang sama,
-          // Check-Out akan selalu menjadi data terbaru.
           myAttendance.sort((a, b) => {
             const timeA = parseRowTimestamp(a).timestamp;
             const timeB = parseRowTimestamp(b).timestamp;
             if (timeA !== timeB) {
               return timeB - timeA;
             }
-            // Fallback id jika timestamp sama persis
             if (a.id && b.id && typeof a.id === 'number') {
               return b.id - a.id;
             }
             return 0;
           });
 
-          // Ambil record yang PALING TERBARU
           const latestRecord = myAttendance[0];
 
-          // 1. Periksa apakah aksi terakhir = "Checking In"
           const typeVal = String(latestRecord[typeCol] || latestRecord['Are you checking out or Checking in?'] || '').trim().toLowerCase();
           const isCheckOut = typeVal.includes('out') || typeVal.includes('pulang');
           const isCheckIn = (typeVal.includes('in') || typeVal.includes('masuk')) && !isCheckOut;
 
-          // 2. Periksa apakah tanggal absensi < hari ini (date < today)
           const parsedLatest = parseRowTimestamp(latestRecord);
           let isLessThanToday = false;
 
@@ -412,7 +401,6 @@ export default function MainLayout() {
             isLessThanToday = recordNum < todayNum;
           }
 
-          // Badge hanya aktif jika record paling baru adalah Checking In DAN tanggalnya kurang dari hari ini
           setAttendanceBadge(isCheckIn && isLessThanToday);
         } else {
           setAttendanceBadge(false);

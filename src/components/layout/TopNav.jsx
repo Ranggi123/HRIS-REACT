@@ -85,61 +85,74 @@ export default function TopNav({
     fetchWeather();
   }, []);
 
-  // Effect untuk menghitung jumlah approval jika prop tidak dipassing dengan benar dari parent
+  // Effect untuk menghitung jumlah approval secara berkala (polling)
   useEffect(() => {
-    // Ambil data work_email dari user yang sedang login
-    const workEmail = currentUser?.work_email || currentUser?.['work email'] || currentUser?.Work_Email || currentUser?.email;
-    
-    // Jika tidak ada user email, skip
-    if (!workEmail) return;
+    const calculatePendingCount = () => {
+      // Prioritaskan work_email, lalu email biasa
+      const rawEmail = 
+        currentUser?.work_email || 
+        currentUser?.['work email'] || 
+        currentUser?.Work_Email || 
+        currentUser?.email || 
+        currentUser?.Email;
 
-    // Ambil data leave requests dan attendance dari localStorage jika tidak menggunakan API fetching real-time
-    // Asumsi: data tersimpan di localStorage. Jika dari API, ganti dengan fetch API.
-    try {
-      const dbData = localStorage.getItem('hris_database');
-      if (dbData) {
-        const parsedDb = JSON.parse(dbData);
+      if (!rawEmail) return;
+
+      const normalizedWorkEmail = String(rawEmail).trim().toLowerCase();
+      let pendingCount = 0;
+
+      // Fungsi bantuan untuk memeriksa array data
+      const checkArrayForPending = (dataArray, arrayName) => {
+        if (!Array.isArray(dataArray)) return 0;
+        let count = 0;
+        dataArray.forEach(item => {
+          const status = String(item?.Status || item?.status || '').trim().toLowerCase();
+          const lineManager = String(item?.['Line Manager'] || item?.line_manager || item?.Line_Manager || item?.['line manager'] || '').trim().toLowerCase();
+          
+          if ((status === 'pending approval' || status === 'pending') && lineManager === normalizedWorkEmail) {
+            count++;
+          }
+        });
+        return count;
+      };
+
+      try {
+        // 1. Cek dari hris_database (jika data digabung di satu key)
+        const dbData = localStorage.getItem('hris_database');
+        if (dbData) {
+          const parsedDb = JSON.parse(dbData);
+          pendingCount += checkArrayForPending(parsedDb?.tables?.leave_requests || parsedDb?.leave_requests, 'db.leave_requests');
+          pendingCount += checkArrayForPending(parsedDb?.tables?.attendance || parsedDb?.attendance, 'db.attendance');
+        } 
         
-        let pendingCount = 0;
-        const normalizedWorkEmail = workEmail.trim().toLowerCase();
+        // 2. Cek dari key terpisah jika belum ada di hris_database
+        if (pendingCount === 0) {
+          const leaveDataStr = localStorage.getItem('leave_requests') || localStorage.getItem('leaveData');
+          if (leaveDataStr) pendingCount += checkArrayForPending(JSON.parse(leaveDataStr), 'local.leave_requests');
 
-        // Cek tabel leave_requests
-        const leaveRequests = parsedDb.tables?.leave_requests || [];
-        leaveRequests.forEach(req => {
-          const status = (req.Status || req.status || '').trim().toLowerCase();
-          const lineManager = (req['Line Manager'] || req.line_manager || req.Line_Manager || '').trim().toLowerCase();
-          
-          if ((status === 'pending approval' || status === 'pending') && lineManager === normalizedWorkEmail) {
-            pendingCount++;
-          }
-        });
+          const attDataStr = localStorage.getItem('attendance') || localStorage.getItem('attendanceData');
+          if (attDataStr) pendingCount += checkArrayForPending(JSON.parse(attDataStr), 'local.attendance');
+        }
 
-        // Cek tabel attendance
-        const attendances = parsedDb.tables?.attendance || [];
-        attendances.forEach(att => {
-          const status = (att.Status || att.status || '').trim().toLowerCase();
-          const lineManager = (att['Line Manager'] || att.line_manager || att.Line_Manager || '').trim().toLowerCase();
-          
-          if ((status === 'pending approval' || status === 'pending') && lineManager === normalizedWorkEmail) {
-            pendingCount++;
-          }
-        });
+        // Tampilkan debug info di console browser Anda (Silakan cek Console!)
+        // console.log(`%c[Badge Approval] Email target: ${normalizedWorkEmail} | Total Pending: ${pendingCount}`, 'color: #3b82f6; font-weight: bold');
 
         setCalculatedApprovalCount(pendingCount);
-      } else {
-        // Jika tidak ada data db di localstorage, gunakan approvalCount dari props
-        setCalculatedApprovalCount(approvalCount);
+
+      } catch (e) {
+        console.error("Error saat menghitung data approval:", e);
       }
-    } catch (e) {
-      console.error("Error calculating approval count:", e);
-      setCalculatedApprovalCount(approvalCount);
-    }
-  }, [currentUser, approvalCount]);
+    };
 
+    // Jalankan pertama kali
+    calculatePendingCount();
 
-  // Debugging log untuk mengecek isi data user di Console Browser
-  console.log("Data User TopNav:", currentUser);
-  console.log("isSuperAdminEligible prop:", isSuperAdminEligible);
+    // Jalankan setiap 3 detik untuk mengecek apakah ada approval baru yang masuk
+    const intervalId = setInterval(calculatePendingCount, 3000);
+
+    return () => clearInterval(intervalId);
+  }, [currentUser]);
+
 
   // Fallback nama dan email
   const userName = currentUser?.Name || currentUser?.name || currentUser?.fullname || 'Guest';
@@ -155,8 +168,6 @@ export default function TopNav({
     currentUser?.['super admin'] ?? 
     currentUser?.['Super Admin'] ?? 
     currentUser?.super_admin;
-
-  console.log("rawSuperAdminVal:", rawSuperAdminVal);
 
   const isSuperAdminDatabase = 
     rawSuperAdminVal === true || 
@@ -177,9 +188,8 @@ export default function TopNav({
     }
   };
 
-  // Gunakan calculatedApprovalCount untuk tampilan (atau fallback ke approvalCount dari props jika 0)
+  // Gunakan calculatedApprovalCount, atau fallback ke prop jika data tidak ketemu
   const displayApprovalCount = calculatedApprovalCount > 0 ? calculatedApprovalCount : (approvalCount > 0 ? approvalCount : 0);
-
 
   return (
     <nav className="bg-blue-600 p-2 sm:p-4 text-white shadow-md sticky top-0 z-50 w-full transition-all">

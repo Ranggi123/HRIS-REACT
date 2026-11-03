@@ -91,6 +91,10 @@ export default function Leave() {
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
+  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedHoliday, setSelectedHoliday] = useState(null);
+  const [isHolidayDetailOpen, setIsHolidayDetailOpen] = useState(false);
 
   // Form State
   const [formType, setFormType] = useState('');
@@ -788,15 +792,14 @@ No further action is required.`,
                 <th className="px-2 py-2 sm:px-4 sm:py-3">To Date</th>
                 <th className="px-2 py-2 sm:px-4 sm:py-3 text-center">Days</th>
                 <th className="px-2 py-2 sm:px-4 sm:py-3 text-center">Status</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 text-center">Attachment</th>
                 <th className="px-2 py-2 sm:px-4 sm:py-3 text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan="8" className="px-5 py-8 text-center text-gray-400 italic">Loading leave records...</td></tr>
+                <tr><td colSpan="7" className="px-5 py-8 text-center text-gray-400 italic">Loading leave records...</td></tr>
               ) : leaveRecords.length === 0 ? (
-                <tr><td colSpan="8" className="px-5 py-8 text-center text-gray-400 italic">No leave records found.</td></tr>
+                <tr><td colSpan="7" className="px-5 py-8 text-center text-gray-400 italic">No leave records found.</td></tr>
               ) : (
                 leaveRecords.map((r, i) => {
                   const status = getPropCaseInsensitive(r, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval');
@@ -818,7 +821,12 @@ No further action is required.`,
                   }
 
                   return (
-                    <tr key={i} className="hover:bg-gray-50 transition border-b border-gray-100 text-xs sm:text-sm">
+                    <tr 
+                      key={i} 
+                      onClick={() => { setSelectedHoliday(r); setIsHolidayDetailOpen(true); }}
+                      title="Click to view details"
+                      className="hover:bg-purple-50/70 cursor-pointer transition border-b border-gray-100 text-xs sm:text-sm group"
+                    >
                       <td className="px-2 py-2 sm:px-4 sm:py-3 font-semibold text-gray-800 whitespace-nowrap">
                         {formatDateDisplay(getPropCaseInsensitive(r, ['CreatedDate', 'created_date', 'Request Date', 'Date', 'created_at'], '-'), lang)}
                       </td>
@@ -833,22 +841,7 @@ No further action is required.`,
                       <td className="px-2 py-2 sm:px-4 sm:py-3 text-center">
                         <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${badgeClass}`}>{status}</span>
                       </td>
-                      <td className="px-2 py-2 sm:px-4 sm:py-3 text-center">
-                        {attachUrl && attachUrl.startsWith('http') ? (
-                          <div className="flex justify-center">
-                            <img 
-                              src={attachUrl} 
-                              referrerPolicy="no-referrer"
-                              className="w-8 h-8 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80 transition" 
-                              title="View Attachment"
-                              onClick={() => { setPhotoPreviewUrl(attachUrl); setIsPhotoModalOpen(true); }}
-                              onError={(e) => { e.target.onerror = null; e.target.src='https://cdn-icons-png.flaticon.com/128/337/337946.png'; }}
-                              alt="Attachment"
-                            />
-                          </div>
-                        ) : <span className="text-gray-300">-</span>}
-                      </td>
-                      <td className="px-2 py-2 sm:px-4 sm:py-3 text-center">
+                      <td className="px-2 py-2 sm:px-4 sm:py-3 text-center" onClick={(e) => e.stopPropagation()}>
                         {sLower.includes('approve') || sLower.includes('setuju') ? (
                           <button onClick={() => requestToCancelLeave(r)} className="text-[9px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1.5 rounded transition border border-gray-300 shadow-sm active:scale-95">Req. Cancel</button>
                         ) : !sLower.includes('reject') && !sLower.includes('tolak') && !sLower.includes('cancel') ? (
@@ -895,7 +888,12 @@ No further action is required.`,
                   else if (status.toLowerCase() === 'used') statusClass = "bg-blue-100 text-blue-700 border-blue-200";
 
                   return (
-                    <tr key={i} className="hover:bg-gray-50 transition border-b border-gray-100 text-xs sm:text-sm">
+                    <tr 
+                      key={i} 
+                      onClick={() => { setSelectedHoliday(r); setIsHolidayDetailOpen(true); }}
+                      title="Click to view details"
+                      className="hover:bg-purple-50/70 cursor-pointer transition border-b border-gray-100 text-xs sm:text-sm group"
+                    >
                       <td className="px-2 py-2 sm:px-4 sm:py-3 font-semibold text-gray-800">
                         {getPropCaseInsensitive(r, ['Type Holiday', 'type_holiday', 'Type', 'type'], '-')}
                       </td>
@@ -989,7 +987,331 @@ No further action is required.`,
         </div>
       )}
 
-      {/* Modal Photo Preview */}
+            {/* Modal Leave Request Details */}
+      {isDetailModalOpen && selectedRecord && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 animate-fadeIn"
+          onClick={() => setIsDetailModalOpen(false)}
+        >
+          <div 
+            className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-5 sm:p-6 border border-gray-100 max-h-[92vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex justify-between items-start mb-4 pb-3 border-b border-gray-100">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-bold text-gray-900">Leave Request Details</h3>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                    (() => {
+                      const st = (getPropCaseInsensitive(selectedRecord, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval')).toLowerCase();
+                      if (st.includes('approve') || st.includes('setuju')) return 'bg-green-100 text-green-700 border-green-200';
+                      if (st.includes('reject') || st.includes('tolak')) return 'bg-red-100 text-red-700 border-red-200';
+                      if (st.includes('cancel')) return 'bg-purple-100 text-purple-700 border-purple-200';
+                      return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+                    })()
+                  }`}>
+                    {getPropCaseInsensitive(selectedRecord, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval')}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  ID: <span className="font-mono font-semibold text-gray-700">{getPropCaseInsensitive(selectedRecord, ['Leave ID', 'leave_id', 'Leave_ID', 'ID', 'id', 'request_id'], '-')}</span>
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsDetailModalOpen(false)} 
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg transition hover:bg-gray-100"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {/* Modal Body / Information Grid */}
+            <div className="space-y-3.5 text-xs">
+              
+              {/* Highlight Card: Type & Period */}
+              <div className="bg-blue-50/70 border border-blue-200/60 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Leave Type</span>
+                  <p className="text-base font-extrabold text-blue-900 mt-0.5">
+                    {getPropCaseInsensitive(selectedRecord, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '-')}
+                  </p>
+                </div>
+                <div className="sm:text-right">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Total Duration</span>
+                  <p className="text-base font-extrabold text-blue-900 mt-0.5">
+                    {(() => {
+                      let dur = getPropCaseInsensitive(selectedRecord, ['Total Days', 'total_days', 'Total Days Count', 'total_days_count', 'Duration', 'duration', 'Days', 'days'], '');
+                      if (!dur) {
+                        const dS = parseFlexibleDate(getPropCaseInsensitive(selectedRecord, ['From Date', 'from_date', 'Start Date', 'start_date'], '-'));
+                        const dE = parseFlexibleDate(getPropCaseInsensitive(selectedRecord, ['To Date', 'to_date', 'End Date', 'end_date'], '-'));
+                        if (dS && dE) dur = Math.ceil(Math.abs(dE - dS) / (1000 * 60 * 60 * 24)) + 1;
+                        else dur = 1;
+                      }
+                      return `${dur} Day(s)`;
+                    })()}
+                  </p>
+                </div>
+              </div>
+
+              {/* Detail Rows */}
+              <div className="bg-gray-50/70 rounded-xl border border-gray-200 divide-y divide-gray-200/70 p-3 space-y-2.5">
+                <div className="flex justify-between items-center pt-1">
+                  <span className="text-gray-500 font-medium">Employee Name</span>
+                  <strong className="text-gray-800 font-semibold">
+                    {getPropCaseInsensitive(selectedRecord, ['Name', 'name', 'nama', 'fullname'], profileName)}
+                  </strong>
+                </div>
+
+                <div className="flex justify-between items-center pt-2">
+                  <span className="text-gray-500 font-medium">Employee / Account</span>
+                  <span className="font-mono text-gray-800 font-medium">
+                    {getPropCaseInsensitive(selectedRecord, ['Employee', 'employee', 'USER_UID', 'user_uid', 'email'], userEmail)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center pt-2">
+                  <span className="text-gray-500 font-medium">From Date</span>
+                  <strong className="text-gray-800">
+                    {formatDateDisplay(getPropCaseInsensitive(selectedRecord, ['From Date', 'from_date', 'Start Date', 'start_date'], '-'), lang)}
+                  </strong>
+                </div>
+
+                <div className="flex justify-between items-center pt-2">
+                  <span className="text-gray-500 font-medium">To Date</span>
+                  <strong className="text-gray-800">
+                    {formatDateDisplay(getPropCaseInsensitive(selectedRecord, ['To Date', 'to_date', 'End Date', 'end_date'], '-'), lang)}
+                  </strong>
+                </div>
+
+                <div className="flex justify-between items-center pt-2">
+                  <span className="text-gray-500 font-medium">Request / Submission Date</span>
+                  <span className="text-gray-800">
+                    {formatDateDisplay(getPropCaseInsensitive(selectedRecord, ['CreatedDate', 'created_date', 'Request Date', 'Date', 'created_at'], '-'), lang)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center pt-2">
+                  <span className="text-gray-500 font-medium">Line Manager / Approver</span>
+                  <span className="font-mono text-gray-800 text-[11px]">
+                    {getPropCaseInsensitive(selectedRecord, ['Line Manager', 'line_manager', 'line_manager_email', 'Approver'], '-')}
+                  </span>
+                </div>
+
+                {getPropCaseInsensitive(selectedRecord, ['Final balance', 'final_balance', 'Final Balance']) && (
+                  <div className="flex justify-between items-center pt-2">
+                    <span className="text-gray-500 font-medium">Remaining Balance After Leave</span>
+                    <strong className="text-blue-700 font-bold">
+                      {getPropCaseInsensitive(selectedRecord, ['Final balance', 'final_balance', 'Final Balance'])} Day(s)
+                    </strong>
+                  </div>
+                )}
+              </div>
+
+              {/* Attachment Preview (if any) */}
+              {(() => {
+                const att = getPropCaseInsensitive(selectedRecord, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'Link', 'link'], '');
+                if (att && att.startsWith('http')) {
+                  return (
+                    <div className="bg-gray-50/70 rounded-xl border border-gray-200 p-3">
+                      <span className="text-gray-600 font-semibold block mb-2">Supporting Attachment / Proof:</span>
+                      <div className="flex items-center gap-3">
+                        <img 
+                          src={att} 
+                          alt="Proof Thumbnail" 
+                          referrerPolicy="no-referrer"
+                          onClick={() => { setPhotoPreviewUrl(att); setIsPhotoModalOpen(true); }}
+                          className="w-16 h-16 object-cover rounded-lg border border-gray-300 shadow-xs cursor-pointer hover:opacity-80 transition"
+                          onError={(e) => { e.target.onerror = null; e.target.src='https://cdn-icons-png.flaticon.com/128/337/337946.png'; }}
+                        />
+                        <div className="text-[11px] text-gray-500">
+                          <p className="font-medium text-gray-700">Medical note or document attached</p>
+                          <button 
+                            type="button"
+                            onClick={() => { setPhotoPreviewUrl(att); setIsPhotoModalOpen(true); }}
+                            className="text-blue-600 font-bold hover:underline mt-1 inline-flex items-center gap-1"
+                          >
+                            <span>Click to enlarge preview</span>
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+            </div>
+
+            {/* Modal Actions Footer */}
+            <div className="mt-5 pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+              <div>
+                {(() => {
+                  const s = (getPropCaseInsensitive(selectedRecord, ['Status', 'status', 'Approval Status', 'approval_status'], '')).toLowerCase();
+                  if (s.includes('approve') || s.includes('setuju')) {
+                    return (
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const rec = selectedRecord;
+                          setIsDetailModalOpen(false);
+                          requestToCancelLeave(rec);
+                        }}
+                        className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition border border-gray-300 shadow-xs active:scale-95"
+                      >
+                        Request Cancel
+                      </button>
+                    );
+                  }
+                  if (!s.includes('reject') && !s.includes('tolak') && !s.includes('cancel')) {
+                    return (
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const rec = selectedRecord;
+                          setIsDetailModalOpen(false);
+                          cancelPendingLeave(rec);
+                        }}
+                        className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-xl transition border border-red-200 shadow-xs active:scale-95"
+                      >
+                        Cancel Request
+                      </button>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+
+              <button 
+                type="button" 
+                onClick={() => setIsDetailModalOpen(false)} 
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition shadow-xs active:scale-95"
+              >
+                Close
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal Holiday Details */}
+      {isHolidayDetailOpen && selectedHoliday && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 animate-fadeIn"
+          onClick={() => setIsHolidayDetailOpen(false)}
+        >
+          <div 
+            className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-5 sm:p-6 border border-gray-100 max-h-[92vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex justify-between items-start mb-4 pb-3 border-b border-gray-100">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-bold text-gray-900">Holiday Details</h3>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                    (() => {
+                      const st = (getPropCaseInsensitive(selectedHoliday, ['status', 'Status', 'STATUS'], '-')).toLowerCase();
+                      if (st === 'unused') return 'bg-green-100 text-green-700 border-green-200';
+                      if (st === 'used') return 'bg-blue-100 text-blue-700 border-blue-200';
+                      return 'bg-gray-100 text-gray-700 border-gray-200';
+                    })()
+                  }`}>
+                    {getPropCaseInsensitive(selectedHoliday, ['status', 'Status', 'STATUS'], '-')}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Holiday Balance Information
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsHolidayDetailOpen(false)} 
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg transition hover:bg-gray-100"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {/* Modal Body / Information Grid */}
+            <div className="space-y-3.5 text-xs">
+              
+              {/* Highlight Card: Holiday Type & Days */}
+              <div className="bg-purple-50/70 border border-purple-200/60 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600">Type Holiday</span>
+                  <p className="text-base font-extrabold text-purple-900 mt-0.5">
+                    {getPropCaseInsensitive(selectedHoliday, ['Type Holiday', 'type_holiday', 'Type', 'type'], '-')}
+                  </p>
+                </div>
+                <div className="sm:text-right">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600">Holiday Balance</span>
+                  <p className="text-base font-extrabold text-purple-900 mt-0.5">
+                    {(() => {
+                      const d = getPropCaseInsensitive(selectedHoliday, ['Days', 'days', 'Amount', 'amount', 'Total', 'total'], '1');
+                      return `${d} Day(s)`;
+                    })()}
+                  </p>
+                </div>
+              </div>
+
+              {/* Detail Rows */}
+              <div className="bg-gray-50/70 rounded-xl border border-gray-200 divide-y divide-gray-200/70 p-3 space-y-2.5">
+                <div className="flex justify-between items-center pt-1">
+                  <span className="text-gray-500 font-medium">Earned Date</span>
+                  <strong className="text-gray-800">
+                    {formatDateDisplay(getPropCaseInsensitive(selectedHoliday, ['Date', 'date', 'Tanggal'], '-'), lang)}
+                  </strong>
+                </div>
+
+                <div className="flex justify-between items-center pt-2">
+                  <span className="text-gray-500 font-medium">Expiration Date</span>
+                  <strong className="text-gray-800">
+                    {formatDateDisplay(getPropCaseInsensitive(selectedHoliday, ['Expiration Date', 'expiration_date', 'exp_date', 'Expired', 'expired'], '-'), lang)}
+                  </strong>
+                </div>
+
+                <div className="flex justify-between items-center pt-2">
+                  <span className="text-gray-500 font-medium">Used Date</span>
+                  <span className="text-gray-800 font-medium">
+                    {formatDateDisplay(getPropCaseInsensitive(selectedHoliday, ['Used Date', 'used_date', 'tanggal_digunakan'], '-'), lang)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center pt-2">
+                  <span className="text-gray-500 font-medium">Status</span>
+                  <span className="font-semibold text-gray-800">
+                    {getPropCaseInsensitive(selectedHoliday, ['status', 'Status', 'STATUS'], '-')}
+                  </span>
+                </div>
+
+                <div className="pt-2">
+                  <span className="text-gray-500 font-medium block mb-1">Description</span>
+                  <p className="text-gray-800 bg-white p-2.5 rounded-lg border border-gray-200 font-medium text-xs whitespace-pre-wrap">
+                    {getPropCaseInsensitive(selectedHoliday, ['Description', 'description', 'desc', 'keterangan'], '-') || '-'}
+                  </p>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Actions Footer */}
+            <div className="mt-5 pt-3 border-t border-gray-100 flex justify-end">
+              <button 
+                type="button" 
+                onClick={() => setIsHolidayDetailOpen(false)} 
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition shadow-xs active:scale-95"
+              >
+                Close
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+{/* Modal Photo Preview */}
       {isPhotoModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 p-4" onClick={() => setIsPhotoModalOpen(false)}>
           <div className="relative max-w-lg w-full bg-white rounded-2xl overflow-hidden shadow-2xl p-2" onClick={e => e.stopPropagation()}>
