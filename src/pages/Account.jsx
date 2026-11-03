@@ -12,7 +12,7 @@ export default function Account() {
 
   // Format Helper: dd-mm-yyyy
   const formatIndoDateOnly = (dateVal) => {
-    if (!dateVal) return '-';
+    if (!dateVal || dateVal === '-') return '-';
     let d = null;
     if (dateVal instanceof Date) {
       d = dateVal;
@@ -45,6 +45,41 @@ export default function Account() {
     setLoading(true);
     setTimeout(() => setLoading(false), 500);
   };
+
+  // Helper function to extract data case-insensitively like in account.html
+  const getVal = (keys, fallback = '-') => {
+    if (!userData) return fallback;
+    const dataKeys = Object.keys(userData);
+    
+    // Exact/Case-insensitive match
+    for (const key of keys) {
+      const match = dataKeys.find(k => k.toLowerCase() === key.toLowerCase());
+      if (match && userData[match] !== null && userData[match] !== '') return String(userData[match]);
+    }
+    
+    // Ignore space/underscore match
+    for (const key of keys) {
+      const normalizedKey = key.toLowerCase().replace(/[\s_-]/g, '');
+      const match = dataKeys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedKey);
+      if (match && userData[match] !== null && userData[match] !== '') return String(userData[match]);
+    }
+    
+    return fallback;
+  };
+
+  // Reusable UI Components for layout consistency
+  const DetailRow = ({ label, value }) => (
+    <div className="py-2 border-b border-gray-100 flex justify-between items-center">
+      <span className="text-xs text-gray-500 block mb-0.5">{label}</span>
+      <span className="text-xs font-semibold text-gray-800 text-right ml-4">{value}</span>
+    </div>
+  );
+
+  const SectionHeader = ({ title }) => (
+    <div className="col-span-1 md:col-span-2 mt-5 mb-1 pb-1 border-b border-gray-200">
+      <h4 className="text-sm font-semibold text-blue-700">{title}</h4>
+    </div>
+  );
 
   return (
     <div className="w-full text-gray-800 font-sans">
@@ -122,33 +157,85 @@ export default function Account() {
         {/* Tab Contents */}
         <div>
           {activeTab === 'personal' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5">
               <div className="col-span-1 md:col-span-2 flex flex-col items-center mb-4">
-                <img src={userData?.link || userData?.photo || 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'} alt="Profile" className="w-28 h-28 rounded-full border-4 border-blue-500 object-cover shadow-md mb-2 bg-blue-50" />
-                <h2 className="text-lg font-bold text-gray-800">{userData?.Name || userData?.name || 'Employee Name'}</h2>
+                <img src={getVal(['link', 'photo', 'picture', 'avatar'], 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png')} alt="Profile" className="w-32 h-32 rounded-full border-4 border-blue-500 object-cover shadow-md mb-2 bg-blue-50" />
+                <h2 className="text-xl font-bold text-gray-800">{getVal(['name', 'nama', 'fullname', 'full_name'], 'Employee Name')}</h2>
               </div>
-              <div className="py-2 border-b border-gray-100 flex justify-between"><span className="text-xs text-gray-500">Known As</span><span className="text-xs font-semibold text-gray-800">{userData?.['Known As'] || '-'}</span></div>
-              <div className="py-2 border-b border-gray-100 flex justify-between"><span className="text-xs text-gray-500">Personal Email</span><span className="text-xs font-semibold text-gray-800">{userData?.email || '-'}</span></div>
-              <div className="py-2 border-b border-gray-100 flex justify-between"><span className="text-xs text-gray-500">Phone</span><span className="text-xs font-semibold text-gray-800">{userData?.Phone || userData?.phone || '-'}</span></div>
-              <div className="py-2 border-b border-gray-100 flex justify-between"><span className="text-xs text-gray-500">Gender</span><span className="text-xs font-semibold text-gray-800">{userData?.Gender || userData?.gender || '-'}</span></div>
-              <div className="py-2 border-b border-gray-100 flex justify-between"><span className="text-xs text-gray-500">Date of Birth</span><span className="text-xs font-semibold text-gray-800">{formatIndoDateOnly(userData?.['Date of Birth'] || userData?.dob)}</span></div>
+              
+              <DetailRow label="Known As" value={getVal(['known as', 'nama panggilan'])} />
+              <DetailRow label="Email Pribadi" value={getVal(['personal email', 'email pribadi', 'email'])} />
+              <DetailRow label="Phone" value={getVal(['phone number', 'phone', 'mobile', 'no hp'])} />
+              <DetailRow label="Gender" value={getVal(['gender', 'jenis kelamin'])} />
+              <DetailRow label="Date of Birth" value={formatIndoDateOnly(getVal(['date of birth', 'dob', 'tanggal lahir']))} />
+              <DetailRow label="Place of Birth" value={getVal(['place of birth', 'pob', 'tempat lahir'])} />
+              <DetailRow label="Religion" value={getVal(['religion', 'agama'])} />
+              <DetailRow label="Blood Type" value={getVal(['blood type', 'golongan darah'])} />
+              <DetailRow label="Marital Status" value={getVal(['marital status', 'status pernikahan'])} />
+              <DetailRow label="Residential Address" value={getVal(['residential address', 'alamat domisili'])} />
+              <DetailRow label="Size T-Shirt" value={getVal(['size t-shirt', 't-shirt size', 'ukuran baju'])} />
+              <DetailRow label="Size Shoes" value={getVal(['size shoes', 'shoe size', 'ukuran sepatu'])} />
+              <DetailRow label="Education Level" value={getVal(['education level', 'pendidikan'])} />
+              
+              <SectionHeader title="ID Card" />
+              <DetailRow label="KTP Number" value={getVal(['KTP Number', 'ktp number', 'ktp_number', 'no ktp', 'nomor ktp'])} />
+              <DetailRow label="KK Number" value={getVal(['KK Number', 'kk number', 'kk_number', 'no kk', 'nomor kk'])} />
+              <DetailRow label="Citizen ID Address" value={getVal(['citizen id address', 'alamat ktp'])} />
+              <DetailRow label="NPWP Number" value={getVal(['NPWP Number', 'npwp number', 'npwp_number', 'no npwp', 'nomor npwp'])} />
+              <DetailRow label="NPWP Address" value={getVal(['npwp address', 'alamat npwp'])} />
+
+              <SectionHeader title="Emergency Contact" />
+              <DetailRow label="Emergency Contact Name" value={getVal(['Emergency Contact Name', 'emergency contact name', 'nama kontak darurat'])} />
+              <DetailRow label="Emergency Relationship" value={getVal(['Emergency Relationship', 'emergency relationship', 'hubungan kontak darurat'])} />
+              <DetailRow label="Emergency Contact Number" value={getVal(['Emergency Contact Number', 'emergency contact number', 'no kontak darurat'])} />
             </div>
           )}
 
           {activeTab === 'employee' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
-              <div className="py-2 border-b border-gray-100 flex justify-between"><span className="text-xs text-gray-500">Employee ID</span><span className="text-xs font-semibold text-gray-800">{userData?.['Employee ID'] || '-'}</span></div>
-              <div className="py-2 border-b border-gray-100 flex justify-between"><span className="text-xs text-gray-500">Department</span><span className="text-xs font-semibold text-gray-800">{userData?.Department || '-'}</span></div>
-              <div className="py-2 border-b border-gray-100 flex justify-between"><span className="text-xs text-gray-500">Job Title</span><span className="text-xs font-semibold text-gray-800">{userData?.['Job Title'] || '-'}</span></div>
-              <div className="py-2 border-b border-gray-100 flex justify-between"><span className="text-xs text-gray-500">Join Date</span><span className="text-xs font-semibold text-gray-800">{formatIndoDateOnly(userData?.['Join Date'])}</span></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5">
+              <DetailRow label="Employee ID" value={getVal(['employee id', 'employeeid', 'id'])} />
+              <DetailRow label="Department" value={getVal(['department', 'dept'])} />
+              <DetailRow label="Job Title" value={getVal(['job title', 'job_title', 'position'])} />
+              <DetailRow label="Job Level" value={getVal(['job level'])} />
+              <DetailRow label="Job Grade" value={getVal(['job grade'])} />
+              <DetailRow label="Join Date" value={formatIndoDateOnly(getVal(['join date', 'tanggal masuk']))} />
+              <DetailRow label="Job Description" value={getVal(['job description'])} />
+              <DetailRow label="Employee Work Email" value={getVal(['employee work email', 'work email', 'employee_work_email', 'email'])} />
+              <DetailRow label="Direct Reporting Line" value={getVal(['direct reporting line', 'direct line report', 'bawahan langsung'])} />
+              <DetailRow label="Line Manager" value={getVal(['line manager', 'atasan'])} />
             </div>
           )}
 
           {activeTab === 'bank' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
-              <div className="col-span-1 md:col-span-2 bg-blue-50 p-2 rounded-lg mb-2"><h4 className="font-bold text-blue-800 text-xs">Bank Information</h4></div>
-              <div className="py-2 border-b border-gray-100 flex justify-between"><span className="text-xs text-gray-500">Bank Name</span><span className="text-xs font-semibold text-gray-800">{userData?.['Bank Name'] || '-'}</span></div>
-              <div className="py-2 border-b border-gray-100 flex justify-between"><span className="text-xs text-gray-500">Account Number</span><span className="text-xs font-semibold text-gray-800">{userData?.['Bank Account Number'] || '-'}</span></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5">
+              <div className="col-span-1 md:col-span-2 flex items-center mb-1 mt-2">
+                 <h4 className="font-bold text-gray-700 bg-blue-100 px-3 py-1 rounded text-sm w-full">Bank Information</h4>
+              </div>
+              <DetailRow label="Bank Name" value={getVal(['bank name', 'nama bank'])} />
+              <DetailRow label="Bank Code" value={getVal(['bank code', 'kode bank'])} />
+              <DetailRow label="Bank Account Name" value={getVal(['bank account name', 'nama rekening'])} />
+              <DetailRow label="Bank Account Number" value={getVal(['bank account number', 'no rekening'])} />
+
+              <SectionHeader title="Bpjs" />
+              <DetailRow 
+                label="Bpjs Ketenagakerjaan Number" 
+                value={`${getVal(['bpjs ketenagakerjaan number', 'no bpjs tk'])} ${getVal(['bpjs ketenagakerjaan status', 'status bpjs tk']) !== '-' ? `(${getVal(['bpjs ketenagakerjaan status', 'status bpjs tk'])})` : ''}`} 
+              />
+              <DetailRow 
+                label="Bpjs Health Number" 
+                value={`${getVal(['bpjs health number', 'bpjs kesehatan number', 'no bpjs kes'])} ${getVal(['bpjs health status', 'bpjs kesehatan status', 'status bpjs kes']) !== '-' ? `(${getVal(['bpjs health status', 'bpjs kesehatan status', 'status bpjs kes'])})` : ''}`} 
+              />
+
+              <SectionHeader title="Salary" />
+              <DetailRow label="Basic Salary" value={getVal(['basic salary', 'gaji pokok'])} />
+              <DetailRow label="Position Allowance" value={getVal(['position allowance', 'tunjangan jabatan'])} />
+              <DetailRow label="Travel & Communication Allowance" value={getVal(['travel & communication allowance', 'tunjangan transport'])} />
+              <DetailRow label="Meal Allowance" value={getVal(['meal allowance', 'meals allowance', 'tunjangan makan'])} />
+              <DetailRow label="Other Allowance" value={getVal(['other allowance', 'tunjangan lain'])} />
+
+              <SectionHeader title="Income Tax" />
+              <DetailRow label="Ter" value={getVal(['ter'])} />
+              <DetailRow label="Description Code" value={getVal(['description code', 'kode deskripsi'])} />
             </div>
           )}
         </div>
