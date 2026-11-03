@@ -95,6 +95,10 @@ export default function Leave() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedHoliday, setSelectedHoliday] = useState(null);
   const [isHolidayDetailOpen, setIsHolidayDetailOpen] = useState(false);
+  
+  // New States for Modal List
+  const [isHolidayListModalOpen, setIsHolidayListModalOpen] = useState(false);
+  const [holidayListType, setHolidayListType] = useState('');
 
   // Form State
   const [formType, setFormType] = useState('');
@@ -730,11 +734,19 @@ export default function Leave() {
                 <span className="text-xs sm:text-sm font-bold text-blue-700 uppercase mr-2">Annual Leave</span>
                 <span className="text-lg sm:text-xl font-black text-blue-900">{balances.annual}</span>
               </div>
-              <div className="flex-1 min-w-[30%] bg-purple-50 border border-purple-200 rounded-lg py-1.5 px-2.5 sm:p-3 shadow-sm flex items-center justify-between">
+              <div 
+                onClick={() => { setHolidayListType('Day Off Payment'); setIsHolidayListModalOpen(true); }}
+                className="flex-1 min-w-[30%] bg-purple-50 hover:bg-purple-100 cursor-pointer transition border border-purple-200 rounded-lg py-1.5 px-2.5 sm:p-3 shadow-sm flex items-center justify-between"
+                title="Click to view Day Off Payment List"
+              >
                 <span className="text-xs sm:text-sm font-bold text-purple-700 uppercase mr-2">Day Off Payment</span>
                 <span className="text-lg sm:text-xl font-black text-purple-900">{balances.dayOff}</span>
               </div>
-              <div className="flex-1 min-w-[30%] bg-white border border-gray-200 rounded-lg py-1.5 px-2.5 sm:p-3 shadow-sm flex items-center justify-between">
+              <div 
+                onClick={() => { setHolidayListType('Extra Off'); setIsHolidayListModalOpen(true); }}
+                className="flex-1 min-w-[30%] bg-white hover:bg-gray-50 cursor-pointer transition border border-gray-200 rounded-lg py-1.5 px-2.5 sm:p-3 shadow-sm flex items-center justify-between"
+                title="Click to view Extra Off List"
+              >
                 <span className="text-xs sm:text-sm font-bold text-gray-700 uppercase mr-2">Extra Off</span>
                 <span className="text-lg sm:text-xl font-black text-gray-900">{balances.extraOff}</span>
               </div>
@@ -838,69 +850,93 @@ export default function Leave() {
         </div>
       </div>
 
-      {/* Holiday List Container */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-3 sm:p-6 mb-4">
-        <div className="pb-4 mb-3 sm:mb-5 border-b border-gray-200">
-          <h3 className="text-base sm:text-lg font-bold text-gray-800 flex items-center gap-2">Holiday List</h3>
-          <p className="text-xs text-gray-500 mt-1">List of available holiday balances</p>
-        </div>
-        <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="w-full text-sm text-left text-gray-600">
-            <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-2 py-2 sm:px-4 sm:py-3">Type Holiday</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3">Date</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3">Expiration Date</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3">Used Date</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3">Description</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading ? (
-                <tr><td colSpan="6" className="px-5 py-8 text-center text-gray-400 italic">Loading holiday records...</td></tr>
-              ) : holidayRecords.length === 0 ? (
-                <tr><td colSpan="6" className="px-5 py-8 text-center text-gray-400 italic">No holiday records found.</td></tr>
-              ) : (
-                holidayRecords.map((r, i) => {
-                  const status = getPropCaseInsensitive(r, ['status', 'Status', 'STATUS'], '-');
-                  let statusClass = "bg-gray-100 text-gray-700 border-gray-200";
-                  if (status.toLowerCase() === 'unused') statusClass = "bg-green-100 text-green-700 border-green-200";
-                  else if (status.toLowerCase() === 'used') statusClass = "bg-blue-100 text-blue-700 border-blue-200";
+      {/* Modal Holiday List */}
+      {isHolidayListModalOpen && (
+        <div 
+          className="fixed inset-0 z-[45] flex items-center justify-center bg-black bg-opacity-50 p-4 animate-fadeIn"
+          onClick={() => setIsHolidayListModalOpen(false)}
+        >
+          <div 
+            className="bg-white w-full max-w-5xl rounded-2xl shadow-2xl p-4 sm:p-6 border border-gray-100 max-h-[92vh] overflow-y-auto flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 shrink-0">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                  {holidayListType} List
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">Details of your {holidayListType} balances</p>
+              </div>
+              <button onClick={() => setIsHolidayListModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg transition hover:bg-gray-100">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
 
-                  return (
-                    <tr 
-                      key={i} 
-                      onClick={() => { setSelectedHoliday(r); setIsHolidayDetailOpen(true); }}
-                      title="Click to view details"
-                      className="hover:bg-purple-50/70 cursor-pointer transition border-b border-gray-100 text-xs sm:text-sm group"
-                    >
-                      <td className="px-2 py-2 sm:px-4 sm:py-3 font-semibold text-gray-800">
-                        {getPropCaseInsensitive(r, ['Type Holiday', 'type_holiday', 'Type', 'type'], '-')}
-                      </td>
-                      <td className="px-2 py-2 sm:px-4 sm:py-3 whitespace-nowrap">
-                        {formatDateDisplay(getPropCaseInsensitive(r, ['Date', 'date', 'Tanggal'], '-'), lang)}
-                      </td>
-                      <td className="px-2 py-2 sm:px-4 sm:py-3 whitespace-nowrap">
-                        {formatDateDisplay(getPropCaseInsensitive(r, ['Expiration Date', 'expiration_date', 'exp_date', 'Expired', 'expired'], '-'), lang)}
-                      </td>
-                      <td className="px-2 py-2 sm:px-4 sm:py-3 whitespace-nowrap">
-                        {formatDateDisplay(getPropCaseInsensitive(r, ['Used Date', 'used_date', 'tanggal_digunakan'], '-'), lang)}
-                      </td>
-                      <td className="px-2 py-2 sm:px-4 sm:py-3 max-w-[10rem] truncate" title={getPropCaseInsensitive(r, ['Description', 'description', 'desc', 'keterangan'], '-')}>
-                        {getPropCaseInsensitive(r, ['Description', 'description', 'desc', 'keterangan'], '-')}
-                      </td>
-                      <td className="px-2 py-2 sm:px-4 sm:py-3 text-center">
-                        <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${statusClass}`}>{status}</span>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
+            <div className="overflow-x-auto rounded-xl border border-gray-200">
+              <table className="w-full text-sm text-left text-gray-600">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3">Type Holiday</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3">Date</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3">Expiration Date</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3">Used Date</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3">Description</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {(() => {
+                    const filteredHolidays = holidayRecords.filter(r => {
+                      const t = getPropCaseInsensitive(r, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').toLowerCase();
+                      if (holidayListType === 'Day Off Payment') return t.includes('day off payment') || t === 'day off';
+                      if (holidayListType === 'Extra Off') return t.includes('extra off');
+                      return false;
+                    });
+                    
+                    if (loading) return <tr><td colSpan="6" className="px-5 py-8 text-center text-gray-400 italic">Loading records...</td></tr>;
+                    if (filteredHolidays.length === 0) return <tr><td colSpan="6" className="px-5 py-8 text-center text-gray-400 italic">No records found.</td></tr>;
+
+                    return filteredHolidays.map((r, i) => {
+                      const status = getPropCaseInsensitive(r, ['status', 'Status', 'STATUS'], '-');
+                      let statusClass = "bg-gray-100 text-gray-700 border-gray-200";
+                      if (status.toLowerCase() === 'unused') statusClass = "bg-green-100 text-green-700 border-green-200";
+                      else if (status.toLowerCase() === 'used') statusClass = "bg-blue-100 text-blue-700 border-blue-200";
+
+                      return (
+                        <tr 
+                          key={i} 
+                          onClick={() => { setSelectedHoliday(r); setIsHolidayDetailOpen(true); }}
+                          title="Click to view details"
+                          className="hover:bg-purple-50/70 cursor-pointer transition border-b border-gray-100 text-xs sm:text-sm group"
+                        >
+                          <td className="px-2 py-2 sm:px-4 sm:py-3 font-semibold text-gray-800">
+                            {getPropCaseInsensitive(r, ['Type Holiday', 'type_holiday', 'Type', 'type'], '-')}
+                          </td>
+                          <td className="px-2 py-2 sm:px-4 sm:py-3 whitespace-nowrap">
+                            {formatDateDisplay(getPropCaseInsensitive(r, ['Date', 'date', 'Tanggal'], '-'), lang)}
+                          </td>
+                          <td className="px-2 py-2 sm:px-4 sm:py-3 whitespace-nowrap">
+                            {formatDateDisplay(getPropCaseInsensitive(r, ['Expiration Date', 'expiration_date', 'exp_date', 'Expired', 'expired'], '-'), lang)}
+                          </td>
+                          <td className="px-2 py-2 sm:px-4 sm:py-3 whitespace-nowrap">
+                            {formatDateDisplay(getPropCaseInsensitive(r, ['Used Date', 'used_date', 'tanggal_digunakan'], '-'), lang)}
+                          </td>
+                          <td className="px-2 py-2 sm:px-4 sm:py-3 max-w-[10rem] truncate" title={getPropCaseInsensitive(r, ['Description', 'description', 'desc', 'keterangan'], '-')}>
+                            {getPropCaseInsensitive(r, ['Description', 'description', 'desc', 'keterangan'], '-')}
+                          </td>
+                          <td className="px-2 py-2 sm:px-4 sm:py-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${statusClass}`}>{status}</span>
+                          </td>
+                        </tr>
+                      )
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Modal Request Leave */}
       {isLeaveModalOpen && (
@@ -1180,7 +1216,7 @@ export default function Leave() {
       {/* Modal Holiday Details */}
       {isHolidayDetailOpen && selectedHoliday && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 animate-fadeIn"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-50 p-4 animate-fadeIn"
           onClick={() => setIsHolidayDetailOpen(false)}
         >
           <div 
