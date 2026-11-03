@@ -250,7 +250,7 @@ export default function TopNav({
 
                 {/* Approval Menu Item */}
                 <Link 
-                  to="/leave" 
+                  to="/Approval" 
                   onClick={() => setDropdownOpen(false)}
                   className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 hover:text-blue-600 flex items-center justify-between transition border-b border-gray-50"
                 >

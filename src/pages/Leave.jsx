@@ -730,25 +730,39 @@ export default function Leave() {
           <div>
             <h4 className="text-xs sm:text-sm font-bold text-gray-500 uppercase tracking-wider mb-1.5 px-1">Balance Summary</h4>
             <div className="flex gap-2 w-full overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-              <div className="flex-1 min-w-[30%] bg-blue-50 border border-blue-200 rounded-lg py-1.5 px-2.5 sm:p-3 shadow-sm flex items-center justify-between">
-                <span className="text-xs sm:text-sm font-bold text-blue-700 uppercase mr-2">Annual Leave</span>
-                <span className="text-lg sm:text-xl font-black text-blue-900">{balances.annual}</span>
+              <div className="flex-1 min-w-[30%] bg-blue-50 border border-blue-200 rounded-lg py-1.5 px-2.5 sm:p-3 shadow-sm flex flex-col justify-center">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs sm:text-sm font-bold text-blue-700 uppercase mr-2">Annual Leave</span>
+                  <span className="text-lg sm:text-xl font-black text-blue-900">{balances.annual}</span>
+                </div>
               </div>
               <div 
                 onClick={() => { setHolidayListType('Day Off Payment'); setIsHolidayListModalOpen(true); }}
-                className="flex-1 min-w-[30%] bg-purple-50 hover:bg-purple-100 cursor-pointer transition border border-purple-200 rounded-lg py-1.5 px-2.5 sm:p-3 shadow-sm flex items-center justify-between"
+                className="flex-1 min-w-[30%] bg-purple-50 hover:bg-purple-100 cursor-pointer transition border border-purple-200 rounded-lg py-1.5 px-2.5 sm:p-3 shadow-sm flex flex-col justify-center"
                 title="Click to view Day Off Payment List"
               >
-                <span className="text-xs sm:text-sm font-bold text-purple-700 uppercase mr-2">Day Off Payment</span>
-                <span className="text-lg sm:text-xl font-black text-purple-900">{balances.dayOff}</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs sm:text-sm font-bold text-purple-700 uppercase mr-2">Day Off Payment</span>
+                  <span className="text-lg sm:text-xl font-black text-purple-900">{balances.dayOff}</span>
+                </div>
+                <div className="mt-1 text-[10px] text-purple-600 font-semibold flex items-center justify-end">
+                  Click for details
+                  <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                </div>
               </div>
               <div 
                 onClick={() => { setHolidayListType('Extra Off'); setIsHolidayListModalOpen(true); }}
-                className="flex-1 min-w-[30%] bg-white hover:bg-gray-50 cursor-pointer transition border border-gray-200 rounded-lg py-1.5 px-2.5 sm:p-3 shadow-sm flex items-center justify-between"
+                className="flex-1 min-w-[30%] bg-white hover:bg-gray-50 cursor-pointer transition border border-gray-200 rounded-lg py-1.5 px-2.5 sm:p-3 shadow-sm flex flex-col justify-center"
                 title="Click to view Extra Off List"
               >
-                <span className="text-xs sm:text-sm font-bold text-gray-700 uppercase mr-2">Extra Off</span>
-                <span className="text-lg sm:text-xl font-black text-gray-900">{balances.extraOff}</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs sm:text-sm font-bold text-gray-700 uppercase mr-2">Extra Off</span>
+                  <span className="text-lg sm:text-xl font-black text-gray-900">{balances.extraOff}</span>
+                </div>
+                <div className="mt-1 text-[10px] text-gray-500 font-semibold flex items-center justify-end">
+                  Click for details
+                  <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                </div>
               </div>
             </div>
           </div>
