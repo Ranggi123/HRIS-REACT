@@ -8,8 +8,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'Nama Aplikasi Anda',
-        short_name: 'AppReact',
+        name: 'ARHISE',
+        short_name: 'HRIS',
         description: 'Deskripsi aplikasi React saya',
         theme_color: '#ffffff',
         display: 'standalone', // Wajib ada agar bisa di-install

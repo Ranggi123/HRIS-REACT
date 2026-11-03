@@ -487,16 +487,27 @@ export default function Approval() {
               .select('*')
               .ilike(holEmpCol, `%${empEmail}%`)
               .ilike(holTypeCol, leaveType)
-              .ilike(holStatusCol, 'unused')
+              .eq(holStatusCol, 'Unused')
               .order(holExpDateCol, { ascending: true })
               .limit(1);
 
             if (activeHolidays && activeHolidays.length > 0) {
               const targetHol = activeHolidays[0];
-              await supabase.from('holiday_balance').update({
-                [holStatusCol]: 'used',
+              const holUpdatePayload = {
+                [holStatusCol]: 'Used',
                 [holUsedDateCol]: fromDate
-              }).eq(holIdCol, targetHol[holIdCol]);
+              };
+              
+              if (holIdCol && targetHol[holIdCol]) {
+                await supabase.from('holiday_balance').update(holUpdatePayload).eq(holIdCol, targetHol[holIdCol]);
+              } else {
+                 // Fallback if ID column is not found
+                 await supabase.from('holiday_balance').update(holUpdatePayload)
+                   .eq(holEmpCol, targetHol[holEmpCol])
+                   .eq(holTypeCol, targetHol[holTypeCol])
+                   .eq(holStatusCol, 'unused')
+                   .eq(holExpDateCol, targetHol[holExpDateCol]);
+              }
             }
 
             // Update schedule
@@ -512,7 +523,7 @@ export default function Approval() {
               .select('*', { count: 'exact', head: true })
               .ilike(holEmpCol, `%${empEmail}%`)
               .ilike(holTypeCol, leaveType)
-              .ilike(holStatusCol, 'unused');
+              .eq(holStatusCol, 'Unused');
 
             const balColCandidates = leaveType === 'Day Off Payment' 
               ? ['Day Off Payment Balance', 'day_off_payment_balance'] 

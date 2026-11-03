@@ -81,6 +81,8 @@ export default function Leave() {
   const [leaveRecords, setLeaveRecords] = useState([]);
   const [holidayRecords, setHolidayRecords] = useState([]);
   const [expiringHolidays, setExpiringHolidays] = useState([]);
+  const [scheduleRecords, setScheduleRecords] = useState([]); // New state for dynamic database schedule
+  const [nonWorkingError, setNonWorkingError] = useState(''); // New state for database schedule error
 
   // Stats & Balances
   const [originalBalances, setOriginalBalances] = useState({ annual: 0, dayOff: 0, extraOff: 0 });
@@ -238,6 +240,22 @@ export default function Leave() {
         extraOff: Math.max(0, totalExtraOff - pExt)
       });
 
+      // 5. Fetch Schedules (to validate working days)
+      try {
+        let fetchedSchedules = [];
+        for (const tName of ['employee_schedule', 'schedules', 'roster', 'employee_roster', 'attendance_schedule', 'shift_schedule']) {
+          const { data, error } = await supabase.from(tName).select('*').limit(3000);
+          if (!error && data && data.length > 0) {
+            fetchedSchedules = data.filter(row => {
+              const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id']).toLowerCase();
+              return validKeys.some(key => empVal === key || empVal.includes(key) || key.includes(empVal));
+            });
+            if (fetchedSchedules.length > 0) break; // found the right table
+          }
+        }
+        setScheduleRecords(fetchedSchedules);
+      } catch(e) { console.warn('Schedule fetch error', e); }
+
     } catch (err) {
       console.error(err);
     }
@@ -304,18 +322,68 @@ export default function Leave() {
     }
   };
 
+  // Check Schedule Working Days when formStart/formEnd changes
   useEffect(() => {
+    let durationStr = 'Invalid';
+    let errorMsg = '';
+    
     if (formStart && formEnd) {
       const s = new Date(formStart);
       const e = new Date(formEnd);
       if (e >= s) {
         const diff = Math.ceil(Math.abs(e - s) / (1000 * 60 * 60 * 24)) + 1;
-        setFormDuration(`${diff} Day(s)`);
-      } else {
-        setFormDuration('Invalid');
+        durationStr = `${diff} Day(s)`;
+        
+        // Skip validation for Maternity Leave as it naturally includes weekends/off days
+        if (scheduleRecords.length > 0 && formType !== 'Maternity Leave') {
+          let tempDate = new Date(s);
+          let nonWorkingFound = [];
+          
+          while (tempDate <= e) {
+            const dStr = `${tempDate.getFullYear()}-${String(tempDate.getMonth()+1).padStart(2,'0')}-${String(tempDate.getDate()).padStart(2,'0')}`;
+            
+            const daySched = scheduleRecords.find(row => {
+              const rowDateRaw = getPropCaseInsensitive(row, ['date', 'Date', 'tanggal', 'Tanggal', 'schedule_date', 'working_date']);
+              const rowDate = parseFlexibleDate(rowDateRaw);
+              if (!rowDate) return false;
+              const rStr = `${rowDate.getFullYear()}-${String(rowDate.getMonth()+1).padStart(2,'0')}-${String(rowDate.getDate()).padStart(2,'0')}`;
+              return rStr === dStr;
+            });
+
+            if (daySched) {
+              let isWorkingDay = true;
+              
+              // Verify explicit false/0 for working status
+              const isWorkingVal = getPropCaseInsensitive(daySched, ['is_working_day', 'is_working', 'working_day']);
+              const shiftVal = getPropCaseInsensitive(daySched, ['shift', 'Shift', 'status', 'Status', 'shift_name', 'tipe_shift']).toLowerCase();
+              
+              if (isWorkingVal !== '') {
+                if (isWorkingVal === false || isWorkingVal === 'false' || isWorkingVal === '0' || isWorkingVal === 0) {
+                  isWorkingDay = false;
+                }
+              } else if (shiftVal) {
+                if (shiftVal === 'off' || shiftVal.includes('libur') || shiftVal.includes('rest')) {
+                  isWorkingDay = false;
+                }
+              }
+
+              if (!isWorkingDay) {
+                nonWorkingFound.push(formatDateDisplay(dStr, lang));
+              }
+            }
+            tempDate.setDate(tempDate.getDate() + 1);
+          }
+          
+          if (nonWorkingFound.length > 0) {
+            errorMsg = `Tanggal ${nonWorkingFound.join(', ')} bukan merupakan working day (hari kerja) pada jadwal Anda.`;
+          }
+        }
       }
     }
-  }, [formStart, formEnd]);
+    
+    setFormDuration(durationStr);
+    setNonWorkingError(errorMsg);
+  }, [formStart, formEnd, scheduleRecords, lang, formType]);
 
   const { todayFormatted, minStartDate } = useMemo(() => {
     const now = new Date();
@@ -436,6 +504,9 @@ export default function Leave() {
     e.preventDefault();
     if (!formType) return alert('Please select a leave type.');
     if (new Date(formEnd) < new Date(formStart)) return alert('End date cannot be earlier than start date.');
+    
+    // Database working-day validation block
+    if (nonWorkingError) return alert(`Pengajuan ditolak: ${nonWorkingError}`);
 
     const dtStart = new Date(formStart);
     const dtEnd = new Date(formEnd);
@@ -714,7 +785,7 @@ No further action is required.`,
               className="px-3.5 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
               title="Refresh Data"
             >
-              <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className={\`w-4 h-4 \${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}\`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
               <span>{loading ? 'Loading...' : 'Refresh'}</span>
@@ -865,7 +936,7 @@ No further action is required.`,
                       </td>
                       <td className="px-2 py-2 sm:px-4 sm:py-3 text-center font-bold">{duration}</td>
                       <td className="px-2 py-2 sm:px-4 sm:py-3 text-center">
-                        <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${badgeClass}`}>{status}</span>
+                        <span className={\`px-2 py-0.5 rounded-md text-xs font-bold border \${badgeClass}\`}>{status}</span>
                       </td>
                       <td className="px-2 py-2 sm:px-4 sm:py-3 text-center" onClick={(e) => e.stopPropagation()}>
                         {sLower.includes('approve') || sLower.includes('setuju') ? (
@@ -958,7 +1029,7 @@ No further action is required.`,
                             {getPropCaseInsensitive(r, ['Description', 'description', 'desc', 'keterangan'], '-')}
                           </td>
                           <td className="px-2 py-2 sm:px-4 sm:py-3 text-center">
-                            <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${statusClass}`}>{status}</span>
+                            <span className={\`px-2 py-0.5 rounded-md text-xs font-bold border \${statusClass}\`}>{status}</span>
                           </td>
                         </tr>
                       )
@@ -1009,9 +1080,18 @@ No further action is required.`,
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">To Date <span className="text-red-500">*</span></label>
-                  <input type="date" required min={minDate} max={maxDate} value={formEnd} onChange={handleEndChange} readOnly={['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType)} className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType) ? 'bg-gray-100' : 'bg-white'}`} />
+                  <input type="date" required min={minDate} max={maxDate} value={formEnd} onChange={handleEndChange} readOnly={['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType)} className={\`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 \${['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType) ? 'bg-gray-100' : 'bg-white'}\`} />
                 </div>
               </div>
+              
+              {nonWorkingError && (
+                <div className="bg-red-50 border border-red-200 p-2.5 rounded-lg mt-2 flex gap-2">
+                  <svg className="w-4 h-4 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                  <p className="text-[10px] text-red-700 font-medium">
+                    Note: {nonWorkingError}
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Total Days</label>
@@ -1028,7 +1108,7 @@ No further action is required.`,
               
               <div className="flex justify-end space-x-2 pt-3 border-t border-gray-100">
                 <button type="button" onClick={() => setIsLeaveModalOpen(false)} disabled={isSubmitting} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition">Cancel</button>
-                <button type="submit" disabled={isSubmitting} className={`px-5 py-2 ${isSubmitting ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'} text-white text-xs font-semibold rounded-lg transition`}>
+                <button type="submit" disabled={isSubmitting || !!nonWorkingError} className={\`px-5 py-2 \${(isSubmitting || !!nonWorkingError) ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white text-xs font-semibold rounded-lg transition\`}>
                   {isSubmitting ? 'Submitting...' : 'Submit Request'}
                 </button>
               </div>
@@ -1052,7 +1132,7 @@ No further action is required.`,
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-lg font-bold text-gray-900">Leave Request Details</h3>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                  <span className={\`px-2.5 py-0.5 rounded-full text-[10px] font-bold border \${
                     (() => {
                       const st = (getPropCaseInsensitive(selectedRecord, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval')).toLowerCase();
                       if (st.includes('approve') || st.includes('setuju')) return 'bg-green-100 text-green-700 border-green-200';
@@ -1060,7 +1140,7 @@ No further action is required.`,
                       if (st.includes('cancel')) return 'bg-purple-100 text-purple-700 border-purple-200';
                       return 'bg-yellow-100 text-yellow-800 border-yellow-200';
                     })()
-                  }`}>
+                  }\`}>
                     {getPropCaseInsensitive(selectedRecord, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval')}
                   </span>
                 </div>
@@ -1098,7 +1178,7 @@ No further action is required.`,
                         if (dS && dE) dur = Math.ceil(Math.abs(dE - dS) / (1000 * 60 * 60 * 24)) + 1;
                         else dur = 1;
                       }
-                      return `${dur} Day(s)`;
+                      return \`\${dur} Day(s)\`;
                     })()}
                   </p>
                 </div>
@@ -1261,14 +1341,14 @@ No further action is required.`,
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-lg font-bold text-gray-900">Holiday Details</h3>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                  <span className={\`px-2.5 py-0.5 rounded-full text-[10px] font-bold border \${
                     (() => {
                       const st = (getPropCaseInsensitive(selectedHoliday, ['status', 'Status', 'STATUS'], '-')).toLowerCase();
                       if (st === 'unused') return 'bg-green-100 text-green-700 border-green-200';
                       if (st === 'used') return 'bg-blue-100 text-blue-700 border-blue-200';
                       return 'bg-gray-100 text-gray-700 border-gray-200';
                     })()
-                  }`}>
+                  }\`}>
                     {getPropCaseInsensitive(selectedHoliday, ['status', 'Status', 'STATUS'], '-')}
                   </span>
                 </div>
@@ -1300,7 +1380,7 @@ No further action is required.`,
                   <p className="text-base font-extrabold text-purple-900 mt-0.5">
                     {(() => {
                       const d = getPropCaseInsensitive(selectedHoliday, ['Days', 'days', 'Amount', 'amount', 'Total', 'total'], '1');
-                      return `${d} Day(s)`;
+                      return \`\${d} Day(s)\`;
                     })()}
                   </p>
                 </div>
