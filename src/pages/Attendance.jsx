@@ -820,15 +820,15 @@ Photo : ${photoUrl}`;
   return (
     <div className="w-full text-gray-800 font-sans">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 mb-4 sm:mb-5 border-b border-gray-200 gap-3 sm:gap-4">
-          <div>
+        <div className="flex flex-row justify-between items-start sm:items-center pb-4 mb-4 sm:mb-5 border-b border-gray-200 gap-3 sm:gap-4">
+          <div className="flex-1 pr-3">
             <h3 className="text-base sm:text-lg font-bold text-gray-900">Attendance Records</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-xs text-gray-500 mt-0.5 break-words">
               {renderScheduleText()}
             </p>
           </div>
           
-          <div className="flex items-center gap-2 shrink-0 ml-3">
+          <div className="flex items-center gap-2 shrink-0 sm:ml-3">
             {canShowRecordButton && (
               <button 
                 onClick={handleOpenModal} 
