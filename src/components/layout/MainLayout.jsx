@@ -28,7 +28,7 @@ const i18n = {
 export default function MainLayout() {
   const [currentUser, setCurrentUser] = useState(null);
   
-  // States untuk berbagai badge (termasuk approvalCount untuk TopNav)
+  // States untuk badge TopNav & BottomNav
   const [approvalCount, setApprovalCount] = useState(0); 
   const [attendanceBadge, setAttendanceBadge] = useState(false);
   const [leaveBadgeCount, setLeaveBadgeCount] = useState(0);
@@ -75,7 +75,7 @@ export default function MainLayout() {
     return isTrue;
   };
 
-  // 1. Fungsi Utama untuk memuat user dan data approval secara berurutan
+  // 1. Memuat user dan menghitung approval secara berurutan
   useEffect(() => {
     const initializeData = async () => {
       let activeUser = null;
@@ -121,7 +121,7 @@ export default function MainLayout() {
         setCurrentUser(activeUser);
         setIsSuperAdminEligible(checkSuperAdmin(activeUser));
         
-        // SETELAH user ditemukan, hitung badge approval
+        // Hitung badge approval setelah user berhasil dimuat
         await fetchApprovalCount(activeUser);
       } else {
         setCurrentUser(null);
@@ -132,12 +132,11 @@ export default function MainLayout() {
     initializeData();
   }, []);
 
-  // 2. Fungsi untuk menghitung badge PENDING APPROVAL langsung dari tabel database
+  // 2. Menghitung data Pending Approval langsung dari Supabase
   const fetchApprovalCount = async (user) => {
     if (!user) return;
 
     try {
-      // Ambil work email user yang sedang login
       const rawUserWorkEmail = 
         user['Work Email'] ||
         user['work email'] || 
@@ -153,7 +152,6 @@ export default function MainLayout() {
 
       let pendingCount = 0;
 
-      // Filter function standar
       const countPendingInArray = (dataArray) => {
         let count = 0;
         dataArray.forEach(item => {
@@ -174,22 +172,20 @@ export default function MainLayout() {
         return count;
       };
 
-      // Query tabel Cuti
+      // Query tabel cuti (leave_requests)
       const { data: leaveData } = await supabase.from('leave_requests').select('*');
       if (leaveData) pendingCount += countPendingInArray(leaveData);
 
-      // Query tabel Attendance (jika ada form/tabel terpisah untuk request)
+      // Query tabel kehadiran (attendance)
       const { data: attReqData } = await supabase.from('attendance').select('*');
       if (attReqData) pendingCount += countPendingInArray(attReqData);
 
-      // Update state TopNav badge
       setApprovalCount(pendingCount);
 
     } catch (error) {
       console.warn("Error calculating approval count from database:", error);
     }
   };
-
 
   const handleToggleSuperAdmin = async (active) => {
     if (active) {
@@ -257,7 +253,7 @@ export default function MainLayout() {
     navigate('/login');
   };
 
-  // Profile data extraction from employee_directory (currentUser)
+  // Ekstraksi data profil user
   const getProp = (keys, fallback) => getCleanProp(currentUser, keys) || fallback;
   const displayName = getProp(['name', 'nama', 'fullname', 'full_name'], currentLang === 'id' ? 'Tamu' : 'Guest');
   const deptName = getProp(['department', 'dept'], '-');
@@ -267,20 +263,11 @@ export default function MainLayout() {
   const email = getProp(['email', 'email address', 'user_uid'], '-');
   const workEmail = getProp(['Employee work email', 'work_email', 'work email', 'Work Email'], '-');
   const phone = getProp(['Phone Number', 'phone_number', 'phone'], '-');
-  
-  // Status akun murni dari database employee_directory kolom status
   const userStatus = String(getProp(['status', 'Status', 'STATUS'], 'Active') || 'Active');
-  
-  // Foto murni dari kolom 'link'
   const photo = getProp(['link', 'Link', 'photo', 'avatar'], 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png');
-  
-  // Barcode URL atau generate dynamic QR code dari employee id
   const barcodeRaw = getProp(['Barcode URL', 'barcode_url', 'barcode'], '');
   const barcode = barcodeRaw || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(empId)}`;
 
-  // =========================================================================
-  // FUNGSI ANALISIS & PARSER TANGGAL & WAKTU (AKURAT BAHASA INDONESIA & INGGRIS)
-  // =========================================================================
   const monthsMap = {
     jan: 1, feb: 2, mar: 3, apr: 4,
     may: 5, mei: 5,
@@ -349,7 +336,7 @@ export default function MainLayout() {
     return { timestamp: 0, y: 0, m: 0, d: 0 };
   };
 
-  // Fetch badge data for Attendance and Leave
+  // Fetch badge untuk Attendance dan Leave
   useEffect(() => {
     const fetchBadges = async () => {
       if (!currentUser) return;
@@ -360,9 +347,7 @@ export default function MainLayout() {
 
       if (validUserKeys.length === 0) return;
 
-      // =========================================================================
-      // 1. LOGIKA BADGE ATTENDANCE
-      // =========================================================================
+      // 1. BADGE ATTENDANCE
       try {
         const { data: sampleAtt } = await supabase.from('attendance').select('*').limit(1);
         let empCol = 'employee';
@@ -434,9 +419,7 @@ export default function MainLayout() {
         setAttendanceBadge(false);
       }
 
-      // =========================================================================
-      // 2. LOGIKA BADGE LEAVE (Cuti)
-      // =========================================================================
+      // 2. BADGE LEAVE
       try {
         const { data: holidayData, error } = await supabase.from('holiday_balance').select('*').limit(1000);
         if (!error && holidayData) {
@@ -505,7 +488,7 @@ export default function MainLayout() {
       
       <main className="container mx-auto mt-2 sm:mt-6 px-2 sm:px-6 flex-1 flex flex-col space-y-3 sm:space-y-6">
         
-        {/* SHARED: Profile Summary Card */}
+        {/* Profile Summary Card */}
         <div className="bg-white p-3.5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-4">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -540,7 +523,7 @@ export default function MainLayout() {
           </div>
         </div>
 
-        {/* SHARED: HRIS Module Access (Sembunyi di Mobile) */}
+        {/* HRIS Module Access (Desktop) */}
         <div className="hidden md:block">
           <h3 className="text-sm sm:text-base font-bold text-gray-800 mb-3">{t.modulesTitle}</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
@@ -612,7 +595,7 @@ export default function MainLayout() {
       {/* Mobile Bottom Navigation */}
       <BottomNav attendanceBadge={attendanceBadge} leaveBadgeCount={leaveBadgeCount} />
 
-      {/* ==================== MODAL: MY PROFILE ==================== */}
+      {/* Modal Profile */}
       {isProfileModalOpen && (
         <div 
           className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-40 flex items-center justify-center p-3 sm:p-4"
@@ -622,7 +605,6 @@ export default function MainLayout() {
             className="bg-white w-full max-w-sm sm:max-w-md rounded-2xl shadow-2xl p-4 sm:p-6 border border-gray-100 relative max-h-[90vh] overflow-y-auto animate-fadeIn"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
               <h3 className="text-base sm:text-lg font-bold text-gray-800">
                 {currentLang === 'id' ? 'Profil Saya' : 'My Profile'}
@@ -638,7 +620,6 @@ export default function MainLayout() {
               </button>
             </div>
 
-            {/* Profile Avatar in Center */}
             <div className="flex flex-col items-center mb-4">
               <img 
                 src={photo} 
@@ -647,7 +628,6 @@ export default function MainLayout() {
                 onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }}
               />
               
-              {/* Employee Barcode Card */}
               <div className="w-full flex flex-col items-center justify-center p-3.5 bg-gray-50/70 rounded-2xl border border-gray-200">
                 <div className="w-full flex justify-between items-center mb-2 px-1 text-xs">
                   <span className="text-gray-600 font-semibold text-xs">
@@ -685,7 +665,6 @@ export default function MainLayout() {
               </div>
             </div>
 
-            {/* Profile Info Details List */}
             <div className="space-y-2.5 text-xs text-gray-600 divide-y divide-gray-100">
               <div className="flex justify-between items-center pt-2">
                 <span className="text-gray-400 font-medium">Employee ID</span>
@@ -730,7 +709,6 @@ export default function MainLayout() {
               </div>
             </div>
 
-            {/* Modal Footer Buttons */}
             <div className="mt-5 pt-3 border-t border-gray-100 flex items-center justify-between gap-3">
               <button 
                 type="button"
@@ -756,7 +734,7 @@ export default function MainLayout() {
         </div>
       )}
 
-      {/* ==================== MODAL: FULLSCREEN BARCODE ==================== */}
+      {/* Modal Fullscreen Barcode */}
       {isFullscreenBarcodeOpen && (
         <div 
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-90 p-4" 
