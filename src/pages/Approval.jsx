@@ -191,6 +191,8 @@ export default function Approval() {
     setLoading(true);
 
     try {
+      let subordinateEmails = [];
+      
       // 1. Fetch Subordinate Employees from employee_directory
       try {
         const { data: dirData, error: dirErr } = await supabase
@@ -221,6 +223,7 @@ export default function Approval() {
             }
           });
 
+          subordinateEmails = Array.from(uniqueMap.keys());
           setTeamMembers(Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
         }
       } catch (err) {
@@ -280,7 +283,10 @@ export default function Approval() {
           .limit(5000);
 
         if (!schedErr && schedData) {
-          teamSched = schedData.filter(row => matchesLineManager(row, userWorkEmail));
+          teamSched = schedData.filter(row => {
+            const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email']) || '').trim().toLowerCase();
+            return subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => empEmail.includes(sub));
+          });
         }
       } catch (e) {
         console.warn("Could not query schedule table:", e);
