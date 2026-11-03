@@ -784,7 +784,7 @@ No further action is required.`,
           <div className="flex items-center gap-2 shrink-0 sm:gap-3">
             <button 
               onClick={handleOpenModal}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95"
+              className="hidden sm:flex px-3.5 py-2 rounded-xl text-xs font-bold transition items-center gap-1.5 shadow-sm bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
               <span>Request Leave</span>
@@ -802,6 +802,15 @@ No further action is required.`,
             </button>
           </div>
         </div>
+
+        {/* Mobile Request Leave Button (Matches reference image position) */}
+        <button 
+          onClick={handleOpenModal}
+          className="sm:hidden w-full mb-5 px-4 py-3 rounded-xl text-sm font-bold transition flex justify-center items-center gap-2 shadow-sm bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+          <span>Request Leave</span>
+        </button>
 
         {/* Expiring Warning */}
         {expiringHolidays.length > 0 && (
