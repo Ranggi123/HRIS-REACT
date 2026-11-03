@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { useNavigate } from 'react-router-dom'; // Tambahan navigasi
+import { useNavigate } from 'react-router-dom';
 
 const SUPABASE_URL = 'https://lfexpyqmjfkymvbacweo.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZXhweXFtamZreW12YmFjd2VvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2MzA3OTEsImV4cCI6MjEwNjIwNjc5MX0._e53PLDxsbN0aYM1mqSxLkVGnS0X85D9FYBvb1sQIWY';
@@ -12,8 +12,11 @@ const TABLE_EVENTS = ['events', 'event', 'company_events'];
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [calendarMode, setCalendarMode] = useState('schedule'); // 'schedule' | 'public_holiday' | 'event'
-  const [calendarDate, setCalendarDate] = useState(new Date(2026, 9, 1)); // Default Oktober 2026
+  const [calendarMode, setCalendarMode] = useState('schedule'); 
+  const [calendarDate, setCalendarDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [loading, setLoading] = useState(false);
 
   // Database Records
@@ -24,7 +27,6 @@ export default function Dashboard() {
   // Modal State
   const [scheduleModalData, setScheduleModalData] = useState(null);
 
-  // Cek sesi login di awal render (tambahan proteksi ganda)
   useEffect(() => {
     const session = localStorage.getItem('hris_session_data');
     if (!session) {
@@ -32,7 +34,6 @@ export default function Dashboard() {
     }
   }, [navigate]);
 
-  // Helper case-insensitive prop
   const getPropCaseInsensitive = (obj, candidateKeys, fallback = '') => {
     if (!obj) return fallback;
     const keys = Object.keys(obj);
@@ -46,7 +47,6 @@ export default function Dashboard() {
     return fallback;
   };
 
-  // Helper format tanggal Indonesia (DD-MM-YYYY HH:mm)
   const formatIndoDateTime = (val) => {
     if (!val || val === '-' || val === 'null' || val === 'undefined') return '-';
     const s = String(val).trim();
@@ -111,7 +111,6 @@ export default function Dashboard() {
     return s;
   };
 
-  // Check date matching logic identical to index.html
   const checkDateMatch = (rawDbDate, targetYear, targetMonth, targetDay) => {
     if (!rawDbDate) return false;
     const str = String(rawDbDate).trim();
@@ -142,7 +141,6 @@ export default function Dashboard() {
     return false;
   };
 
-  // Schedule styling logic from index.html
   const getScheduleStyle = (type) => {
     if (!type) return { cardClass: 'bg-white border-gray-200 text-gray-700', badgeClass: 'bg-gray-100 text-gray-700', badgeText: '', shortCode: '' };
     const t = type.toLowerCase().trim();
@@ -179,7 +177,6 @@ export default function Dashboard() {
     };
   };
 
-  // Fetch functions following index.html
   const fetchScheduleData = async (user) => {
     try {
       const userEmail = (user?.email || user?.Email || user?.USER_UID || '').trim().toLowerCase();
@@ -286,17 +283,18 @@ export default function Dashboard() {
     loadData();
   }, [loadData]);
 
-  // Month navigation
   const prevMonth = () => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1));
   const nextMonth = () => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1));
-  const setThisMonth = () => setCalendarDate(new Date(2026, 9, 1)); // October 2026
+  const setThisMonth = () => {
+    const now = new Date();
+    setCalendarDate(new Date(now.getFullYear(), now.getMonth(), 1));
+  };
 
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
-  // Calendar Calculation
   const year = calendarDate.getFullYear();
   const month = calendarDate.getMonth();
   const firstDayIndex = new Date(year, month, 1).getDay();
@@ -329,7 +327,6 @@ export default function Dashboard() {
       let checkoutToPass = '-';
       let currentScheduleType = '';
 
-      // Match Public Holiday for this day
       const matchedHoliday = publicHolidayRecords.find(item => {
         const dateVal = item.date || item.Date || item.tanggal || item.Tanggal || item.DATE;
         return checkDateMatch(dateVal, year, month, day);
@@ -403,7 +400,6 @@ export default function Dashboard() {
             noteOverlayText = matchingHolidayName;
           }
         } else {
-          // If no schedule row found in DB
           if (matchingHolidayName) {
             styleConfig = {
               cardClass: 'bg-red-100 border-red-300 text-red-950 font-medium',
@@ -482,7 +478,6 @@ export default function Dashboard() {
     };
   }, [year, month, totalDays, scheduleRecords, publicHolidayRecords, eventRecords, calendarMode]);
 
-  // Click handler that opens Schedule Detail Modal
   const handleDayClick = (dayData) => {
     if (calendarMode === 'schedule') {
       setScheduleModalData({
@@ -505,57 +500,76 @@ export default function Dashboard() {
       {/* Work Schedule Calendar Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 relative">
         
-        {/* Top Header Row with Refresh Button */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 mb-4 sm:mb-5 border-b border-gray-200 gap-3 sm:gap-4">
-          <div>
-            <h3 className="text-base sm:text-lg font-bold text-gray-900">
-              {calendarMode === 'public_holiday' 
-                ? 'Public Holiday Calendar' 
-                : calendarMode === 'event' 
-                ? 'Event Calendar' 
-                : 'Work Schedule Calendar'}
-            </h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {calendarMode === 'public_holiday'
-                ? 'Detail of public holiday calendar'
-                : calendarMode === 'event'
-                ? 'Detail of event calendar'
-                : 'Detail of your calendar'}
-            </p>
+        {/* Top Header & Controls Row */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 mb-4 sm:mb-5 border-b border-gray-200 gap-4">
+          
+          {/* Left part: Title & Mobile Refresh */}
+          <div className="flex justify-between items-start w-full sm:w-auto">
+            <div>
+              <h3 className="text-base sm:text-lg font-bold text-gray-900">
+                {calendarMode === 'public_holiday' 
+                  ? 'Public Holiday Calendar' 
+                  : calendarMode === 'event' 
+                  ? 'Event Calendar' 
+                  : 'Work Schedule Calendar'}
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {calendarMode === 'public_holiday'
+                  ? 'Detail of public holiday calendar'
+                  : calendarMode === 'event'
+                  ? 'Detail of event calendar'
+                  : 'Detail of your calendar'}
+              </p>
+            </div>
+            
+            {/* Mobile Refresh Button (Hidden on Desktop) */}
+            <button 
+              onClick={loadData} 
+              disabled={loading}
+              className="sm:hidden px-3.5 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold transition shrink-0 flex items-center gap-2 shadow-sm cursor-pointer active:scale-95 disabled:opacity-50 ml-3"
+              title="Refresh Data"
+            >
+              <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
           </div>
           
-          <button 
-            onClick={loadData} 
-            disabled={loading}
-            className="px-3.5 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold transition shrink-0 ml-3 flex items-center gap-2 shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
-            title="Refresh Data"
-          >
-            <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            <span>{loading ? 'Loading...' : 'Refresh'}</span>
-          </button>
-        </div>
+          {/* Right part: Dropdown & Desktop Refresh */}
+          <div className="flex w-full sm:w-auto items-center gap-3 sm:gap-4 justify-between sm:justify-end">
+            {/* Dropdown Select Mode (Working Schedule, Event, Public Holiday) */}
+            <div className="relative w-full sm:w-48">
+              <select 
+                value={calendarMode} 
+                onChange={(e) => setCalendarMode(e.target.value)}
+                className="w-full py-2.5 px-3.5 text-xs font-semibold text-gray-800 bg-white border border-gray-300 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs cursor-pointer"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23374151'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2.5' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 0.85rem center',
+                  backgroundSize: '1rem'
+                }}
+              >
+                <option value="schedule">Working Schedule</option>
+                <option value="public_holiday">Public Holiday</option>
+                <option value="event">Event</option>
+              </select>
+            </div>
 
-        {/* Dropdown Select Mode (Working Schedule, Event, Public Holiday) */}
-        <div className="mb-4">
-          <div className="relative">
-            <select 
-              value={calendarMode} 
-              onChange={(e) => setCalendarMode(e.target.value)}
-              className="w-full py-2.5 px-3.5 text-xs font-semibold text-gray-800 bg-white border border-gray-300 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs cursor-pointer"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23374151'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2.5' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'right 0.85rem center',
-                backgroundSize: '1rem'
-              }}
+            {/* Desktop Refresh Button (Hidden on Mobile) */}
+            <button 
+              onClick={loadData} 
+              disabled={loading}
+              className="hidden sm:flex px-3.5 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold transition shrink-0 items-center gap-2 shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
+              title="Refresh Data"
             >
-              <option value="schedule">Working Schedule</option>
-              <option value="public_holiday">Public Holiday</option>
-              <option value="event">Event</option>
-            </select>
+              <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>{loading ? 'Loading...' : 'Refresh'}</span>
+            </button>
           </div>
+
         </div>
 
         {/* Month Navigation Row: < October 2026 > This Month */}
