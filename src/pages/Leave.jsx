@@ -761,7 +761,7 @@ No further action is required.`,
       if (statusFilter === 'Approved') {
         return sLower.includes('approve') || sLower.includes('setuju');
       }
-      if (statusFilter === 'Reject/Cancel') {
+      if (statusFilter === 'Cancel') {
         return sLower.includes('reject') || sLower.includes('tolak') || sLower.includes('cancel');
       }
       if (statusFilter === 'Pending') {
@@ -883,7 +883,7 @@ No further action is required.`,
                 className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-blue-500 cursor-pointer transition ${statusFilter === 'All' ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
                 onClick={() => setStatusFilter('All')}
               >
-                <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase">Total</span>
+                <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase">All</span>
                 <span className="text-lg sm:text-xl font-black text-gray-800">{stats.total}</span>
               </div>
               <div 
@@ -901,10 +901,10 @@ No further action is required.`,
                 <span className="text-lg sm:text-xl font-black text-yellow-500">{stats.pending}</span>
               </div>
               <div 
-                className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-red-500 cursor-pointer transition ${statusFilter === 'Reject/Cancel' ? 'bg-red-50' : 'hover:bg-gray-50'}`}
-                onClick={() => setStatusFilter('Reject/Cancel')}
+                className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-red-500 cursor-pointer transition ${statusFilter === 'Cancel' ? 'bg-red-50' : 'hover:bg-gray-50'}`}
+                onClick={() => setStatusFilter('Cancel')}
               >
-                <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase text-center leading-tight">Reject/Cancel</span>
+                <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase text-center leading-tight">Cancel</span>
                 <span className="text-lg sm:text-xl font-black text-red-500">{stats.rejected}</span>
               </div>
             </div>
