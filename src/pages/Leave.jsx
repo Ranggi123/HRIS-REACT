@@ -463,50 +463,84 @@ export default function Leave() {
         attachmentUrl = await uploadToGoogleDrive(formFile);
       }
 
-      // Payload building
-      const empId = getPropCaseInsensitive(currentUser, ['employee id', 'employee_id', 'employeeid', 'id']) || userEmail;
-      
       let tableCols = [];
-      if (leaveRecords.length > 0) tableCols = Object.keys(leaveRecords[0]);
-      else {
+      if (leaveRecords.length > 0) {
+        tableCols = Object.keys(leaveRecords[0]);
+      } else {
         const { data: sample } = await supabase.from('leave_requests').select('*').limit(1);
-        if (sample && sample.length > 0) tableCols = Object.keys(sample[0]);
+        if (sample && sample.length > 0) {
+          tableCols = Object.keys(sample[0]);
+        }
       }
 
+      const colPrimaryId = resolveTableColumn(tableCols, ['Leave ID', 'leave_id', 'Leave_ID', 'ID', 'id', 'request_id']) || 'Leave ID';
       const colEmployee = resolveTableColumn(tableCols, ['Employee', 'employee', 'USER_UID', 'user_uid', 'email', 'employee_id']) || 'Employee';
+      const colName = resolveTableColumn(tableCols, ['Name', 'name', 'nama', 'fullname', 'full_name']) || 'Name';
       const colCreatedDate = resolveTableColumn(tableCols, ['CreatedDate', 'created_date', 'Created Date', 'Date', 'date']) || 'CreatedDate';
       const colLeaveType = resolveTableColumn(tableCols, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype']) || 'Leave Type';
       const colStartDate = resolveTableColumn(tableCols, ['From Date', 'from_date', 'From', 'from', 'Start Date', 'start_date']) || 'From Date';
       const colEndDate = resolveTableColumn(tableCols, ['To Date', 'to_date', 'To', 'to', 'End Date', 'end_date']) || 'To Date';
       const colStatus = resolveTableColumn(tableCols, ['Status', 'status']) || 'Status';
+      const colTotalDays = resolveTableColumn(tableCols, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days']) || 'Total Days Count';
+      const colFinalBalance = resolveTableColumn(tableCols, ['Final balance', 'final_balance', 'Final Balance']) || 'Final balance';
 
       const now = new Date();
+      const currentIsoTimestamp = now.toISOString();
       const todayFormatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const uniqueId = 'LV-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
 
+      // Hitung Final Balance sesuai balance leave type dikurangi total days
+      let currentBalance = 0;
+      if (formType === 'Annual Leave') {
+        currentBalance = originalBalances.annual;
+      } else if (formType === 'Day Off Payment') {
+        currentBalance = originalBalances.dayOff;
+      } else if (formType === 'Extra Off') {
+        currentBalance = originalBalances.extraOff;
+      }
+      const finalBalanceValue = currentBalance - totalDays;
+
+      const lineManager = await getLineManagerEmail();
+
+      // Sesuai permintaan:
+      // Leave ID = Uniqueid
+      // Status = Pending Approval
+      // Employee = user email
+      // Name = user name
+      // Total Days Count = total days
+      // Final balance = balance sesuai leave type dikurangi total days
       let payload = {
-        [colEmployee]: empId,
+        [colPrimaryId]: uniqueId,
+        [colEmployee]: userEmail,
+        [colName]: profileName,
         [colCreatedDate]: todayFormatted,
         [colLeaveType]: formType,
         [colStartDate]: formStart,
         [colEndDate]: formEnd,
-        [colStatus]: 'Pending Approval'
+        [colStatus]: 'Pending Approval',
+        [colTotalDays]: totalDays,
+        [colFinalBalance]: finalBalanceValue
       };
 
       const addIfExist = (candidates, value) => {
         const matchedCol = resolveTableColumn(tableCols, candidates);
-        if (matchedCol) payload[matchedCol] = value;
+        if (matchedCol && !payload[matchedCol]) payload[matchedCol] = value;
       };
 
-      addIfExist(['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration', 'duration', 'Days', 'days'], totalDays);
-      addIfExist(['Name', 'name', 'nama', 'fullname'], profileName);
+      addIfExist(['Annual leave balance', 'annual_leave_balance', 'Annual Leave Balance'], originalBalances.annual);
+      addIfExist(['extra off balance', 'extra_off_balance', 'Extra Off Balance'], originalBalances.extraOff);
+      addIfExist(['day off payment balance', 'day_off_payment_balance', 'Day Off Payment Balance'], originalBalances.dayOff);
       if (attachmentUrl) addIfExist(['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'Link', 'link'], attachmentUrl);
       addIfExist(['createdby', 'created_by', 'CreatedBy'], userEmail);
+      addIfExist(['lasteditby', 'last_edit_by', 'Last Edit By'], userEmail);
+      addIfExist(['last editdate', 'last_editdate', 'last_edit_date', 'Last Edit Date'], currentIsoTimestamp);
+      addIfExist(['created date', 'created_timestamp', 'created_at', 'Created Date'], currentIsoTimestamp);
+      addIfExist(['line manager', 'line_manager', 'Line Manager'], lineManager);
 
       const { error: insErr } = await supabase.from('leave_requests').insert([payload]);
       if (insErr) throw insErr;
 
       // Send Submission Email
-      const lineManager = await getLineManagerEmail();
       const formattedStart = formatDateDisplay(formStart, 'en');
       const formattedEnd = formatDateDisplay(formEnd, 'en');
       const durLabel = `${totalDays} Day(s)`;
