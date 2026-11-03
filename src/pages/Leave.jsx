@@ -476,27 +476,6 @@ export default function Leave() {
   return (
     <div className="w-full text-gray-800 font-sans">
       
-      {/* Profile Summary Card */}
-      <div className="bg-white p-3.5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 mb-4 sm:mb-6 flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-4">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">Hello, <span className="text-blue-600 font-extrabold">{profileName}</span>!</h2>
-          </div>
-          <p className="text-xs sm:text-sm text-gray-500 mt-1 leading-relaxed">
-            Department: <strong className="text-gray-900 font-semibold">{profileDept}</strong> 
-            <span className="hidden sm:inline mx-1">|</span>
-            <br className="block sm:hidden" /> 
-            Job Title: <strong className="text-gray-900 font-semibold">{profileJobTitle}</strong>
-          </p>
-        </div>
-        <div className="flex items-center space-x-2 mt-1 sm:mt-0">
-          <span className="text-xs sm:text-sm text-gray-500">Account Status:</span>
-          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${profileStatus.toLowerCase() !== 'active' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-            {profileStatus}
-          </span>
-        </div>
-      </div>
-
       {/* Leave Records Container */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-3 sm:p-6 relative mb-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 mb-3 sm:mb-5 border-b border-gray-200 gap-2 sm:gap-4">
