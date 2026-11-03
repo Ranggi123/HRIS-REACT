@@ -887,18 +887,18 @@ No further action is required.`,
                 <span className="text-lg sm:text-xl font-black text-gray-800">{stats.total}</span>
               </div>
               <div 
-                className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-green-500 cursor-pointer transition ${statusFilter === 'Approved' ? 'bg-green-50' : 'hover:bg-gray-50'}`}
-                onClick={() => setStatusFilter('Approved')}
-              >
-                <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase">Approved</span>
-                <span className="text-lg sm:text-xl font-black text-green-600">{stats.approved}</span>
-              </div>
-              <div 
                 className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-yellow-400 cursor-pointer transition ${statusFilter === 'Pending' ? 'bg-yellow-50' : 'hover:bg-gray-50'}`}
                 onClick={() => setStatusFilter('Pending')}
               >
                 <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase">Pending</span>
                 <span className="text-lg sm:text-xl font-black text-yellow-500">{stats.pending}</span>
+              </div>
+              <div 
+                className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-green-500 cursor-pointer transition ${statusFilter === 'Approved' ? 'bg-green-50' : 'hover:bg-gray-50'}`}
+                onClick={() => setStatusFilter('Approved')}
+              >
+                <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase">Approved</span>
+                <span className="text-lg sm:text-xl font-black text-green-600">{stats.approved}</span>
               </div>
               <div 
                 className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-red-500 cursor-pointer transition ${statusFilter === 'Cancel' ? 'bg-red-50' : 'hover:bg-gray-50'}`}
@@ -913,16 +913,16 @@ No further action is required.`,
 
         {/* Leave Table */}
         <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="w-full text-sm text-left text-gray-600">
+          <table className="w-full text-sm text-left text-gray-600 table-fixed min-w-[700px]">
             <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-2 py-2 sm:px-4 sm:py-3">Request Date</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3">Leave Type</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3">From Date</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3">To Date</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 text-center">Days</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 text-center">Status</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 text-center">Action</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[14%]">Request Date</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[18%]">Leave Type</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[14%]">From Date</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[14%]">To Date</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[10%] text-center">Days</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[15%] text-center">Status</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[15%] text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -1009,7 +1009,7 @@ No further action is required.`,
             </div>
 
             <div className="overflow-x-auto rounded-xl border border-gray-200">
-              <table className="w-full text-sm text-left text-gray-600">
+              <table className="w-full text-sm text-left text-gray-600 table-fixed min-w-[700px]">
                 <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="px-2 py-2 sm:px-4 sm:py-3">Type Holiday</th>
