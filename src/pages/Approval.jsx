@@ -297,7 +297,7 @@ export default function Approval() {
           }));
       }
 
-      // 3. Fetch Attendance Requests (Hanya Pending Approval)
+      // 3. Fetch Attendance Requests (Pending dan Approved)
       const { data: attData, error: attErr } = await supabase
           .from('attendance')
           .select('*')
@@ -308,22 +308,22 @@ export default function Approval() {
           myAttendance = attData
             .filter(row => {
               const status = getRowStatus(row);
-              const isPending = isPendingApprovalStatus(status) || isApprovedStatus(status);
+              const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
               
               const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
-            const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']) || '').trim().toLowerCase();
-            const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name']) || '').trim().toLowerCase();
-            
-            const isSubordinate = subordinateEmails.includes(empEmail) || 
-                                  subordinateIdentifiers.has(empEmail) || 
-                                  subordinateIdentifiers.has(empName) ||
-                                  subordinateEmails.some(sub => empEmail && (empEmail.includes(sub) || sub.includes(empEmail)));
-            
-            if (hasDirectMgr && empEmail) {
-              subordinateIdentifiers.add(empEmail);
-            }
+              const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']) || '').trim().toLowerCase();
+              const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name']) || '').trim().toLowerCase();
+              
+              const isSubordinate = subordinateEmails.includes(empEmail) || 
+                                    subordinateIdentifiers.has(empEmail) || 
+                                    subordinateIdentifiers.has(empName) ||
+                                    subordinateEmails.some(sub => empEmail && (empEmail.includes(sub) || sub.includes(empEmail)));
+              
+              if (hasDirectMgr && empEmail) {
+                subordinateIdentifiers.add(empEmail);
+              }
 
-              return isPending && (hasDirectMgr || isSubordinate);
+              return isRelevant && (hasDirectMgr || isSubordinate);
             })
             .map(row => ({
               ...row,
@@ -942,12 +942,15 @@ export default function Approval() {
   }, [leaveRequests]);
 
   const pendingAttCount = useMemo(() => {
-    return attendanceRequests.filter(r => isAttendancePending(r)).length;
+    return attendanceRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
+  }, [attendanceRequests]);
+
+  const approvedAttCount = useMemo(() => {
+    return attendanceRequests.filter(r => isApprovedStatus(getRowStatus(r))).length;
   }, [attendanceRequests]);
 
   const currentLeaveCount = statusTab === 'approved' ? approvedLeavesCount : pendingLeavesCount;
-  // Khusus attendance hanya menampilkan yang pending
-  const currentAttCount = pendingAttCount;
+  const currentAttCount = statusTab === 'approved' ? approvedAttCount : pendingAttCount;
 
   // Filtered List based on status tab, category tab, and selected employee
   const combinedList = useMemo(() => {
@@ -961,7 +964,11 @@ export default function Approval() {
       }
     } else if (activeTab === 'attendance') {
       list = [...attendanceRequests];
-      list = list.filter(item => isAttendancePending(item));
+      if (statusTab === 'pending') {
+        list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
+      } else if (statusTab === 'approved') {
+        list = list.filter(item => isApprovedStatus(getRowStatus(item)));
+      }
     }
 
     if (selectedEmployee && selectedEmployee !== 'all') {
@@ -1032,7 +1039,7 @@ export default function Approval() {
             {/* Mobile Top Row: Category Tabs (Leave & Attendance saja) + Status Dropdown */}
             <div className="flex flex-row justify-between items-center gap-2 w-full sm:w-auto">
               
-              {/* Category Filter Tabs: Tab All dihilangkan */}
+              {/* Category Filter Tabs */}
               <div className="flex p-1 bg-gray-100 rounded-xl space-x-1 shrink-0">
                 <button
                   onClick={() => setActiveTab('leave')}
@@ -1048,25 +1055,23 @@ export default function Approval() {
                 </button>
               </div>
 
-              {/* Status Dropdown Filter: Disembunyikan saat tab Attendance aktif */}
-              {activeTab !== 'attendance' && (
-                <div className="relative flex-1 sm:flex-none sm:min-w-[160px]">
-                  <select
-                    value={statusTab}
-                    onChange={(e) => setStatusTab(e.target.value)}
-                    className="w-full pl-3 pr-8 py-2 text-xs font-bold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer transition h-full"
-                    style={{
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                      backgroundRepeat: 'no-repeat',
-                      backgroundPosition: 'right 0.75rem center',
-                      backgroundSize: '1rem'
-                    }}
-                  >
-                    <option value="pending">Pending ({pendingLeavesCount})</option>
-                    <option value="approved">Approved ({approvedLeavesCount})</option>
-                  </select>
-                </div>
-              )}
+              {/* Status Dropdown Filter */}
+              <div className="relative flex-1 sm:flex-none sm:min-w-[160px]">
+                <select
+                  value={statusTab}
+                  onChange={(e) => setStatusTab(e.target.value)}
+                  className="w-full pl-3 pr-8 py-2 text-xs font-bold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer transition h-full"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 0.75rem center',
+                    backgroundSize: '1rem'
+                  }}
+                >
+                  <option value="pending">Pending ({activeTab === 'leave' ? pendingLeavesCount : pendingAttCount})</option>
+                  <option value="approved">Approved ({activeTab === 'leave' ? approvedLeavesCount : approvedAttCount})</option>
+                </select>
+              </div>
             </div>
 
             {/* Dropdown filter Employee from employee_directory */}
@@ -1127,7 +1132,7 @@ export default function Approval() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       <p className="font-semibold text-gray-600 text-sm">No requests found.</p>
-                      <p className="text-xs text-gray-400 mt-1">There are no {activeTab === 'attendance' ? 'pending' : statusTab} requests matching your current filter.</p>
+                      <p className="text-xs text-gray-400 mt-1">There are no {statusTab} requests matching your current filter.</p>
                     </div>
                   </td>
                 </tr>
