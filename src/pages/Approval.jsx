@@ -80,31 +80,6 @@ const getRowStatus = (row) => {
   return getPropCaseInsensitive(row, ['Status', 'status', 'Approval Status', 'approval_status', 'Status Approval', 'status_approval'], '');
 };
 
-const isAttendancePending = (row) => {
-  if (!row) return false;
-  const primaryStatus = getPropCaseInsensitive(row, [
-    'Status', 'status', 'STATUS',
-    'Approval Status', 'approval_status', 'Approval_Status',
-    'Status Approval', 'status_approval', 'Status_Approval'
-  ], '');
-  
-  if (primaryStatus) {
-    const sNorm = String(primaryStatus).trim().toLowerCase().replace(/[\s_-]/g, '');
-    if (sNorm === 'pendingapproval' || sNorm === 'pending' || sNorm.includes('pending')) {
-      return true;
-    }
-  }
-
-  for (const val of Object.values(row)) {
-    if (typeof val === 'string') {
-      const vNorm = val.trim().toLowerCase().replace(/[\s_-]/g, '');
-      if (vNorm === 'pendingapproval' || vNorm === 'pending') {
-        return true;
-      }
-    }
-  }
-  return false;
-};
 
 const matchesLineManager = (record, targetEmail, targetName = '') => {
   if (!record || (!targetEmail && !targetName)) return false;
@@ -332,10 +307,10 @@ export default function Approval() {
         if (!attErr && attData && attData.length > 0) {
           myAttendance = attData
             .filter(row => {
-               const status = getRowStatus(row);
-            const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
-            
-            const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
+              const status = getRowStatus(row);
+              const isPending = isPendingApprovalStatus(status) || isApprovedStatus(status);
+              
+              const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
             const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']) || '').trim().toLowerCase();
             const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name']) || '').trim().toLowerCase();
             
@@ -348,8 +323,8 @@ export default function Approval() {
               subordinateIdentifiers.add(empEmail);
             }
 
-            return isRelevant && (hasDirectMgr || isSubordinate);
-          })
+              return isPending && (hasDirectMgr || isSubordinate);
+            })
             .map(row => ({
               ...row,
               _category: 'Attendance',
