@@ -988,31 +988,32 @@ export default function Approval() {
 
           {/* Filters: Category, Status Dropdown & Employee Dropdown */}
           <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-4 pt-3 border-t border-gray-100">
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Category Filter Tabs */}
-              <div className="flex p-1 bg-gray-100 rounded-xl space-x-1">
-                <button
-                  onClick={() => setActiveTab('all')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  All ({currentTotalCount})
-                </button>
-                <button
-                  onClick={() => setActiveTab('leave')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'leave' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  Leave ({currentLeaveCount})
-                </button>
-                <button
-                  onClick={() => setActiveTab('attendance')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'attendance' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  Attendance ({currentAttCount})
-                </button>
-              </div>
+            {/* Category Filter Tabs */}
+            <div className="flex p-1 bg-gray-100 rounded-xl space-x-1 shrink-0">
+              <button
+                onClick={() => setActiveTab('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                All ({currentTotalCount})
+              </button>
+              <button
+                onClick={() => setActiveTab('leave')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'leave' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Leave ({currentLeaveCount})
+              </button>
+              <button
+                onClick={() => setActiveTab('attendance')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'attendance' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Attendance ({currentAttCount})
+              </button>
+            </div>
 
+            {/* Dropdowns: Status and Employee (Side-by-side on mobile) */}
+            <div className="flex flex-row gap-2 sm:gap-3 w-full sm:w-auto">
               {/* Status Dropdown Filter */}
-              <div className="relative min-w-[160px]">
+              <div className="relative w-1/2 sm:w-auto sm:min-w-[160px]">
                 <select
                   value={statusTab}
                   onChange={(e) => setStatusTab(e.target.value)}
@@ -1028,28 +1029,28 @@ export default function Approval() {
                   <option value="approved">Approved ({approvedLeavesCount + approvedAttCount})</option>
                 </select>
               </div>
-            </div>
 
-            {/* Dropdown filter Employee from employee_directory */}
-            <div className="relative min-w-[240px]">
-              <select
-                value={selectedEmployee}
-                onChange={(e) => setSelectedEmployee(e.target.value)}
-                className="w-full pl-3 pr-8 py-2 text-xs font-semibold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs cursor-pointer transition h-full"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 0.75rem center',
-                  backgroundSize: '1rem'
-                }}
-              >
-                <option value="all">All Team Members ({teamMembers.length})</option>
-                {teamMembers.map((member) => (
-                  <option key={member.email} value={member.email}>
-                    {member.name}
-                  </option>
-                ))}
-              </select>
+              {/* Dropdown filter Employee from employee_directory */}
+              <div className="relative w-1/2 sm:w-auto sm:min-w-[240px]">
+                <select
+                  value={selectedEmployee}
+                  onChange={(e) => setSelectedEmployee(e.target.value)}
+                  className="w-full pl-3 pr-8 py-2 text-xs font-semibold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer transition h-full"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 0.75rem center',
+                    backgroundSize: '1rem'
+                  }}
+                >
+                  <option value="all">All Team Members ({teamMembers.length})</option>
+                  {teamMembers.map((member) => (
+                    <option key={member.email} value={member.email}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </div>

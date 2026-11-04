@@ -877,28 +877,28 @@ No further action is required.`,
           </div>
 
           <div>
-            <div className="inline-flex bg-slate-100 rounded-xl p-1.5 w-full sm:w-auto overflow-x-auto gap-1" style={{ scrollbarWidth: 'none' }}>
+            <div className="flex bg-slate-100 rounded-xl p-1 sm:p-1.5 w-full sm:w-auto gap-1">
               <button
                 onClick={() => setStatusFilter('All')}
-                className={`whitespace-nowrap flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm transition-all ${statusFilter === 'All' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
+                className={`hidden sm:block whitespace-nowrap flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm text-center transition-all ${statusFilter === 'All' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
               >
                 All ({stats.total})
               </button>
               <button
                 onClick={() => setStatusFilter('Pending')}
-                className={`whitespace-nowrap flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm transition-all ${statusFilter === 'Pending' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
+                className={`whitespace-nowrap flex-1 sm:flex-none px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm text-center transition-all ${statusFilter === 'Pending' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
               >
                 Pending ({stats.pending})
               </button>
               <button
                 onClick={() => setStatusFilter('Approved')}
-                className={`whitespace-nowrap flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm transition-all ${statusFilter === 'Approved' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
+                className={`whitespace-nowrap flex-1 sm:flex-none px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm text-center transition-all ${statusFilter === 'Approved' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
               >
                 Approved
               </button>
               <button
                 onClick={() => setStatusFilter('Cancel')}
-                className={`whitespace-nowrap flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm transition-all ${statusFilter === 'Cancel' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
+                className={`whitespace-nowrap flex-1 sm:flex-none px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm text-center transition-all ${statusFilter === 'Cancel' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
               >
                 Cancel
               </button>
