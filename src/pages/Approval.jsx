@@ -66,56 +66,18 @@ const resolveTableColumn = (knownCols, candidates) => {
 const isPendingApprovalStatus = (status) => {
   if (!status) return false;
   const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
-  return (
-    s === 'pendingapproval' ||
-    s === 'pending' ||
-    s === 'requesttocancel' ||
-    s.includes('pending') ||
-    s.includes('waiting') ||
-    s.includes('menunggu') ||
-    s.includes('diajukan') ||
-    s.includes('need') ||
-    s.includes('review') ||
-    s.includes('submit')
-  );
+  return s === 'pendingapproval' || s === 'pending' || s === 'requesttocancel' || s.includes('pending');
 };
 
 const isApprovedStatus = (status) => {
   if (!status) return false;
   const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
-  return (
-    s === 'approved' ||
-    s === 'approve' ||
-    s === 'setuju' ||
-    s === 'disetujui' ||
-    s.includes('approve') ||
-    s.includes('setuju')
-  );
+  return s === 'approved' || s === 'approve' || s === 'setuju' || s === 'disetujui' || s.includes('approve');
 };
 
-const getApprovalStatus = (row) => {
+const getRowStatus = (row) => {
   if (!row) return '';
-  const approvalKeys = [
-    'Approval Status', 'approval_status', 'ApprovalStatus',
-    'Status Approval', 'status_approval', 'StatusApproval',
-    'Request Status', 'request_status',
-    'Attendance Approval Status', 'attendance_approval_status',
-    'State', 'state', 'Approval', 'approval'
-  ];
-  const specific = getPropCaseInsensitive(row, approvalKeys, '');
-  if (specific) return specific;
-  return getPropCaseInsensitive(row, ['Status', 'status'], '');
-};
-
-const resolveApprovalStatusColumn = (cols) => {
-  return resolveTableColumn(cols, [
-    'Approval Status', 'approval_status', 'ApprovalStatus',
-    'Status Approval', 'status_approval', 'StatusApproval',
-    'Request Status', 'request_status',
-    'Attendance Approval Status', 'attendance_approval_status',
-    'State', 'state', 'Approval', 'approval',
-    'Status', 'status'
-  ]) || 'Status';
+  return getPropCaseInsensitive(row, ['Status', 'status', 'Approval Status', 'approval_status', 'Status Approval', 'status_approval'], '');
 };
 
 const matchesLineManager = (record, targetEmail, targetName = '') => {
@@ -138,17 +100,10 @@ const matchesLineManager = (record, targetEmail, targetName = '') => {
     'Atasan Email',
     'atasan_email',
     'Atasan',
-    'atasan',
-    'Direct Supervisor',
-    'direct_supervisor',
-    'supervisor',
-    'Supervisor',
-    'Line Manager Name',
-    'line_manager_name'
+    'atasan'
   ], '').trim().toLowerCase();
 
   if (!mgrVal) return false;
-
   const tEmail = (targetEmail || '').trim().toLowerCase();
   const tName = (targetName || '').trim().toLowerCase();
   const tUser = tEmail.includes('@') ? tEmail.split('@')[0] : '';
@@ -159,6 +114,7 @@ const matchesLineManager = (record, targetEmail, targetName = '') => {
 
   return false;
 };
+
 // Calendar Date Matcher
 const checkDateMatch = (rawDbDate, targetYear, targetMonth, targetDay) => {
   if (!rawDbDate) return false;
@@ -255,7 +211,6 @@ export default function Approval() {
   }, [currentUser, userWorkEmail]);
 
   // Fetch Requests, Directory, and Schedule for this Line Manager
-    // Fetch Requests, Directory, and Schedule for this Line Manager
   const refreshAllData = useCallback(async () => {
     if (!userWorkEmail && !userName) return;
     setLoading(true);
@@ -317,7 +272,7 @@ export default function Approval() {
       if (!lvError && lvData) {
         myLeaves = lvData
           .filter(row => {
-            const status = getApprovalStatus(row);
+            const status = getRowStatus(row);
             const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
             
             const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
@@ -338,39 +293,23 @@ export default function Approval() {
           }));
       }
 
-      // 3. Fetch Attendance Requests (Pending and Approved)
+      // 3. Fetch Attendance Requests (Hanya Pending Approval)
       let myAttendance = [];
       try {
-        let attData = null;
-        const { data: d1, error: e1 } = await supabase
+        const { data: attData, error: attErr } = await supabase
           .from('attendance')
           .select('*')
           .limit(2000);
 
-        if (!e1 && d1 && d1.length > 0) {
-          attData = d1;
-        } else {
-          if (e1) console.warn("Notice: Querying 'attendance' returned error, trying fallback 'attendance_requests':", e1);
-          const { data: d2, error: e2 } = await supabase
-            .from('attendance_requests')
-            .select('*')
-            .limit(2000);
-          if (!e2 && d2 && d2.length > 0) {
-            attData = d2;
-          }
-        }
-
-        if (attData && attData.length > 0) {
+        if (!attErr && attData && attData.length > 0) {
           myAttendance = attData
             .filter(row => {
-              const status = getApprovalStatus(row);
-              const sNorm = status.toLowerCase().replace(/[\s_-]/g, '');
-              const isRelevant = sNorm === 'pendingapproval' || sNorm === 'pending';
+              // Ambil kolom Status secara langsung
+              const status = getRowStatus(row);
+              const sNorm = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
+              const isPending = sNorm === 'pendingapproval' || sNorm === 'pending' || sNorm.includes('pending');
               
-              // Check if record has Line Manager directly
               const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
-              
-              // Or check if employee belongs to this manager's subordinates
               const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'user_email']) || '').trim().toLowerCase();
               const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name', 'employee_name']) || '').trim().toLowerCase();
               
@@ -379,7 +318,7 @@ export default function Approval() {
                                     subordinateIdentifiers.has(empName) ||
                                     subordinateEmails.some(sub => empEmail && (empEmail.includes(sub) || sub.includes(empEmail)));
               
-              return isRelevant && (hasDirectMgr || isSubordinate);
+              return isPending && (hasDirectMgr || isSubordinate);
             })
             .map(row => ({
               ...row,
@@ -537,7 +476,7 @@ export default function Approval() {
       const table = item._sourceTable || (item._category === 'Attendance' ? 'attendance' : 'leave_requests');
       const cols = Object.keys(item);
 
-      const statusCol = resolveApprovalStatusColumn(cols);
+      const statusCol = resolveTableColumn(cols, ['Status', 'status', 'Approval Status', 'approval_status']) || 'Status';
       const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'attendance_id', 'Attendance ID', 'no', '_id']);
 
       const nowIso = new Date().toISOString();
@@ -770,7 +709,7 @@ export default function Approval() {
       const table = item._sourceTable || (reqCategory === 'Attendance' ? 'attendance' : 'leave_requests');
       const cols = Object.keys(item);
 
-      const statusCol = resolveApprovalStatusColumn(cols);
+      const statusCol = resolveTableColumn(cols, ['Status', 'status', 'Approval Status', 'approval_status']) || 'Status';
       const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'attendance_id', 'Attendance ID', 'no', '_id']);
 
       const nowIso = new Date().toISOString();
@@ -990,24 +929,21 @@ export default function Approval() {
 
   // Counts for Badges
   const pendingLeavesCount = useMemo(() => {
-    return leaveRequests.filter(r => isPendingApprovalStatus(getApprovalStatus(r))).length;
+    return leaveRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   }, [leaveRequests]);
 
   const approvedLeavesCount = useMemo(() => {
-    return leaveRequests.filter(r => isApprovedStatus(getApprovalStatus(r))).length;
+    return leaveRequests.filter(r => isApprovedStatus(getRowStatus(r))).length;
   }, [leaveRequests]);
 
   const pendingAttCount = useMemo(() => {
-    return attendanceRequests.filter(r => isPendingApprovalStatus(getApprovalStatus(r))).length;
+    return attendanceRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   }, [attendanceRequests]);
 
-  const approvedAttCount = useMemo(() => {
-    return 0; // Attendance only shows pending
-  }, []);
-
   const currentLeaveCount = statusTab === 'approved' ? approvedLeavesCount : pendingLeavesCount;
-  const currentAttCount = statusTab === 'approved' ? approvedAttCount : pendingAttCount;
-  const currentTotalCount = currentLeaveCount + currentAttCount;
+  // Khusus attendance hanya menampilkan yang pending
+  const currentAttCount = pendingAttCount;
+  const currentTotalCount = statusTab === 'approved' ? currentLeaveCount : (currentLeaveCount + currentAttCount);
 
   // Filtered List based on status tab, category tab, and selected employee
   const combinedList = useMemo(() => {
@@ -1020,18 +956,19 @@ export default function Approval() {
     }
 
     // Filter by Status Tab
-    if (activeTab !== 'attendance') {
+    if (activeTab === 'attendance') {
+      // Pada tab attendance, selalu tampilkan pending saja
+      list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
+    } else {
       if (statusTab === 'pending') {
         list = list.filter(item => {
-          if (item._category === 'Attendance') return true; // Attendance is always pending
-          const s = getApprovalStatus(item);
-          return isPendingApprovalStatus(s);
+          if (item._category === 'Attendance') return true; // Attendance selalu pending
+          return isPendingApprovalStatus(getRowStatus(item));
         });
       } else if (statusTab === 'approved') {
         list = list.filter(item => {
-          if (item._category === 'Attendance') return false; // Attendance has no approved tab
-          const s = getApprovalStatus(item);
-          return isApprovedStatus(s);
+          if (item._category === 'Attendance') return false; // Attendance tidak ditampilkan jika tab approved dipilih
+          return isApprovedStatus(getRowStatus(item));
         });
       }
     }
@@ -1126,24 +1063,24 @@ export default function Approval() {
                 </button>
               </div>
 
-              {/* Status Dropdown Filter */}
+              {/* Status Dropdown Filter: Disembunyikan saat tab Attendance dipilih */}
               {activeTab !== 'attendance' && (
-              <div className="relative flex-1 sm:flex-none sm:min-w-[160px]">
-                <select
-                  value={statusTab}
-                  onChange={(e) => setStatusTab(e.target.value)}
-                  className="w-full pl-3 pr-8 py-2 text-xs font-bold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer transition h-full"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 0.75rem center',
-                    backgroundSize: '1rem'
-                  }}
-                >
-                  <option value="pending">Pending ({pendingLeavesCount + pendingAttCount})</option>
-                  <option value="approved">Approved ({approvedLeavesCount})</option>
-                </select>
-              </div>
+                <div className="relative flex-1 sm:flex-none sm:min-w-[160px]">
+                  <select
+                    value={statusTab}
+                    onChange={(e) => setStatusTab(e.target.value)}
+                    className="w-full pl-3 pr-8 py-2 text-xs font-bold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer transition h-full"
+                    style={{
+                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                      backgroundRepeat: 'no-repeat',
+                      backgroundPosition: 'right 0.75rem center',
+                      backgroundSize: '1rem'
+                    }}
+                  >
+                    <option value="pending">Pending ({pendingLeavesCount + pendingAttCount})</option>
+                    <option value="approved">Approved ({approvedLeavesCount})</option>
+                  </select>
+                </div>
               )}
             </div>
 
@@ -1205,7 +1142,7 @@ export default function Approval() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       <p className="font-semibold text-gray-600 text-sm">No requests found.</p>
-                      <p className="text-xs text-gray-400 mt-1">There are no {statusTab} requests matching your current filter.</p>
+                      <p className="text-xs text-gray-400 mt-1">There are no {activeTab === 'attendance' ? 'pending' : statusTab} requests matching your current filter.</p>
                     </div>
                   </td>
                 </tr>
@@ -1219,7 +1156,7 @@ export default function Approval() {
                     ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], 'Leave')
                     : getPropCaseInsensitive(item, ['Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Attendance');
 
-                  const status = getApprovalStatus(item) || 'Pending Approval';
+                  const status = getRowStatus(item) || 'Pending Approval';
                   let dateInfo = '-';
                   if (isLeave) {
                     const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']), lang);
@@ -1271,7 +1208,7 @@ export default function Approval() {
 
                       <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         {(() => {
-                          const s = getPropCaseInsensitive(item, ['Status', 'status', 'Approval Status'], '');
+                          const s = getRowStatus(item);
                           if (isApprovedStatus(s)) {
                             return (
                               <button
@@ -1514,7 +1451,7 @@ export default function Approval() {
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block">Current Status</span>
                   <span className="text-xs sm:text-sm font-bold text-yellow-600">
-                    {getApprovalStatus(selectedRequest) || 'Pending Approval'}
+                    {getRowStatus(selectedRequest) || 'Pending Approval'}
                   </span>
                 </div>
               </div>
@@ -1624,7 +1561,7 @@ export default function Approval() {
                 Close
               </button>
               {(() => {
-                const s = getApprovalStatus(selectedRequest);
+                const s = getRowStatus(selectedRequest);
                 if (isApprovedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel') {
                   return (
                     <button
