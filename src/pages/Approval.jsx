@@ -1055,6 +1055,7 @@ export default function Approval() {
               </select>
             </div>
           </div>
+        </div>
 
         {/* Main List Table */}
         <div className="overflow-x-auto w-full">
@@ -1110,21 +1111,9 @@ export default function Approval() {
                     const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']), lang);
                     const toDate = formatDateDisplay(getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']), lang);
                     dateInfo = `${fromDate} - ${toDate}`;
-                    
-                    let dur = getPropCaseInsensitive(item, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration', 'duration', 'Days', 'days'], '');
-                    if (!dur) {
-                      const dS = parseFlexibleDate(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']));
-                      const dE = parseFlexibleDate(getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']));
-                      dur = (dS && dE) ? Math.ceil(Math.abs(dE - dS) / (1000 * 60 * 60 * 24)) + 1 : '1';
-                    }
                   } else {
                     const attDate = formatDateDisplay(getPropCaseInsensitive(item, ['Date', 'date', 'attendance_date', 'CreatedDate', 'created_date']), lang);
                     dateInfo = attDate;
-                    const clockIn = getPropCaseInsensitive(item, ['Clock In', 'clock_in', 'In Time', 'in_time'], '');
-                    const clockOut = getPropCaseInsensitive(item, ['Clock Out', 'clock_out', 'Out Time', 'out_time'], '');
-                    if (clockIn || clockOut) {
-                    } else {
-                    }
                   }
 
                   return (
