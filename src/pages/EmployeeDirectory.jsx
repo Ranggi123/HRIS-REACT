@@ -14,9 +14,9 @@ export default function EmployeeDirectory() {
   const [isLoading, setIsLoading] = useState(false);
   const [departments, setDepartments] = useState([]);
 
-  // Filter States
+  // Filter States (Status filter dikontrol via tab summary)
   const [deptFilter, setDeptFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('Active');
+  const [statusFilter, setStatusFilter] = useState('All'); // Default 'All' atau 'Active'
   const [searchQuery, setSearchQuery] = useState('');
 
   // Pagination State
@@ -149,7 +149,7 @@ export default function EmployeeDirectory() {
     });
   }, [employees]);
 
-  // 4. Data Filter untuk Summary Card (Berdasarkan Dept & Search, mengabaikan Status agar count Inactive/Active tetap utuh)
+  // 4. Data Filter untuk Summary Card / Tabs
   const summaryBase = useMemo(() => {
     return employees.filter(emp => {
       if (deptFilter && emp.dept !== deptFilter) return false;
@@ -172,7 +172,7 @@ export default function EmployeeDirectory() {
   }).length;
   const inactiveCount = totalCount - activeCount;
 
-  // 5. Data Filter untuk Grid List Utama (Sesuai employeedirectory.html: New Emp dan Off-Boarding sudah terpisah di panel atas)
+  // 5. Data Filter untuk Grid List Utama
   const filteredList = useMemo(() => {
     const today = new Date();
     const curM = today.getMonth();
@@ -181,19 +181,19 @@ export default function EmployeeDirectory() {
     return employees.filter(emp => {
       const s = emp.status.toLowerCase();
       const isOff = s.includes('resign') || s.includes('off-boarding') || s.includes('off boarding');
-      if (isOff) return false; // Sudah tampil di notifikasi atas
+      if (isOff) return false;
 
       if (emp.joinDate && emp.joinDate !== '-') {
         const pDate = parseFlexibleDate(emp.joinDate);
         if (pDate && pDate.getMonth() === curM && pDate.getFullYear() === curY) {
-          return false; // Sudah tampil di notifikasi Karyawan Baru
+          return false;
         }
       }
 
       // Filter Departemen
       if (deptFilter && emp.dept !== deptFilter) return false;
 
-      // Filter Status
+      // Filter Status dari Tab Aktif
       if (statusFilter === 'Active') {
         if (s.includes('inactive') || s.includes('resign') || s.includes('off')) return false;
       } else if (statusFilter === 'Inactive') {
@@ -379,9 +379,9 @@ export default function EmployeeDirectory() {
         </div>
       )}
 
-      {/* Filter Row */}
+      {/* Filter Row: Hanya Departemen & Pencarian */}
       <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 mb-4 sm:mb-5">
-        <div className="w-full sm:w-1/3">
+        <div className="w-full sm:w-1/2">
           <select 
             value={deptFilter} 
             onChange={(e) => setDeptFilter(e.target.value)}
@@ -392,19 +392,7 @@ export default function EmployeeDirectory() {
           </select>
         </div>
 
-        <div className="w-full sm:w-1/3">
-          <select 
-            value={statusFilter} 
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-700 shadow-xs cursor-pointer"
-          >
-            <option value="All">{currentLang === 'id' ? 'Semua Status' : 'All Status'}</option>
-            <option value="Active">{currentLang === 'id' ? 'Aktif' : 'Active'}</option>
-            <option value="Inactive">{currentLang === 'id' ? 'Tidak Aktif' : 'Inactive'}</option>
-          </select>
-        </div>
-
-        <div className="w-full sm:w-1/3">
+        <div className="w-full sm:w-1/2">
           <input 
             type="text" 
             value={searchQuery}
@@ -415,38 +403,48 @@ export default function EmployeeDirectory() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="flex w-full bg-white border border-gray-200 rounded-xl shadow-xs overflow-hidden mb-4 sm:mb-6 divide-x divide-gray-200">
-        <div className="flex-1 p-2 sm:p-4 text-center relative">
-          <div className="text-[9px] sm:text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">
-            Total
-          </div>
-          <div className="text-lg sm:text-2xl font-black text-blue-700 leading-tight">
-            {totalCount}
-          </div>
-          <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-blue-500"></div>
-        </div>
+      {/* Segmented Pill Tabs (Summary Style Sesuai Gambar) */}
+      <div className="flex mb-4 sm:mb-6 overflow-x-auto">
+        <div className="inline-flex items-center p-1 bg-slate-100/90 border border-slate-200/60 rounded-2xl gap-1">
+          <button
+            type="button"
+            onClick={() => setStatusFilter('All')}
+            className={`px-4 py-1.5 rounded-xl text-xs sm:text-sm transition-all duration-150 cursor-pointer select-none ${
+              statusFilter === 'All'
+                ? 'bg-white text-gray-900 font-bold shadow-xs'
+                : 'text-blue-600 hover:text-blue-700 font-medium'
+            }`}
+          >
+            Total ({totalCount})
+          </button>
 
-        <div className="flex-1 p-2 sm:p-4 text-center">
-          <div className="text-[9px] sm:text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">
-            {currentLang === 'id' ? 'Aktif' : 'Active'}
-          </div>
-          <div className="text-lg sm:text-2xl font-black text-green-600 leading-tight">
-            {activeCount}
-          </div>
-        </div>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('Active')}
+            className={`px-4 py-1.5 rounded-xl text-xs sm:text-sm transition-all duration-150 cursor-pointer select-none ${
+              statusFilter === 'Active'
+                ? 'bg-white text-gray-900 font-bold shadow-xs'
+                : 'text-blue-600 hover:text-blue-700 font-medium'
+            }`}
+          >
+            {currentLang === 'id' ? `Aktif (${activeCount})` : `Active (${activeCount})`}
+          </button>
 
-        <div className="flex-1 p-2 sm:p-4 text-center">
-          <div className="text-[9px] sm:text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">
-            {currentLang === 'id' ? 'Tidak Aktif' : 'Inactive'}
-          </div>
-          <div className="text-lg sm:text-2xl font-black text-red-600 leading-tight">
-            {inactiveCount}
-          </div>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('Inactive')}
+            className={`px-4 py-1.5 rounded-xl text-xs sm:text-sm transition-all duration-150 cursor-pointer select-none ${
+              statusFilter === 'Inactive'
+                ? 'bg-white text-gray-900 font-bold shadow-xs'
+                : 'text-blue-600 hover:text-blue-700 font-medium'
+            }`}
+          >
+            {currentLang === 'id' ? `Tidak Aktif (${inactiveCount})` : `Inactive (${inactiveCount})`}
+          </button>
         </div>
       </div>
 
-      {/* Grid Kartu Karyawan Sesuai employeedirectory.html */}
+      {/* Grid Kartu Karyawan */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
         {paginatedEmployees.map((emp, idx) => {
           const s = emp.status.toLowerCase();
@@ -536,10 +534,9 @@ export default function EmployeeDirectory() {
         )}
       </div>
 
-      {/* ================= PAGINATION CONTROLS ================= */}
+      {/* Pagination Controls */}
       {filteredList.length > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between border-t border-gray-100 pt-5 mt-6 gap-3">
-          {/* Info Status Halaman */}
           <p className="text-xs text-gray-500 font-medium">
             {currentLang === 'id' ? (
               <>Menampilkan <span className="font-bold text-gray-800">{startIndexDisplay}</span> - <span className="font-bold text-gray-800">{endIndexDisplay}</span> dari <span className="font-bold text-gray-800">{filteredList.length}</span> karyawan</>
@@ -548,9 +545,7 @@ export default function EmployeeDirectory() {
             )}
           </p>
 
-          {/* Tombol Halaman (Prev, Nomor Halaman, Next) */}
           <div className="flex items-center space-x-1.5">
-            {/* Tombol Previous */}
             <button
               onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
               disabled={currentPage === 1}
@@ -566,13 +561,9 @@ export default function EmployeeDirectory() {
               <span>{currentLang === 'id' ? 'Sebelumnya' : 'Previous'}</span>
             </button>
 
-            {/* Tombol Angka Halaman */}
             <div className="flex items-center space-x-1">
               {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter(page => {
-                  // Tampilkan halaman pertama, terakhir, dan halaman sekitar halaman aktif
-                  return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
-                })
+                .filter(page => page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1)
                 .map((page, idx, arr) => {
                   const prevPage = arr[idx - 1];
                   const showEllipsis = prevPage && page - prevPage > 1;
@@ -595,7 +586,6 @@ export default function EmployeeDirectory() {
                 })}
             </div>
 
-            {/* Tombol Next */}
             <button
               onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
               disabled={currentPage === totalPages}
