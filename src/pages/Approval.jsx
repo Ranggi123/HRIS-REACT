@@ -66,17 +66,60 @@ const resolveTableColumn = (knownCols, candidates) => {
 const isPendingApprovalStatus = (status) => {
   if (!status) return false;
   const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
-  return s === 'pendingapproval' || s === 'pending' || s === 'requesttocancel';
+  return (
+    s === 'pendingapproval' ||
+    s === 'pending' ||
+    s === 'requesttocancel' ||
+    s.includes('pending') ||
+    s.includes('waiting') ||
+    s.includes('menunggu') ||
+    s.includes('diajukan') ||
+    s.includes('need') ||
+    s.includes('review') ||
+    s.includes('submit')
+  );
 };
 
 const isApprovedStatus = (status) => {
   if (!status) return false;
   const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
-  return s === 'approved' || s === 'approve' || s === 'setuju';
+  return (
+    s === 'approved' ||
+    s === 'approve' ||
+    s === 'setuju' ||
+    s === 'disetujui' ||
+    s.includes('approve') ||
+    s.includes('setuju')
+  );
 };
 
-const matchesLineManager = (record, targetEmail) => {
-  if (!targetEmail) return false;
+const getApprovalStatus = (row) => {
+  if (!row) return '';
+  const approvalKeys = [
+    'Approval Status', 'approval_status', 'ApprovalStatus',
+    'Status Approval', 'status_approval', 'StatusApproval',
+    'Request Status', 'request_status',
+    'Attendance Approval Status', 'attendance_approval_status',
+    'State', 'state', 'Approval', 'approval'
+  ];
+  const specific = getPropCaseInsensitive(row, approvalKeys, '');
+  if (specific) return specific;
+  return getPropCaseInsensitive(row, ['Status', 'status'], '');
+};
+
+const resolveApprovalStatusColumn = (cols) => {
+  return resolveTableColumn(cols, [
+    'Approval Status', 'approval_status', 'ApprovalStatus',
+    'Status Approval', 'status_approval', 'StatusApproval',
+    'Request Status', 'request_status',
+    'Attendance Approval Status', 'attendance_approval_status',
+    'State', 'state', 'Approval', 'approval',
+    'Status', 'status'
+  ]) || 'Status';
+};
+
+const matchesLineManager = (record, targetEmail, targetName = '') => {
+  if (!record || (!targetEmail && !targetName)) return false;
   const mgrVal = getPropCaseInsensitive(record, [
     'Line Manager',
     'line_manager',
@@ -88,15 +131,34 @@ const matchesLineManager = (record, targetEmail) => {
     'Manager Email',
     'Approver',
     'approver',
+    'Approver Email',
+    'approver_email',
     'Manager',
     'manager',
     'Atasan Email',
-    'atasan_email'
+    'atasan_email',
+    'Atasan',
+    'atasan',
+    'Direct Supervisor',
+    'direct_supervisor',
+    'supervisor',
+    'Supervisor',
+    'Line Manager Name',
+    'line_manager_name'
   ], '').trim().toLowerCase();
 
-  return mgrVal === targetEmail || mgrVal.includes(targetEmail);
-};
+  if (!mgrVal) return false;
 
+  const tEmail = (targetEmail || '').trim().toLowerCase();
+  const tName = (targetName || '').trim().toLowerCase();
+  const tUser = tEmail.includes('@') ? tEmail.split('@')[0] : '';
+
+  if (tEmail && (mgrVal === tEmail || mgrVal.includes(tEmail) || tEmail.includes(mgrVal))) return true;
+  if (tUser && tUser.length > 2 && (mgrVal === tUser || mgrVal.includes(tUser) || tUser.includes(mgrVal))) return true;
+  if (tName && (mgrVal === tName || mgrVal.includes(tName) || tName.includes(mgrVal))) return true;
+
+  return false;
+};
 // Calendar Date Matcher
 const checkDateMatch = (rawDbDate, targetYear, targetMonth, targetDay) => {
   if (!rawDbDate) return false;
@@ -193,12 +255,14 @@ export default function Approval() {
   }, [currentUser, userWorkEmail]);
 
   // Fetch Requests, Directory, and Schedule for this Line Manager
+    // Fetch Requests, Directory, and Schedule for this Line Manager
   const refreshAllData = useCallback(async () => {
-    if (!userWorkEmail) return;
+    if (!userWorkEmail && !userName) return;
     setLoading(true);
 
     try {
       let subordinateEmails = [];
+      const subordinateIdentifiers = new Set();
       
       // 1. Fetch Subordinate Employees from employee_directory
       try {
@@ -208,7 +272,7 @@ export default function Approval() {
           .limit(2000);
 
         if (!dirErr && dirData) {
-          const subordinates = dirData.filter(row => matchesLineManager(row, userWorkEmail));
+          const subordinates = dirData.filter(row => matchesLineManager(row, userWorkEmail, userName));
           
           const uniqueMap = new Map();
           subordinates.forEach(emp => {
@@ -224,10 +288,16 @@ export default function Approval() {
             ]) || '').trim().toLowerCase();
 
             const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
+            const id = (getPropCaseInsensitive(emp, ['Employee ID', 'employee_id', 'id', 'Barcode', 'barcode']) || '').trim().toLowerCase();
 
-            if (email && !uniqueMap.has(email)) {
-              uniqueMap.set(email, { email, name });
+            if (email) {
+              subordinateIdentifiers.add(email);
+              if (!uniqueMap.has(email)) {
+                uniqueMap.set(email, { email, name });
+              }
             }
+            if (name) subordinateIdentifiers.add(name.trim().toLowerCase());
+            if (id) subordinateIdentifiers.add(id);
           });
 
           subordinateEmails = Array.from(uniqueMap.keys());
@@ -247,12 +317,17 @@ export default function Approval() {
       if (!lvError && lvData) {
         myLeaves = lvData
           .filter(row => {
-            const status = getPropCaseInsensitive(row, ['Status', 'status', 'Approval Status', 'approval_status'], '');
+            const status = getApprovalStatus(row);
             const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
             
-            const hasDirectMgr = matchesLineManager(row, userWorkEmail);
+            const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
             const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']) || '').trim().toLowerCase();
-            const isSubordinate = subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => empEmail.includes(sub));
+            const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name']) || '').trim().toLowerCase();
+            
+            const isSubordinate = subordinateEmails.includes(empEmail) || 
+                                  subordinateIdentifiers.has(empEmail) || 
+                                  subordinateIdentifiers.has(empName) ||
+                                  subordinateEmails.some(sub => empEmail && (empEmail.includes(sub) || sub.includes(empEmail)));
             
             return isRelevant && (hasDirectMgr || isSubordinate);
           })
@@ -266,23 +341,43 @@ export default function Approval() {
       // 3. Fetch Attendance Requests (Pending and Approved)
       let myAttendance = [];
       try {
-        const { data: attData, error: attErr } = await supabase
+        let attData = null;
+        const { data: d1, error: e1 } = await supabase
           .from('attendance')
           .select('*')
           .limit(2000);
 
-        if (!attErr && attData && attData.length > 0) {
+        if (!e1 && d1 && d1.length > 0) {
+          attData = d1;
+        } else {
+          if (e1) console.warn("Notice: Querying 'attendance' returned error, trying fallback 'attendance_requests':", e1);
+          const { data: d2, error: e2 } = await supabase
+            .from('attendance_requests')
+            .select('*')
+            .limit(2000);
+          if (!e2 && d2 && d2.length > 0) {
+            attData = d2;
+          }
+        }
+
+        if (attData && attData.length > 0) {
           myAttendance = attData
             .filter(row => {
-              const status = getPropCaseInsensitive(row, ['Status', 'status', 'Approval Status', 'approval_status'], '');
-              const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
+              const status = getApprovalStatus(row);
+              const sNorm = status.toLowerCase().replace(/[\s_-]/g, '');
+              const isRelevant = sNorm === 'pendingapproval' || sNorm === 'pending';
               
               // Check if record has Line Manager directly
-              const hasDirectMgr = matchesLineManager(row, userWorkEmail);
+              const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
               
-              // Or check if the employee belongs to this manager's subordinates
-              const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']) || '').trim().toLowerCase();
-              const isSubordinate = subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => empEmail.includes(sub));
+              // Or check if employee belongs to this manager's subordinates
+              const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'user_email']) || '').trim().toLowerCase();
+              const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name', 'employee_name']) || '').trim().toLowerCase();
+              
+              const isSubordinate = subordinateEmails.includes(empEmail) || 
+                                    subordinateIdentifiers.has(empEmail) || 
+                                    subordinateIdentifiers.has(empName) ||
+                                    subordinateEmails.some(sub => empEmail && (empEmail.includes(sub) || sub.includes(empEmail)));
               
               return isRelevant && (hasDirectMgr || isSubordinate);
             })
@@ -321,7 +416,7 @@ export default function Approval() {
       console.error('Error fetching approval records:', err);
     }
     setLoading(false);
-  }, [userWorkEmail]);
+  }, [userWorkEmail, userName]);
 
   useEffect(() => {
     refreshAllData();
@@ -442,7 +537,7 @@ export default function Approval() {
       const table = item._sourceTable || (item._category === 'Attendance' ? 'attendance' : 'leave_requests');
       const cols = Object.keys(item);
 
-      const statusCol = resolveTableColumn(cols, ['Status', 'status', 'Approval Status', 'approval_status']) || 'Status';
+      const statusCol = resolveApprovalStatusColumn(cols);
       const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'attendance_id', 'Attendance ID', 'no', '_id']);
 
       const nowIso = new Date().toISOString();
@@ -675,7 +770,7 @@ export default function Approval() {
       const table = item._sourceTable || (reqCategory === 'Attendance' ? 'attendance' : 'leave_requests');
       const cols = Object.keys(item);
 
-      const statusCol = resolveTableColumn(cols, ['Status', 'status', 'Approval Status', 'approval_status']) || 'Status';
+      const statusCol = resolveApprovalStatusColumn(cols);
       const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'attendance_id', 'Attendance ID', 'no', '_id']);
 
       const nowIso = new Date().toISOString();
@@ -895,20 +990,20 @@ export default function Approval() {
 
   // Counts for Badges
   const pendingLeavesCount = useMemo(() => {
-    return leaveRequests.filter(r => isPendingApprovalStatus(getPropCaseInsensitive(r, ['Status', 'status', 'Approval Status']))).length;
+    return leaveRequests.filter(r => isPendingApprovalStatus(getApprovalStatus(r))).length;
   }, [leaveRequests]);
 
   const approvedLeavesCount = useMemo(() => {
-    return leaveRequests.filter(r => isApprovedStatus(getPropCaseInsensitive(r, ['Status', 'status', 'Approval Status']))).length;
+    return leaveRequests.filter(r => isApprovedStatus(getApprovalStatus(r))).length;
   }, [leaveRequests]);
 
   const pendingAttCount = useMemo(() => {
-    return attendanceRequests.filter(r => isPendingApprovalStatus(getPropCaseInsensitive(r, ['Status', 'status', 'Approval Status']))).length;
+    return attendanceRequests.filter(r => isPendingApprovalStatus(getApprovalStatus(r))).length;
   }, [attendanceRequests]);
 
   const approvedAttCount = useMemo(() => {
-    return attendanceRequests.filter(r => isApprovedStatus(getPropCaseInsensitive(r, ['Status', 'status', 'Approval Status']))).length;
-  }, [attendanceRequests]);
+    return 0; // Attendance only shows pending
+  }, []);
 
   const currentLeaveCount = statusTab === 'approved' ? approvedLeavesCount : pendingLeavesCount;
   const currentAttCount = statusTab === 'approved' ? approvedAttCount : pendingAttCount;
@@ -925,16 +1020,20 @@ export default function Approval() {
     }
 
     // Filter by Status Tab
-    if (statusTab === 'pending') {
-      list = list.filter(item => {
-        const s = getPropCaseInsensitive(item, ['Status', 'status', 'Approval Status', 'approval_status'], '');
-        return isPendingApprovalStatus(s);
-      });
-    } else if (statusTab === 'approved') {
-      list = list.filter(item => {
-        const s = getPropCaseInsensitive(item, ['Status', 'status', 'Approval Status', 'approval_status'], '');
-        return isApprovedStatus(s);
-      });
+    if (activeTab !== 'attendance') {
+      if (statusTab === 'pending') {
+        list = list.filter(item => {
+          if (item._category === 'Attendance') return true; // Attendance is always pending
+          const s = getApprovalStatus(item);
+          return isPendingApprovalStatus(s);
+        });
+      } else if (statusTab === 'approved') {
+        list = list.filter(item => {
+          if (item._category === 'Attendance') return false; // Attendance has no approved tab
+          const s = getApprovalStatus(item);
+          return isApprovedStatus(s);
+        });
+      }
     }
 
     if (selectedEmployee && selectedEmployee !== 'all') {
@@ -1028,6 +1127,7 @@ export default function Approval() {
               </div>
 
               {/* Status Dropdown Filter */}
+              {activeTab !== 'attendance' && (
               <div className="relative flex-1 sm:flex-none sm:min-w-[160px]">
                 <select
                   value={statusTab}
@@ -1041,9 +1141,10 @@ export default function Approval() {
                   }}
                 >
                   <option value="pending">Pending ({pendingLeavesCount + pendingAttCount})</option>
-                  <option value="approved">Approved ({approvedLeavesCount + approvedAttCount})</option>
+                  <option value="approved">Approved ({approvedLeavesCount})</option>
                 </select>
               </div>
+              )}
             </div>
 
             {/* Dropdown filter Employee from employee_directory */}
@@ -1118,7 +1219,7 @@ export default function Approval() {
                     ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], 'Leave')
                     : getPropCaseInsensitive(item, ['Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Attendance');
 
-                  const status = getPropCaseInsensitive(item, ['Status', 'status', 'Approval Status'], 'Pending Approval');
+                  const status = getApprovalStatus(item) || 'Pending Approval';
                   let dateInfo = '-';
                   if (isLeave) {
                     const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']), lang);
@@ -1413,7 +1514,7 @@ export default function Approval() {
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block">Current Status</span>
                   <span className="text-xs sm:text-sm font-bold text-yellow-600">
-                    {getPropCaseInsensitive(selectedRequest, ['Status', 'status', 'Approval Status'], 'Pending Approval')}
+                    {getApprovalStatus(selectedRequest) || 'Pending Approval'}
                   </span>
                 </div>
               </div>
@@ -1523,7 +1624,7 @@ export default function Approval() {
                 Close
               </button>
               {(() => {
-                const s = getPropCaseInsensitive(selectedRequest, ['Status', 'status', 'Approval Status'], '');
+                const s = getApprovalStatus(selectedRequest);
                 if (isApprovedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel') {
                   return (
                     <button
