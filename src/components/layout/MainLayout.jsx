@@ -68,12 +68,11 @@ export default function MainLayout() {
     ]);
 
     const isTrue = (
-      saRawVal === true || 
-      ['TRUE', '1', 'T', 'YES'].includes(String(saRawVal).trim().toUpperCase()) ||
-      email === 'ranggiit@gmail.com'
-    );
-    return isTrue;
-  };
+    saRawVal === true || 
+    ['TRUE', '1', 'T', 'YES'].includes(String(saRawVal).trim().toUpperCase())
+  );
+  return isTrue;
+};
 
   // 1. Memuat user dan menghitung approval secara berurutan
   useEffect(() => {
