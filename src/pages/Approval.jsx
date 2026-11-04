@@ -80,6 +80,32 @@ const getRowStatus = (row) => {
   return getPropCaseInsensitive(row, ['Status', 'status', 'Approval Status', 'approval_status', 'Status Approval', 'status_approval'], '');
 };
 
+const isAttendancePending = (row) => {
+  if (!row) return false;
+  const primaryStatus = getPropCaseInsensitive(row, [
+    'Status', 'status', 'STATUS',
+    'Approval Status', 'approval_status', 'Approval_Status',
+    'Status Approval', 'status_approval', 'Status_Approval'
+  ], '');
+  
+  if (primaryStatus) {
+    const sNorm = String(primaryStatus).trim().toLowerCase().replace(/[\s_-]/g, '');
+    if (sNorm === 'pendingapproval' || sNorm === 'pending' || sNorm.includes('pending')) {
+      return true;
+    }
+  }
+
+  for (const val of Object.values(row)) {
+    if (typeof val === 'string') {
+      const vNorm = val.trim().toLowerCase().replace(/[\s_-]/g, '');
+      if (vNorm === 'pendingapproval' || vNorm === 'pending') {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
 const matchesLineManager = (record, targetEmail, targetName = '') => {
   if (!record || (!targetEmail && !targetName)) return false;
   const mgrVal = getPropCaseInsensitive(record, [
@@ -174,9 +200,9 @@ export default function Approval() {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [teamScheduleModalData, setTeamScheduleModalData] = useState(null);
 
-  // Filter States
+  // Filter States: Default tab Leave
   const [statusTab, setStatusTab] = useState('pending'); // 'pending' | 'approved'
-  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'leave' | 'attendance'
+  const [activeTab, setActiveTab] = useState('leave'); // 'leave' | 'attendance'
   const [selectedEmployee, setSelectedEmployee] = useState('all');
 
   // Modals
@@ -284,6 +310,10 @@ export default function Approval() {
                                   subordinateIdentifiers.has(empName) ||
                                   subordinateEmails.some(sub => empEmail && (empEmail.includes(sub) || sub.includes(empEmail)));
             
+            if (hasDirectMgr && empEmail) {
+              subordinateIdentifiers.add(empEmail);
+            }
+
             return isRelevant && (hasDirectMgr || isSubordinate);
           })
           .map(row => ({
@@ -304,10 +334,7 @@ export default function Approval() {
         if (!attErr && attData && attData.length > 0) {
           myAttendance = attData
             .filter(row => {
-              // Ambil kolom Status secara langsung
-              const status = getRowStatus(row);
-              const sNorm = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
-              const isPending = sNorm === 'pendingapproval' || sNorm === 'pending' || sNorm.includes('pending');
+              const isPending = isAttendancePending(row);
               
               const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
               const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'user_email']) || '').trim().toLowerCase();
@@ -937,40 +964,26 @@ export default function Approval() {
   }, [leaveRequests]);
 
   const pendingAttCount = useMemo(() => {
-    return attendanceRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
+    return attendanceRequests.filter(r => isAttendancePending(r)).length;
   }, [attendanceRequests]);
 
   const currentLeaveCount = statusTab === 'approved' ? approvedLeavesCount : pendingLeavesCount;
   // Khusus attendance hanya menampilkan yang pending
   const currentAttCount = pendingAttCount;
-  const currentTotalCount = statusTab === 'approved' ? currentLeaveCount : (currentLeaveCount + currentAttCount);
 
   // Filtered List based on status tab, category tab, and selected employee
   const combinedList = useMemo(() => {
     let list = [];
-    if (activeTab === 'all' || activeTab === 'leave') {
-      list.push(...leaveRequests);
-    }
-    if (activeTab === 'all' || activeTab === 'attendance') {
-      list.push(...attendanceRequests);
-    }
-
-    // Filter by Status Tab
-    if (activeTab === 'attendance') {
-      // Pada tab attendance, selalu tampilkan pending saja
-      list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
-    } else {
+    if (activeTab === 'leave') {
+      list = [...leaveRequests];
       if (statusTab === 'pending') {
-        list = list.filter(item => {
-          if (item._category === 'Attendance') return true; // Attendance selalu pending
-          return isPendingApprovalStatus(getRowStatus(item));
-        });
+        list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
       } else if (statusTab === 'approved') {
-        list = list.filter(item => {
-          if (item._category === 'Attendance') return false; // Attendance tidak ditampilkan jika tab approved dipilih
-          return isApprovedStatus(getRowStatus(item));
-        });
+        list = list.filter(item => isApprovedStatus(getRowStatus(item)));
       }
+    } else if (activeTab === 'attendance') {
+      list = [...attendanceRequests];
+      list = list.filter(item => isAttendancePending(item));
     }
 
     if (selectedEmployee && selectedEmployee !== 'all') {
@@ -1035,20 +1048,14 @@ export default function Approval() {
             </div>
           </div>
 
-          {/* Filters: Category, Status Dropdown & Employee Dropdown */}
+          {/* Filters: Category & Employee Dropdown */}
           <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-4 pt-3 border-t border-gray-100">
             
-            {/* Mobile Top Row: Category Tabs + Status Dropdown */}
+            {/* Mobile Top Row: Category Tabs (Leave & Attendance saja) + Status Dropdown */}
             <div className="flex flex-row justify-between items-center gap-2 w-full sm:w-auto">
               
-              {/* Category Filter Tabs */}
+              {/* Category Filter Tabs: Tab All dihilangkan */}
               <div className="flex p-1 bg-gray-100 rounded-xl space-x-1 shrink-0">
-                <button
-                  onClick={() => setActiveTab('all')}
-                  className={`hidden sm:block px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  All ({currentTotalCount})
-                </button>
                 <button
                   onClick={() => setActiveTab('leave')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'leave' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
@@ -1063,7 +1070,7 @@ export default function Approval() {
                 </button>
               </div>
 
-              {/* Status Dropdown Filter: Disembunyikan saat tab Attendance dipilih */}
+              {/* Status Dropdown Filter: Disembunyikan saat tab Attendance aktif */}
               {activeTab !== 'attendance' && (
                 <div className="relative flex-1 sm:flex-none sm:min-w-[160px]">
                   <select
@@ -1077,7 +1084,7 @@ export default function Approval() {
                       backgroundSize: '1rem'
                     }}
                   >
-                    <option value="pending">Pending ({pendingLeavesCount + pendingAttCount})</option>
+                    <option value="pending">Pending ({pendingLeavesCount})</option>
                     <option value="approved">Approved ({approvedLeavesCount})</option>
                   </select>
                 </div>
