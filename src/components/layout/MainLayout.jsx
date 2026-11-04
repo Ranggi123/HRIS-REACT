@@ -131,60 +131,94 @@ export default function MainLayout() {
     initializeData();
   }, []);
 
-  // 2. Menghitung data Pending Approval langsung dari Supabase
-  const fetchApprovalCount = async (user) => {
-    if (!user) return;
+  // Menghitung data Pending Approval langsung dari Supabase
+const fetchApprovalCount = async (user) => {
+  if (!user) return;
 
-    try {
-      const rawUserWorkEmail = 
-        user['Work Email'] ||
-        user['work email'] || 
-        user.Work_Email ||
-        user.work_email || 
-        user['Employee work email'] || 
-        user.Employee_work_email ||
-        user.email || 
-        user.Email;
+  try {
+    // 1. Kumpulkan semua kemungkinan identitas manager yang login
+    const userKeys = [
+      user['Work Email'],
+      user['work email'],
+      user.Work_Email,
+      user.work_email,
+      user['Employee work email'],
+      user.Employee_work_email,
+      user.email,
+      user.Email,
+      user.USER_UID,
+      user.name,
+      user.Name,
+      user.fullname,
+      user['employee id'],
+      user.employee_id,
+      user.id
+    ]
+      .filter(Boolean)
+      .map(k => String(k).trim().toLowerCase());
 
-      if (!rawUserWorkEmail) return;
-      const normalizedWorkEmail = String(rawUserWorkEmail).trim().toLowerCase();
+    let pendingCount = 0;
 
-      let pendingCount = 0;
+    const countPendingInArray = (dataArray) => {
+      let count = 0;
+      dataArray.forEach(item => {
+        // Ambil status & cek berbagai variasi kata pending/waiting/menunggu
+        const status = String(
+          item?.Status || 
+          item?.status || 
+          item?.approval_status || 
+          item?.Approval_Status || 
+          ''
+        ).trim().toLowerCase();
 
-      const countPendingInArray = (dataArray) => {
-        let count = 0;
-        dataArray.forEach(item => {
-          const status = String(item?.Status || item?.status || '').trim().toLowerCase();
-          const lineManager = String(
-            item?.['Line Manager'] || 
-            item?.Line_Manager || 
-            item?.line_manager || 
-            item?.['line manager'] || 
-            ''
-          ).trim().toLowerCase();
-          
-          const isPending = status === 'pending approval' || status === 'pending_approval' || status === 'pending' || status === 'waiting approval';
-          if (isPending && lineManager === normalizedWorkEmail) {
-            count++;
-          }
-        });
-        return count;
-      };
+        const isPending = 
+          status.includes('pending') || 
+          status.includes('waiting') || 
+          status.includes('menunggu') ||
+          status === 'submitted' ||
+          status === 'in review';
 
-      // Query tabel cuti (leave_requests)
-      const { data: leaveData } = await supabase.from('leave_requests').select('*');
-      if (leaveData) pendingCount += countPendingInArray(leaveData);
+        // Ambil identitas Line Manager di baris data
+        const lineManager = String(
+          item?.['Line Manager'] || 
+          item?.Line_Manager || 
+          item?.line_manager || 
+          item?.['line manager'] || 
+          item?.approver ||
+          item?.manager ||
+          item?.manager_email ||
+          ''
+        ).trim().toLowerCase();
 
-      // Query tabel kehadiran (attendance)
-      const { data: attReqData } = await supabase.from('attendance').select('*');
-      if (attReqData) pendingCount += countPendingInArray(attReqData);
+        // Jika Super Admin mode aktif, hitung semua yang pending.
+        // Jika bukan, cocokkan dengan salah satu identitas manager.
+        const isManagerMatch = isSuperAdminMode || userKeys.some(key => lineManager === key || lineManager.includes(key));
 
-      setApprovalCount(pendingCount);
+        if (isPending && isManagerMatch) {
+          count++;
+        }
+      });
+      return count;
+    };
 
-    } catch (error) {
-      console.warn("Error calculating approval count from database:", error);
+    // Query 1: Data Cuti (leave_requests)
+    const { data: leaveData } = await supabase.from('leave_requests').select('*');
+    if (leaveData) pendingCount += countPendingInArray(leaveData);
+
+    // Query 2: Data Kehadiran (Cek attendance_requests dulu, fallback ke attendance)
+    let { data: attReqData, error: attErr } = await supabase.from('attendance_requests').select('*');
+    if (attErr || !attReqData) {
+      const { data: fallbackData } = await supabase.from('attendance').select('*');
+      attReqData = fallbackData;
     }
-  };
+    if (attReqData) pendingCount += countPendingInArray(attReqData);
+
+    setApprovalCount(pendingCount);
+
+  } catch (error) {
+    console.warn("Error calculating approval count from database:", error);
+  }
+};
 
   const handleToggleSuperAdmin = async (active) => {
     if (active) {
