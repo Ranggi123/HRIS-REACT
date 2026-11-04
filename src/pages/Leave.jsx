@@ -877,36 +877,32 @@ No further action is required.`,
           </div>
 
           <div>
-            <h4 className="text-xs sm:text-sm font-bold text-gray-500 uppercase tracking-wider mb-1.5 px-1">Submission Summary</h4>
-            <div className="grid grid-cols-4 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden divide-x divide-gray-100">
-              <div 
-                className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-blue-500 cursor-pointer transition ${statusFilter === 'All' ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+            <h4 className="text-xs sm:text-sm font-bold text-gray-500 uppercase tracking-wider mb-2 px-1">Submission Summary</h4>
+            <div className="inline-flex bg-slate-100 rounded-xl p-1.5 w-full sm:w-auto overflow-x-auto gap-1" style={{ scrollbarWidth: 'none' }}>
+              <button
                 onClick={() => setStatusFilter('All')}
+                className={`whitespace-nowrap flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm transition-all ${statusFilter === 'All' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
               >
-                <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase">All</span>
-                <span className="text-lg sm:text-xl font-black text-gray-800">{stats.total}</span>
-              </div>
-              <div 
-                className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-yellow-400 cursor-pointer transition ${statusFilter === 'Pending' ? 'bg-yellow-50' : 'hover:bg-gray-50'}`}
+                All ({stats.total})
+              </button>
+              <button
                 onClick={() => setStatusFilter('Pending')}
+                className={`whitespace-nowrap flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm transition-all ${statusFilter === 'Pending' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
               >
-                <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase">Pending</span>
-                <span className="text-lg sm:text-xl font-black text-yellow-500">{stats.pending}</span>
-              </div>
-              <div 
-                className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-green-500 cursor-pointer transition ${statusFilter === 'Approved' ? 'bg-green-50' : 'hover:bg-gray-50'}`}
+                Pending ({stats.pending})
+              </button>
+              <button
                 onClick={() => setStatusFilter('Approved')}
+                className={`whitespace-nowrap flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm transition-all ${statusFilter === 'Approved' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
               >
-                <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase">Approved</span>
-                <span className="text-lg sm:text-xl font-black text-green-600">{stats.approved}</span>
-              </div>
-              <div 
-                className={`py-1.5 px-2 sm:p-3 flex flex-col items-center justify-center border-b-2 border-red-500 cursor-pointer transition ${statusFilter === 'Cancel' ? 'bg-red-50' : 'hover:bg-gray-50'}`}
+                Approved ({stats.approved})
+              </button>
+              <button
                 onClick={() => setStatusFilter('Cancel')}
+                className={`whitespace-nowrap flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm transition-all ${statusFilter === 'Cancel' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
               >
-                <span className="text-xs sm:text-sm font-bold text-gray-500 uppercase text-center leading-tight">Cancel</span>
-                <span className="text-lg sm:text-xl font-black text-red-500">{stats.rejected}</span>
-              </div>
+                Cancel ({stats.rejected})
+              </button>
             </div>
           </div>
         </div>
