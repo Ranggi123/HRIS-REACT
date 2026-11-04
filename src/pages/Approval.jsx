@@ -63,23 +63,59 @@ const resolveTableColumn = (knownCols, candidates) => {
   return null;
 };
 
+// Approval Status Checkers (Bilingual: ID & EN)
 const isPendingApprovalStatus = (status) => {
   if (!status) return false;
   const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
-  return s === 'pendingapproval' || s === 'pending' || s === 'requesttocancel' || s.includes('pending');
+  return (
+    s === 'pendingapproval' ||
+    s === 'pending' ||
+    s === 'requesttocancel' ||
+    s === 'menunggu' ||
+    s === 'menunggupersetujuan' ||
+    s === 'diajukan' ||
+    s === 'submitted' ||
+    s === 'review' ||
+    s === 'waiting' ||
+    s.includes('pending') ||
+    s.includes('menunggu') ||
+    s.includes('waiting')
+  );
 };
 
 const isApprovedStatus = (status) => {
   if (!status) return false;
   const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
-  return s === 'approved' || s === 'approve' || s === 'setuju' || s === 'disetujui' || s.includes('approve');
+  return (
+    s === 'approved' ||
+    s === 'approve' ||
+    s === 'setuju' ||
+    s === 'disetujui' ||
+    s.includes('approve') ||
+    s.includes('setuju')
+  );
 };
 
+// Prioritaskan kolom khusus Approval agar tidak tertimpa kolom "Status" presensi (seperti "Present" / "Late")
 const getRowStatus = (row) => {
   if (!row) return '';
-  return getPropCaseInsensitive(row, ['Status', 'status', 'Approval Status', 'approval_status', 'Status Approval', 'status_approval'], '');
+  return getPropCaseInsensitive(
+    row,
+    [
+      'Approval Status',
+      'approval_status',
+      'Status Approval',
+      'status_approval',
+      'Request Status',
+      'request_status',
+      'Status Pengajuan',
+      'status_pengajuan',
+      'Status',
+      'status'
+    ],
+    ''
+  );
 };
-
 
 const matchesLineManager = (record, targetEmail, targetName = '') => {
   if (!record || (!targetEmail && !targetName)) return false;
@@ -227,7 +263,9 @@ export default function Approval() {
           .select('*')
           .limit(2000);
 
-        if (!dirErr && dirData) {
+        if (dirErr) {
+          console.warn("Error querying employee_directory:", dirErr.message);
+        } else if (dirData) {
           const subordinates = dirData.filter(row => matchesLineManager(row, userWorkEmail, userName));
           
           const uniqueMap = new Map();
@@ -244,7 +282,7 @@ export default function Approval() {
             ]) || '').trim().toLowerCase();
 
             const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
-            const id = (getPropCaseInsensitive(emp, ['Employee ID', 'employee_id', 'id', 'Barcode', 'barcode']) || '').trim().toLowerCase();
+            const id = (getPropCaseInsensitive(emp, ['Employee ID', 'employee_id', 'id', 'Barcode', 'barcode', 'nik', 'nip']) || '').trim().toLowerCase();
 
             if (email) {
               subordinateIdentifiers.add(email);
@@ -263,72 +301,99 @@ export default function Approval() {
         console.warn("Could not query employee_directory:", err);
       }
 
+      // Helper untuk mengecek apakah sebuah baris adalah milik bawahan
+      const checkIsSubordinate = (row) => {
+        const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email']) || '').trim().toLowerCase();
+        const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name']) || '').trim().toLowerCase();
+        const empId = (getPropCaseInsensitive(row, ['Employee ID', 'employee_id', 'employeeid', 'id', 'Barcode', 'barcode', 'user_id', 'nik', 'nip']) || '').trim().toLowerCase();
+
+        return (
+          (empEmail && subordinateEmails.includes(empEmail)) ||
+          (empEmail && subordinateIdentifiers.has(empEmail)) ||
+          (empName && subordinateIdentifiers.has(empName)) ||
+          (empId && subordinateIdentifiers.has(empId)) ||
+          subordinateEmails.some(sub => empEmail && (empEmail.includes(sub) || sub.includes(empEmail)))
+        );
+      };
+
       // 2. Fetch Leave Requests (Pending and Approved)
-      const { data: lvData, error: lvError } = await supabase
-        .from('leave_requests')
-        .select('*')
-        .limit(2000);
       let myLeaves = [];
-      if (!lvError && lvData) {
-        myLeaves = lvData
-          .filter(row => {
-            const status = getRowStatus(row);
-            const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
-            
-            const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
-            const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']) || '').trim().toLowerCase();
-            const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name']) || '').trim().toLowerCase();
-            
-            const isSubordinate = subordinateEmails.includes(empEmail) || 
-                                  subordinateIdentifiers.has(empEmail) || 
-                                  subordinateIdentifiers.has(empName) ||
-                                  subordinateEmails.some(sub => empEmail && (empEmail.includes(sub) || sub.includes(empEmail)));
-            
-            if (hasDirectMgr && empEmail) {
-              subordinateIdentifiers.add(empEmail);
-            }
-
-            return isRelevant && (hasDirectMgr || isSubordinate);
-          })
-          .map(row => ({
-            ...row,
-            _category: 'Leave',
-            _sourceTable: 'leave_requests'
-          }));
-      }
-
-      // 3. Fetch Attendance Requests (Pending dan Approved)
-      const { data: attData, error: attErr } = await supabase
-          .from('attendance')
+      try {
+        const { data: lvData, error: lvError } = await supabase
+          .from('leave_requests')
           .select('*')
           .limit(2000);
-      let myAttendance = [];
-      try {
-        if (!attErr && attData && attData.length > 0) {
-          myAttendance = attData
+
+        if (lvError) {
+          console.warn("Error fetching leave_requests:", lvError.message);
+        } else if (lvData) {
+          myLeaves = lvData
             .filter(row => {
               const status = getRowStatus(row);
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
-              
               const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
+              const isSub = checkIsSubordinate(row);
+
               const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']) || '').trim().toLowerCase();
-              const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name']) || '').trim().toLowerCase();
-              
-              const isSubordinate = subordinateEmails.includes(empEmail) || 
-                                    subordinateIdentifiers.has(empEmail) || 
-                                    subordinateIdentifiers.has(empName) ||
-                                    subordinateEmails.some(sub => empEmail && (empEmail.includes(sub) || sub.includes(empEmail)));
-              
               if (hasDirectMgr && empEmail) {
                 subordinateIdentifiers.add(empEmail);
               }
 
-              return isRelevant && (hasDirectMgr || isSubordinate);
+              return isRelevant && (hasDirectMgr || isSub);
+            })
+            .map(row => ({
+              ...row,
+              _category: 'Leave',
+              _sourceTable: 'leave_requests'
+            }));
+        }
+      } catch (e) {
+        console.warn("Failed fetching leave_requests:", e);
+      }
+
+      // 3. Fetch Attendance Requests (Mencoba 'attendance_requests' dahulu, lalu fallback ke 'attendance')
+      let myAttendance = [];
+      try {
+        let rawAttData = null;
+        let actualAttTable = 'attendance_requests';
+
+        const { data: attReqData, error: attReqErr } = await supabase
+          .from('attendance_requests')
+          .select('*')
+          .limit(2000);
+
+        if (!attReqErr && attReqData && attReqData.length > 0) {
+          rawAttData = attReqData;
+          actualAttTable = 'attendance_requests';
+        } else {
+          // Fallback query ke tabel 'attendance'
+          const { data: directAttData, error: directAttErr } = await supabase
+            .from('attendance')
+            .select('*')
+            .limit(2000);
+
+          if (directAttErr) {
+            console.warn("Both attendance_requests & attendance returned error:", directAttErr.message);
+          } else {
+            rawAttData = directAttData || [];
+            actualAttTable = 'attendance';
+          }
+        }
+
+        if (rawAttData && rawAttData.length > 0) {
+          myAttendance = rawAttData
+            .filter(row => {
+              const status = getRowStatus(row);
+              const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
+              const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
+              const isSub = checkIsSubordinate(row);
+
+              return isRelevant && (hasDirectMgr || isSub);
             })
             .map(row => ({
               ...row,
               _category: 'Attendance',
-              _sourceTable: 'attendance'
+              _sourceTable: actualAttTable
             }));
         }
       } catch (e) {
@@ -436,7 +501,7 @@ export default function Approval() {
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'employee_name'], 'Employee');
     const reqType = item._category === 'Leave'
       ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type'], 'Leave')
-      : (getPropCaseInsensitive(item, ['Type', 'type', 'Attendance Type', 'attendance_type'], 'Attendance'));
+      : (getPropCaseInsensitive(item, ['Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Attendance'));
 
     if (!empEmail || !empEmail.includes('@')) return;
 
@@ -481,7 +546,18 @@ export default function Approval() {
       const table = item._sourceTable || (item._category === 'Attendance' ? 'attendance' : 'leave_requests');
       const cols = Object.keys(item);
 
-      const statusCol = resolveTableColumn(cols, ['Status', 'status', 'Approval Status', 'approval_status']) || 'Status';
+      // Prioritaskan kolom approval agar tidak menimpa status presensi (misal: "Present")
+      const statusCol = resolveTableColumn(cols, [
+        'Approval Status',
+        'approval_status',
+        'Status Approval',
+        'status_approval',
+        'Request Status',
+        'request_status',
+        'Status',
+        'status'
+      ]) || 'Status';
+
       const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'attendance_id', 'Attendance ID', 'no', '_id']);
 
       const nowIso = new Date().toISOString();
@@ -714,7 +790,17 @@ export default function Approval() {
       const table = item._sourceTable || (reqCategory === 'Attendance' ? 'attendance' : 'leave_requests');
       const cols = Object.keys(item);
 
-      const statusCol = resolveTableColumn(cols, ['Status', 'status', 'Approval Status', 'approval_status']) || 'Status';
+      const statusCol = resolveTableColumn(cols, [
+        'Approval Status',
+        'approval_status',
+        'Status Approval',
+        'status_approval',
+        'Request Status',
+        'request_status',
+        'Status',
+        'status'
+      ]) || 'Status';
+
       const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'attendance_id', 'Attendance ID', 'no', '_id']);
 
       const nowIso = new Date().toISOString();
@@ -1036,7 +1122,7 @@ export default function Approval() {
           {/* Filters: Category & Employee Dropdown */}
           <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-4 pt-3 border-t border-gray-100">
             
-            {/* Mobile Top Row: Category Tabs (Leave & Attendance saja) + Status Dropdown */}
+            {/* Mobile Top Row: Category Tabs (Leave & Attendance) + Status Dropdown */}
             <div className="flex flex-row justify-between items-center gap-2 w-full sm:w-auto">
               
               {/* Category Filter Tabs */}
@@ -1139,12 +1225,12 @@ export default function Approval() {
               ) : (
                 combinedList.map((item, idx) => {
                   const isLeave = item._category === 'Leave';
-                  const employeeName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'No Name');
-                  const employeeEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid'], '-');
+                  const employeeName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name'], 'No Name');
+                  const employeeEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email'], '-');
                   
                   const reqType = isLeave
                     ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], 'Leave')
-                    : getPropCaseInsensitive(item, ['Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Attendance');
+                    : getPropCaseInsensitive(item, ['Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type', 'request_type'], 'Attendance Correction');
 
                   const status = getRowStatus(item) || 'Pending Approval';
                   let dateInfo = '-';
@@ -1153,7 +1239,7 @@ export default function Approval() {
                     const toDate = formatDateDisplay(getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']), lang);
                     dateInfo = `${fromDate} - ${toDate}`;
                   } else {
-                    const attDate = formatDateDisplay(getPropCaseInsensitive(item, ['Date', 'date', 'attendance_date', 'CreatedDate', 'created_date']), lang);
+                    const attDate = formatDateDisplay(getPropCaseInsensitive(item, ['Date', 'date', 'attendance_date', 'CreatedDate', 'created_date', 'Tanggal', 'tanggal']), lang);
                     dateInfo = attDate;
                   }
 
@@ -1418,13 +1504,13 @@ export default function Approval() {
             <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Employee Information</span>
               <div className="text-sm font-bold text-gray-800">
-                {getPropCaseInsensitive(selectedRequest, ['Name', 'name', 'nama', 'fullname', 'full_name'], '-')}
+                {getPropCaseInsensitive(selectedRequest, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name'], '-')}
               </div>
               <div className="text-xs text-gray-500">
-                Email: {getPropCaseInsensitive(selectedRequest, ['Employee', 'employee', 'email', 'user_uid'], '-')}
+                Email: {getPropCaseInsensitive(selectedRequest, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email'], '-')}
               </div>
               <div className="text-xs text-gray-500">
-                Line Manager: {getPropCaseInsensitive(selectedRequest, ['Line Manager', 'line_manager', 'Line Manager Email', 'manager_email'], '-')}
+                Line Manager: {getPropCaseInsensitive(selectedRequest, ['Line Manager', 'line_manager', 'Line Manager Email', 'manager_email', 'Approver'], '-')}
               </div>
             </div>
 
@@ -1435,7 +1521,7 @@ export default function Approval() {
                   <span className="text-xs sm:text-sm font-bold text-blue-700">
                     {selectedRequest._category === 'Leave'
                       ? getPropCaseInsensitive(selectedRequest, ['Leave Type', 'leave_type', 'Type', 'type'], '-')
-                      : getPropCaseInsensitive(selectedRequest, ['Type', 'type', 'Attendance Type', 'attendance_type'], '-')}
+                      : getPropCaseInsensitive(selectedRequest, ['Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Correction')}
                   </span>
                 </div>
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
@@ -1483,7 +1569,7 @@ export default function Approval() {
                   <div className="p-3 bg-white border border-gray-200 rounded-xl">
                     <span className="text-[10px] text-gray-400 font-semibold block">Attendance Date</span>
                     <span className="text-xs sm:text-sm font-semibold text-gray-800">
-                      {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['Date', 'date', 'attendance_date', 'CreatedDate']), lang)}
+                      {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['Date', 'date', 'attendance_date', 'CreatedDate', 'Tanggal', 'tanggal']), lang)}
                     </span>
                   </div>
 
@@ -1491,13 +1577,13 @@ export default function Approval() {
                     <div className="p-3 bg-white border border-gray-200 rounded-xl">
                       <span className="text-[10px] text-gray-400 font-semibold block">Clock In</span>
                       <span className="text-xs sm:text-sm font-bold text-gray-800">
-                        {getPropCaseInsensitive(selectedRequest, ['Clock In', 'clock_in', 'In Time'], '--:--')}
+                        {getPropCaseInsensitive(selectedRequest, ['Clock In', 'clock_in', 'In Time', 'in_time', 'time_in', 'jam_masuk'], '--:--')}
                       </span>
                     </div>
                     <div className="p-3 bg-white border border-gray-200 rounded-xl">
                       <span className="text-[10px] text-gray-400 font-semibold block">Clock Out</span>
                       <span className="text-xs sm:text-sm font-bold text-gray-800">
-                        {getPropCaseInsensitive(selectedRequest, ['Clock Out', 'clock_out', 'Out Time'], '--:--')}
+                        {getPropCaseInsensitive(selectedRequest, ['Clock Out', 'clock_out', 'Out Time', 'out_time', 'time_out', 'jam_keluar'], '--:--')}
                       </span>
                     </div>
                   </div>
@@ -1507,7 +1593,7 @@ export default function Approval() {
               <div className="p-3 bg-white border border-gray-200 rounded-xl">
                 <span className="text-[10px] text-gray-400 font-semibold block">Reason / Request Notes</span>
                 <p className="text-xs text-gray-700 mt-1 whitespace-pre-wrap">
-                  {getPropCaseInsensitive(selectedRequest, ['Reason', 'reason', 'Description', 'description', 'notes', 'Notes', 'keterangan'], 'No additional notes provided.')}
+                  {getPropCaseInsensitive(selectedRequest, ['Reason', 'reason', 'Description', 'description', 'notes', 'Notes', 'keterangan', 'alasan'], 'No additional notes provided.')}
                 </p>
               </div>
 
