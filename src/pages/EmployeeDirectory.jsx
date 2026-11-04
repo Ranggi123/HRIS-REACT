@@ -14,9 +14,9 @@ export default function EmployeeDirectory() {
   const [isLoading, setIsLoading] = useState(false);
   const [departments, setDepartments] = useState([]);
 
-  // Filter States (Status filter dikontrol via tab summary)
+  // Filter States
   const [deptFilter, setDeptFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All'); // Default 'All' atau 'Active'
+  const [statusFilter, setStatusFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Pagination State
@@ -149,7 +149,7 @@ export default function EmployeeDirectory() {
     });
   }, [employees]);
 
-  // 4. Data Filter untuk Summary Card / Tabs
+  // 4. Data Filter untuk Tab Summary
   const summaryBase = useMemo(() => {
     return employees.filter(emp => {
       if (deptFilter && emp.dept !== deptFilter) return false;
@@ -193,7 +193,7 @@ export default function EmployeeDirectory() {
       // Filter Departemen
       if (deptFilter && emp.dept !== deptFilter) return false;
 
-      // Filter Status dari Tab Aktif
+      // Filter Status Tab
       if (statusFilter === 'Active') {
         if (s.includes('inactive') || s.includes('resign') || s.includes('off')) return false;
       } else if (statusFilter === 'Inactive') {
@@ -403,40 +403,38 @@ export default function EmployeeDirectory() {
         </div>
       </div>
 
-      {/* Segmented Pill Tabs (Summary Style Sesuai Gambar) */}
-      <div className="flex mb-4 sm:mb-6 overflow-x-auto">
-        <div className="inline-flex items-center p-1 bg-slate-100/90 border border-slate-200/60 rounded-2xl gap-1">
+      {/* Summary Tabs: Posisi tetap di tempat semula, responsif untuk Mobile & Desktop */}
+      <div className="mb-4 sm:mb-6">
+        <div className="flex bg-slate-100 rounded-xl p-1 sm:p-1.5 w-full sm:w-fit gap-1">
           <button
             type="button"
             onClick={() => setStatusFilter('All')}
-            className={`px-4 py-1.5 rounded-xl text-xs sm:text-sm transition-all duration-150 cursor-pointer select-none ${
-              statusFilter === 'All'
-                ? 'bg-white text-gray-900 font-bold shadow-xs'
-                : 'text-blue-600 hover:text-blue-700 font-medium'
+            className={`flex-1 sm:flex-none whitespace-nowrap px-3 sm:px-4 py-2 sm:py-1.5 rounded-lg text-xs sm:text-sm text-center transition-all cursor-pointer ${
+              statusFilter === 'All' 
+                ? 'bg-white text-slate-900 font-bold shadow-sm' 
+                : 'text-blue-700 font-semibold hover:bg-slate-200/60'
             }`}
           >
             Total ({totalCount})
           </button>
-
           <button
             type="button"
             onClick={() => setStatusFilter('Active')}
-            className={`px-4 py-1.5 rounded-xl text-xs sm:text-sm transition-all duration-150 cursor-pointer select-none ${
-              statusFilter === 'Active'
-                ? 'bg-white text-gray-900 font-bold shadow-xs'
-                : 'text-blue-600 hover:text-blue-700 font-medium'
+            className={`flex-1 sm:flex-none whitespace-nowrap px-3 sm:px-4 py-2 sm:py-1.5 rounded-lg text-xs sm:text-sm text-center transition-all cursor-pointer ${
+              statusFilter === 'Active' 
+                ? 'bg-white text-slate-900 font-bold shadow-sm' 
+                : 'text-blue-700 font-semibold hover:bg-slate-200/60'
             }`}
           >
             {currentLang === 'id' ? `Aktif (${activeCount})` : `Active (${activeCount})`}
           </button>
-
           <button
             type="button"
             onClick={() => setStatusFilter('Inactive')}
-            className={`px-4 py-1.5 rounded-xl text-xs sm:text-sm transition-all duration-150 cursor-pointer select-none ${
-              statusFilter === 'Inactive'
-                ? 'bg-white text-gray-900 font-bold shadow-xs'
-                : 'text-blue-600 hover:text-blue-700 font-medium'
+            className={`flex-1 sm:flex-none whitespace-nowrap px-3 sm:px-4 py-2 sm:py-1.5 rounded-lg text-xs sm:text-sm text-center transition-all cursor-pointer ${
+              statusFilter === 'Inactive' 
+                ? 'bg-white text-slate-900 font-bold shadow-sm' 
+                : 'text-blue-700 font-semibold hover:bg-slate-200/60'
             }`}
           >
             {currentLang === 'id' ? `Tidak Aktif (${inactiveCount})` : `Inactive (${inactiveCount})`}
