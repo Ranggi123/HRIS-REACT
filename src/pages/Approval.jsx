@@ -293,7 +293,6 @@ export default function Approval() {
         .from('leave_requests')
         .select('*')
         .limit(2000);
-
       let myLeaves = [];
       if (!lvError && lvData) {
         myLeaves = lvData
@@ -324,29 +323,33 @@ export default function Approval() {
       }
 
       // 3. Fetch Attendance Requests (Hanya Pending Approval)
-      let myAttendance = [];
-      try {
-        const { data: attData, error: attErr } = await supabase
+      const { data: attData, error: attErr } = await supabase
           .from('attendance')
           .select('*')
           .limit(2000);
-
+      let myAttendance = [];
+      try {
         if (!attErr && attData && attData.length > 0) {
           myAttendance = attData
             .filter(row => {
-              const isPending = isAttendancePending(row);
-              
-              const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
-              const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'user_email']) || '').trim().toLowerCase();
-              const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name', 'employee_name']) || '').trim().toLowerCase();
-              
-              const isSubordinate = subordinateEmails.includes(empEmail) || 
-                                    subordinateIdentifiers.has(empEmail) || 
-                                    subordinateIdentifiers.has(empName) ||
-                                    subordinateEmails.some(sub => empEmail && (empEmail.includes(sub) || sub.includes(empEmail)));
-              
-              return isPending && (hasDirectMgr || isSubordinate);
-            })
+               const status = getRowStatus(row);
+            const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
+            
+            const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
+            const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']) || '').trim().toLowerCase();
+            const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name']) || '').trim().toLowerCase();
+            
+            const isSubordinate = subordinateEmails.includes(empEmail) || 
+                                  subordinateIdentifiers.has(empEmail) || 
+                                  subordinateIdentifiers.has(empName) ||
+                                  subordinateEmails.some(sub => empEmail && (empEmail.includes(sub) || sub.includes(empEmail)));
+            
+            if (hasDirectMgr && empEmail) {
+              subordinateIdentifiers.add(empEmail);
+            }
+
+            return isRelevant && (hasDirectMgr || isSubordinate);
+          })
             .map(row => ({
               ...row,
               _category: 'Attendance',
