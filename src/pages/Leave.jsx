@@ -877,7 +877,6 @@ No further action is required.`,
           </div>
 
           <div>
-            <h4 className="text-xs sm:text-sm font-bold text-gray-500 uppercase tracking-wider mb-2 px-1">Submission Summary</h4>
             <div className="inline-flex bg-slate-100 rounded-xl p-1.5 w-full sm:w-auto overflow-x-auto gap-1" style={{ scrollbarWidth: 'none' }}>
               <button
                 onClick={() => setStatusFilter('All')}
@@ -895,13 +894,13 @@ No further action is required.`,
                 onClick={() => setStatusFilter('Approved')}
                 className={`whitespace-nowrap flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm transition-all ${statusFilter === 'Approved' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
               >
-                Approved ({stats.approved})
+                Approved
               </button>
               <button
                 onClick={() => setStatusFilter('Cancel')}
                 className={`whitespace-nowrap flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm transition-all ${statusFilter === 'Cancel' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
               >
-                Cancel ({stats.rejected})
+                Cancel
               </button>
             </div>
           </div>
