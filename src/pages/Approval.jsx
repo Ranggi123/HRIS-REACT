@@ -1105,11 +1105,7 @@ export default function Approval() {
                     : getPropCaseInsensitive(item, ['Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Attendance');
 
                   const status = getPropCaseInsensitive(item, ['Status', 'status', 'Approval Status'], 'Pending Approval');
-                  const attachmentUrl = getPropCaseInsensitive(item, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo', 'Link', 'link'], '');
-
                   let dateInfo = '-';
-                  let durationInfo = '-';
-
                   if (isLeave) {
                     const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']), lang);
                     const toDate = formatDateDisplay(getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']), lang);
@@ -1121,16 +1117,13 @@ export default function Approval() {
                       const dE = parseFlexibleDate(getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']));
                       dur = (dS && dE) ? Math.ceil(Math.abs(dE - dS) / (1000 * 60 * 60 * 24)) + 1 : '1';
                     }
-                    durationInfo = `${dur} Day${Number(dur) === 1 ? '' : 's'}`;
                   } else {
                     const attDate = formatDateDisplay(getPropCaseInsensitive(item, ['Date', 'date', 'attendance_date', 'CreatedDate', 'created_date']), lang);
                     dateInfo = attDate;
                     const clockIn = getPropCaseInsensitive(item, ['Clock In', 'clock_in', 'In Time', 'in_time'], '');
                     const clockOut = getPropCaseInsensitive(item, ['Clock Out', 'clock_out', 'Out Time', 'out_time'], '');
                     if (clockIn || clockOut) {
-                      durationInfo = `${clockIn || '--:--'} to ${clockOut || '--:--'}`;
                     } else {
-                      durationInfo = 'Attendance';
                     }
                   }
 
