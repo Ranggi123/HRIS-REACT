@@ -206,7 +206,7 @@ const fetchApprovalCount = async (user) => {
     if (leaveData) pendingCount += countPendingInArray(leaveData);
 
     // Query 2: Data Kehadiran (Cek attendance_requests dulu, fallback ke attendance)
-    let { data: attReqData, error: attErr } = await supabase.from('attendance_requests').select('*');
+    let { data: attReqData, error: attErr } = await supabase.from('attendance').select('*');
     if (attErr || !attReqData) {
       const { data: fallbackData } = await supabase.from('attendance').select('*');
       attReqData = fallbackData;
