@@ -249,7 +249,12 @@ export default function Approval() {
           .filter(row => {
             const status = getPropCaseInsensitive(row, ['Status', 'status', 'Approval Status', 'approval_status'], '');
             const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
-            return isRelevant && matchesLineManager(row, userWorkEmail);
+            
+            const hasDirectMgr = matchesLineManager(row, userWorkEmail);
+            const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']) || '').trim().toLowerCase();
+            const isSubordinate = subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => empEmail.includes(sub));
+            
+            return isRelevant && (hasDirectMgr || isSubordinate);
           })
           .map(row => ({
             ...row,
@@ -271,7 +276,15 @@ export default function Approval() {
             .filter(row => {
               const status = getPropCaseInsensitive(row, ['Status', 'status', 'Approval Status', 'approval_status'], '');
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
-              return isRelevant && matchesLineManager(row, userWorkEmail);
+              
+              // Check if record has Line Manager directly
+              const hasDirectMgr = matchesLineManager(row, userWorkEmail);
+              
+              // Or check if the employee belongs to this manager's subordinates
+              const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']) || '').trim().toLowerCase();
+              const isSubordinate = subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => empEmail.includes(sub));
+              
+              return isRelevant && (hasDirectMgr || isSubordinate);
             })
             .map(row => ({
               ...row,
