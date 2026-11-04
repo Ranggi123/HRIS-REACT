@@ -988,32 +988,34 @@ export default function Approval() {
 
           {/* Filters: Category, Status Dropdown & Employee Dropdown */}
           <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-4 pt-3 border-t border-gray-100">
-            {/* Category Filter Tabs */}
-            <div className="flex p-1 bg-gray-100 rounded-xl space-x-1 shrink-0">
-              <button
-                onClick={() => setActiveTab('all')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                All ({currentTotalCount})
-              </button>
-              <button
-                onClick={() => setActiveTab('leave')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'leave' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Leave ({currentLeaveCount})
-              </button>
-              <button
-                onClick={() => setActiveTab('attendance')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'attendance' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Attendance ({currentAttCount})
-              </button>
-            </div>
+            
+            {/* Mobile Top Row: Category Tabs + Status Dropdown */}
+            <div className="flex flex-row justify-between items-center gap-2 w-full sm:w-auto">
+              
+              {/* Category Filter Tabs */}
+              <div className="flex p-1 bg-gray-100 rounded-xl space-x-1 shrink-0">
+                <button
+                  onClick={() => setActiveTab('all')}
+                  className={`hidden sm:block px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  All ({currentTotalCount})
+                </button>
+                <button
+                  onClick={() => setActiveTab('leave')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'leave' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  Leave ({currentLeaveCount})
+                </button>
+                <button
+                  onClick={() => setActiveTab('attendance')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'attendance' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  Attendance ({currentAttCount})
+                </button>
+              </div>
 
-            {/* Dropdowns: Status and Employee (Side-by-side on mobile) */}
-            <div className="flex flex-row gap-2 sm:gap-3 w-full sm:w-auto">
               {/* Status Dropdown Filter */}
-              <div className="relative w-1/2 sm:w-auto sm:min-w-[160px]">
+              <div className="relative flex-1 sm:flex-none sm:min-w-[160px]">
                 <select
                   value={statusTab}
                   onChange={(e) => setStatusTab(e.target.value)}
@@ -1029,31 +1031,30 @@ export default function Approval() {
                   <option value="approved">Approved ({approvedLeavesCount + approvedAttCount})</option>
                 </select>
               </div>
+            </div>
 
-              {/* Dropdown filter Employee from employee_directory */}
-              <div className="relative w-1/2 sm:w-auto sm:min-w-[240px]">
-                <select
-                  value={selectedEmployee}
-                  onChange={(e) => setSelectedEmployee(e.target.value)}
-                  className="w-full pl-3 pr-8 py-2 text-xs font-semibold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer transition h-full"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 0.75rem center',
-                    backgroundSize: '1rem'
-                  }}
-                >
-                  <option value="all">All Team Members ({teamMembers.length})</option>
-                  {teamMembers.map((member) => (
-                    <option key={member.email} value={member.email}>
-                      {member.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* Dropdown filter Employee from employee_directory */}
+            <div className="relative w-full sm:w-auto sm:min-w-[240px]">
+              <select
+                value={selectedEmployee}
+                onChange={(e) => setSelectedEmployee(e.target.value)}
+                className="w-full pl-3 pr-8 py-2 text-xs font-semibold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer transition h-full"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 0.75rem center',
+                  backgroundSize: '1rem'
+                }}
+              >
+                <option value="all">All Team Members ({teamMembers.length})</option>
+                {teamMembers.map((member) => (
+                  <option key={member.email} value={member.email}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-        </div>
 
         {/* Main List Table */}
         <div className="overflow-x-auto w-full">
@@ -1064,16 +1065,14 @@ export default function Approval() {
                 <th className="px-4 py-3">Employee</th>
                 <th className="px-4 py-3">Request Type</th>
                 <th className="px-4 py-3">Date / Period</th>
-                <th className="px-4 py-3 text-center">Duration / Time</th>
                 <th className="px-4 py-3 text-center">Status</th>
-                <th className="px-4 py-3 text-center">Attachment / Proof</th>
                 <th className="px-4 py-3 text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan="8" className="px-5 py-12 text-center text-gray-400">
+                  <td colSpan="6" className="px-5 py-12 text-center text-gray-400">
                     <div className="flex flex-col items-center justify-center">
                       <svg className="w-8 h-8 animate-spin text-blue-500 mb-2" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -1085,7 +1084,7 @@ export default function Approval() {
                 </tr>
               ) : combinedList.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="px-5 py-12 text-center text-gray-400">
+                  <td colSpan="6" className="px-5 py-12 text-center text-gray-400">
                     <div className="flex flex-col items-center justify-center">
                       <svg className="w-10 h-10 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -1150,15 +1149,14 @@ export default function Approval() {
                         <div className="font-semibold text-gray-900">{employeeName}</div>
                         <div className="text-[11px] text-gray-400 truncate max-w-[150px]">{employeeEmail}</div>
                       </td>
+
                       <td className="px-4 py-3 font-medium text-gray-800">
                         <span className="font-semibold text-gray-800">{reqType}</span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-700">
                         {dateInfo}
                       </td>
-                      <td className="px-4 py-3 text-center font-bold text-gray-800 whitespace-nowrap">
-                        {durationInfo}
-                      </td>
+
                       <td className="px-4 py-3 text-center whitespace-nowrap">
                         {(() => {
                           let badgeClass = 'bg-yellow-100 text-yellow-800 border-yellow-200';
@@ -1174,22 +1172,7 @@ export default function Approval() {
                           );
                         })()}
                       </td>
-                      <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
-                        {attachmentUrl && attachmentUrl.startsWith('http') ? (
-                          <button
-                            onClick={() => {
-                              setPhotoPreviewUrl(attachmentUrl);
-                              setIsPhotoModalOpen(true);
-                            }}
-                            className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100 hover:bg-blue-100 transition"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                            <span>View</span>
-                          </button>
-                        ) : (
-                          <span className="text-gray-300">-</span>
-                        )}
-                      </td>
+
                       <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         {(() => {
                           const s = getPropCaseInsensitive(item, ['Status', 'status', 'Approval Status'], '');
