@@ -253,8 +253,11 @@ export default function Approval() {
   const [loading, setLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [leaveRequests, setLeaveRequests] = useState([]);
-  const [attendanceRequests, setAttendanceRequests] = useState([]); // STATE BARU UNTUK ATTENDANCE
-  
+  const [attendanceRequests, setAttendanceRequests] = useState([]);
+
+  // Active Category Tab: 'attendance' | 'leave'
+  const [activeCategoryTab, setActiveCategoryTab] = useState('attendance');
+
   // Team Calendar & Directory States
   const [teamMembers, setTeamMembers] = useState([]);
   const [teamScheduleRecords, setTeamScheduleRecords] = useState([]);
@@ -321,11 +324,9 @@ export default function Approval() {
         if (dirErr) {
           console.warn("[Approval] Error fetching employee_directory:", dirErr.message);
         } else if (dirData) {
-          // Cari profil manajer sendiri di database untuk mendapatkan Work Email resmi
           const cleanUserWorkEmail = (userWorkEmail || '').trim().toLowerCase();
           const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
 
-          // Cari profil diri sendiri secara presisi TANPA bypass hardcode
           const myProfile = dirData.find(emp => {
             const empEmail = (getPropCaseInsensitive(emp, ['Email', 'email', 'user_uid']) || '').trim().toLowerCase();
             const empWorkEmail = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
@@ -353,7 +354,6 @@ export default function Approval() {
           setActualUserWorkEmail(realWorkEmail);
           setActualUserName(realName);
 
-          // Kumpulan kunci manajer (work email, login email, nama, username)
           const cleanRealWorkEmail = (realWorkEmail || '').trim().toLowerCase();
           const realPrefix = cleanRealWorkEmail.includes('@') ? cleanRealWorkEmail.split('@')[0] : cleanRealWorkEmail;
 
@@ -366,14 +366,12 @@ export default function Approval() {
             realName.toLowerCase()
           ])).filter(k => k && k.length >= 2);
 
-          // Simpan mapping nama karyawan untuk lookup nama
           dirData.forEach(emp => {
             const email = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Email', 'email']) || '').trim().toLowerCase();
             const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
             if (email) employeeDirectoryMap.set(email, name);
           });
 
-          // Subordinates: Line Manager di directory harus cocok dengan manajer
           const subordinates = dirData.filter(row => matchesLineManager(row, realWorkEmail, realName, managerKeys));
           
           const uniqueMap = new Map();
@@ -404,7 +402,6 @@ export default function Approval() {
 
           subordinateEmails = Array.from(uniqueMap.keys());
           setTeamMembers(Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
-          console.log("[Approval Debug] Subordinate emails found:", subordinateEmails);
         }
       } catch (err) {
         console.warn("[Approval] Could not query employee_directory:", err);
@@ -424,7 +421,7 @@ export default function Approval() {
         realName.toLowerCase()
       ])).filter(k => k && k.length >= 2);
 
-      // 2. Fetch Leave Requests: STRICT MATCH (Hanya jika Line Manager cocok; jika kosong/'-' otomatis ditolak)
+      // 2. Fetch Leave Requests: STRICT MATCH (Line Manager = Current User Work Email)
       let myLeaves = [];
       try {
         const { data: lvData, error: lvError } = await supabase
@@ -441,7 +438,6 @@ export default function Approval() {
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
               const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
 
-              // Jangan tampilkan pengajuan cuti yang diajukan oleh user yang sedang login
               const empVal = (getPropCaseInsensitive(row, [
                 'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
                 'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
@@ -461,7 +457,7 @@ export default function Approval() {
         console.warn("[Approval] Failed fetching leave_requests:", e);
       }
 
-      // 3. Fetch Attendance Requests (BARU)
+      // 3. Fetch Attendance Requests: Kondisi Line Manager = User Work Email
       let myAttendance = [];
       try {
         const { data: attData, error: attError } = await supabase
@@ -638,7 +634,7 @@ export default function Approval() {
   const handleUpdateStatus = async (item, newStatus, reason = '') => {
     setIsProcessing(true);
     try {
-      const table = item._sourceTable || 'leave_requests';
+      const table = item._sourceTable || (item._category === 'Attendance' ? 'attendance' : 'leave_requests');
       const cols = Object.keys(item);
 
       const statusCol = resolveTableColumn(cols, [
@@ -685,7 +681,7 @@ export default function Approval() {
       const { error } = await query;
       if (error) throw error;
 
-      // --- LEAVE APPROVAL POST-LOGIC ---
+      // LEAVE APPROVAL POST-LOGIC (Hanya jika category Leave)
       if (newStatus === 'Approved' && item._category === 'Leave') {
         const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'user_uid', 'email']);
         const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name']);
@@ -876,7 +872,7 @@ export default function Approval() {
 
     setIsProcessing(true);
     try {
-      const table = item._sourceTable || 'leave_requests';
+      const table = item._sourceTable || (reqCategory === 'Attendance' ? 'attendance' : 'leave_requests');
       const cols = Object.keys(item);
 
       const statusCol = resolveTableColumn(cols, [
@@ -1100,27 +1096,36 @@ export default function Approval() {
     handleUpdateStatus(itemToReject, 'Rejected', rejectReason);
   };
 
-  // Combine both Leaves and Attendance for accurate count badges
-  const allRequests = useMemo(() => {
-    return [...leaveRequests, ...attendanceRequests];
-  }, [leaveRequests, attendanceRequests]);
+  // Badge Counts for Categories
+  const pendingLeavesCount = useMemo(() => {
+    return leaveRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
+  }, [leaveRequests]);
 
-  // Counts for Badges
-  const pendingRequestsCount = useMemo(() => {
-    return allRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
-  }, [allRequests]);
+  const pendingAttendanceCount = useMemo(() => {
+    return attendanceRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
+  }, [attendanceRequests]);
 
-  const approvedRequestsCount = useMemo(() => {
-    return allRequests.filter(r => isApprovedStatus(getRowStatus(r))).length;
-  }, [allRequests]);
+  // Active Category List
+  const activeCategoryList = useMemo(() => {
+    return activeCategoryTab === 'attendance' ? attendanceRequests : leaveRequests;
+  }, [activeCategoryTab, attendanceRequests, leaveRequests]);
 
-  const rejectedRequestsCount = useMemo(() => {
-    return allRequests.filter(r => isRejectedStatus(getRowStatus(r))).length;
-  }, [allRequests]);
+  // Counts for Badges within active Category
+  const pendingStatusCount = useMemo(() => {
+    return activeCategoryList.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
+  }, [activeCategoryList]);
 
-  // Filtered List based on status tab and selected employee
-  const combinedList = useMemo(() => {
-    let list = [...allRequests];
+  const approvedStatusCount = useMemo(() => {
+    return activeCategoryList.filter(r => isApprovedStatus(getRowStatus(r))).length;
+  }, [activeCategoryList]);
+
+  const rejectedStatusCount = useMemo(() => {
+    return activeCategoryList.filter(r => isRejectedStatus(getRowStatus(r))).length;
+  }, [activeCategoryList]);
+
+  // Filtered List based on active category, status tab, and selected employee
+  const displayList = useMemo(() => {
+    let list = [...activeCategoryList];
 
     if (statusTab === 'pending') {
       list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
@@ -1152,7 +1157,7 @@ export default function Approval() {
       const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'Time', 'time', 'created_at'])) || new Date(0);
       return dtB.getTime() - dtA.getTime();
     });
-  }, [statusTab, allRequests, selectedEmployee]);
+  }, [activeCategoryList, statusTab, selectedEmployee]);
 
   return (
     <div className="w-full text-gray-800 font-sans">
@@ -1160,7 +1165,7 @@ export default function Approval() {
       {/* 1. Unified Main Card: Controls, Filters, and Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-6 w-full">
         
-        {/* Top Header Row & Filters */}
+        {/* Top Header Row */}
         <div className="p-4 sm:p-6 pb-4 border-b border-gray-100">
           <div className="flex flex-row justify-between items-start sm:items-center gap-2 sm:gap-3">
             <div className="flex items-center gap-2 sm:gap-3 flex-1 pr-2 sm:pr-3">
@@ -1169,7 +1174,10 @@ export default function Approval() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h2 className="text-base sm:text-xl font-bold text-gray-900 break-words">Approval Requests</h2>
+              <div>
+                <h2 className="text-base sm:text-xl font-bold text-gray-900 break-words">Approval Portal</h2>
+                <p className="text-xs text-gray-500">Kelola persetujuan Absensi dan Cuti anggota tim Anda</p>
+              </div>
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -1191,9 +1199,58 @@ export default function Approval() {
               </button>
             </div>
           </div>
+        </div>
 
-          {/* Filters: Status Dropdown & Employee Dropdown */}
-          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-4 pt-3 border-t border-gray-100">
+        {/* --- TOMBOL PEMISAH TAB BARU: ATTENDANCE & LEAVE --- */}
+        <div className="flex items-center gap-2 px-4 sm:px-6 pt-3 bg-gray-50/70 border-b border-gray-200">
+          <button
+            type="button"
+            onClick={() => setActiveCategoryTab('attendance')}
+            className={`py-2.5 px-4 rounded-t-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition cursor-pointer border-t-2 ${
+              activeCategoryTab === 'attendance'
+                ? 'bg-white border-purple-600 text-purple-700 shadow-xs'
+                : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100/60'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Attendance Requests</span>
+            {pendingAttendanceCount > 0 && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                activeCategoryTab === 'attendance' ? 'bg-purple-100 text-purple-700' : 'bg-red-500 text-white'
+              }`}>
+                {pendingAttendanceCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveCategoryTab('leave')}
+            className={`py-2.5 px-4 rounded-t-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition cursor-pointer border-t-2 ${
+              activeCategoryTab === 'leave'
+                ? 'bg-white border-blue-600 text-blue-700 shadow-xs'
+                : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100/60'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span>Leave Requests</span>
+            {pendingLeavesCount > 0 && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                activeCategoryTab === 'leave' ? 'bg-blue-100 text-blue-700' : 'bg-red-500 text-white'
+              }`}>
+                {pendingLeavesCount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Filters: Status Dropdown & Employee Dropdown */}
+        <div className="p-4 sm:p-6 py-3 border-b border-gray-100 bg-white">
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
             
             {/* Status Dropdown Filter */}
             <div className="relative w-full sm:w-auto sm:min-w-[170px]">
@@ -1208,10 +1265,10 @@ export default function Approval() {
                   backgroundSize: '1rem'
                 }}
               >
-                <option value="pending">Pending ({pendingRequestsCount})</option>
-                <option value="approved">Approved ({approvedRequestsCount})</option>
-                <option value="rejected">Cancel / Reject ({rejectedRequestsCount})</option>
-                <option value="all">All Status ({allRequests.length})</option>
+                <option value="pending">Pending ({pendingStatusCount})</option>
+                <option value="approved">Approved ({approvedStatusCount})</option>
+                <option value="rejected">Cancel / Reject ({rejectedStatusCount})</option>
+                <option value="all">All Status ({activeCategoryList.length})</option>
               </select>
             </div>
 
@@ -1247,7 +1304,7 @@ export default function Approval() {
                 <th className="px-4 py-3">Category</th>
                 <th className="px-4 py-3">Employee</th>
                 <th className="px-4 py-3">Request / Action</th>
-                <th className="px-4 py-3">Date / Time</th>
+                <th className="px-4 py-3">{activeCategoryTab === 'attendance' ? 'Attendance Date' : 'Leave Period'}</th>
                 <th className="px-4 py-3 text-center">Status</th>
                 <th className="px-4 py-3 text-center">Action</th>
               </tr>
@@ -1265,14 +1322,14 @@ export default function Approval() {
                     </div>
                   </td>
                 </tr>
-              ) : combinedList.length === 0 ? (
+              ) : displayList.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="px-5 py-12 text-center text-gray-400">
                     <div className="flex flex-col items-center justify-center">
                       <svg className="w-10 h-10 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      <p className="font-semibold text-gray-600 text-sm">No requests found.</p>
+                      <p className="font-semibold text-gray-600 text-sm">No {activeCategoryTab === 'attendance' ? 'Attendance' : 'Leave'} requests found.</p>
                       <p className="text-xs text-gray-400 mt-1">
                         There are no {statusTab !== 'all' ? statusTab : ''} records matching your current filter.
                       </p>
@@ -1280,10 +1337,10 @@ export default function Approval() {
                   </td>
                 </tr>
               ) : (
-                combinedList.map((item, idx) => {
+                displayList.map((item, idx) => {
                   const employeeName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'], 'No Name');
                   const employeeEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email'], '-');
-                  const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype', 'Action', 'action'], item._category || 'Leave');
+                  const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype', 'Action', 'action', 'Status Type', 'Attendance Type'], item._category);
                   const status = getRowStatus(item) || 'Approved';
                   
                   const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal']), lang);
@@ -1298,7 +1355,7 @@ export default function Approval() {
                     >
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className={`px-2 py-1 rounded-md text-[11px] font-bold border ${item._category === 'Attendance' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                          {item._category || 'Leave'}
+                          {item._category}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -1545,7 +1602,7 @@ export default function Approval() {
             <div className="flex justify-between items-center pb-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
                 <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${selectedRequest._category === 'Attendance' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                  {selectedRequest._category || 'Leave'}
+                  {selectedRequest._category}
                 </span>
                 <h3 className="text-base sm:text-lg font-bold text-gray-800">Request Detail</h3>
               </div>
@@ -1575,7 +1632,7 @@ export default function Approval() {
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block">Request / Action</span>
                   <span className="text-xs sm:text-sm font-bold text-blue-700">
-                    {getPropCaseInsensitive(selectedRequest, ['Leave Type', 'leave_type', 'Type', 'type', 'Action', 'action'], '-')}
+                    {getPropCaseInsensitive(selectedRequest, ['Leave Type', 'leave_type', 'Type', 'type', 'Action', 'action', 'Status Type', 'Attendance Type'], '-')}
                   </span>
                 </div>
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
