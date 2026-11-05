@@ -531,7 +531,25 @@ export default function Approval({ currentUser: propCurrentUser }) {
           if (defAtt) attData = defAtt;
         }
 
+        // Attempt 2: Explicitly query pending approval records to guarantee no pending records are missed
+        try {
+          const { data: pendingAttRows } = await supabase
+            .from('attendance')
+            .select('*')
+            .ilike('Status', '%Pending%')
+            .limit(1000);
 
+          if (pendingAttRows && pendingAttRows.length > 0) {
+            const existingIds = new Set(attData.map(r => r.id ?? `${r.Employee}_${r.Date}_${r.Status}`));
+            pendingAttRows.forEach(r => {
+              const rowKey = r.id ?? `${r.Employee}_${r.Date}_${r.Status}`;
+              if (!existingIds.has(rowKey)) {
+                attData.unshift(r);
+                existingIds.add(rowKey);
+              }
+            });
+          }
+        } catch (e) {}
 
         if (attData && attData.length > 0) {
           myAttendance = attData
@@ -1204,18 +1222,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const displayList = useMemo(() => {
     let list = [...activeCategoryList];
 
-    if (activeCategoryTab === 'attendance') {
-      // Absensi HANYA menampilkan yang Pending Approval
+    if (statusTab === 'pending') {
       list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
-    } else {
-      // Leave menggunakan filter tab status normal
-      if (statusTab === 'pending') {
-        list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
-      } else if (statusTab === 'approved') {
-        list = list.filter(item => isApprovedStatus(getRowStatus(item)));
-      } else if (statusTab === 'rejected') {
-        list = list.filter(item => isRejectedStatus(getRowStatus(item)));
-      }
+    } else if (statusTab === 'approved') {
+      list = list.filter(item => isApprovedStatus(getRowStatus(item)));
+    } else if (statusTab === 'rejected') {
+      list = list.filter(item => isRejectedStatus(getRowStatus(item)));
     }
 
     if (selectedEmployee && selectedEmployee !== 'all') {
