@@ -40,6 +40,19 @@ const formatDateDisplay = (dateVal, lang = 'en') => {
   return `${d} ${m} ${y}`;
 };
 
+const formatTimeDisplay = (timeVal) => {
+  if (!timeVal) return '';
+  const parsed = parseFlexibleDate(timeVal);
+  if (parsed) {
+    const hh = String(parsed.getHours()).padStart(2, '0');
+    const mm = String(parsed.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+  const str = String(timeVal).trim();
+  const m = str.match(/(\d{1,2}):(\d{2})/);
+  return m ? `${m[1].padStart(2, '0')}:${m[2]}` : str;
+};
+
 const getPropCaseInsensitive = (obj, candidateKeys, fallback = '') => {
   if (!obj) return fallback;
   const keys = Object.keys(obj);
@@ -78,10 +91,8 @@ const isPendingApprovalStatus = (status) => {
     s === 'review' ||
     s === 'waiting' ||
     s === 'waitingapproval' ||
-    s === 'needapproval' ||
     s.includes('pending') ||
-    s.includes('menunggu') ||
-    s.includes('waiting')
+    s.includes('menunggu')
   );
 };
 
@@ -100,7 +111,6 @@ const isApprovedStatus = (status) => {
   );
 };
 
-// Prioritaskan kolom approval agar tidak tertimpa kolom "status" presensi (seperti "Present" / "Late")
 const getRowStatus = (row) => {
   if (!row) return '';
   const explicitApproval = getPropCaseInsensitive(
@@ -115,15 +125,12 @@ const getRowStatus = (row) => {
       'Request Status',
       'request_status',
       'Status Pengajuan',
-      'status_pengajuan',
-      'Approval_Status',
-      'Status_Approval'
+      'status_pengajuan'
     ],
     ''
   );
   if (explicitApproval) return explicitApproval;
 
-  // Fallback ke kolom Status umum
   return getPropCaseInsensitive(row, ['Status', 'status'], '');
 };
 
@@ -221,8 +228,8 @@ export default function Approval() {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [teamScheduleModalData, setTeamScheduleModalData] = useState(null);
 
-  // Filter States: Default tab Leave
-  const [statusTab, setStatusTab] = useState('pending'); // 'pending' | 'approved'
+  // Filter States: 'all' | 'pending' | 'approved'
+  const [statusTab, setStatusTab] = useState('all');
   const [activeTab, setActiveTab] = useState('leave'); // 'leave' | 'attendance'
   const [selectedEmployee, setSelectedEmployee] = useState('all');
 
@@ -359,7 +366,6 @@ export default function Approval() {
               const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']) || '').trim().toLowerCase();
               const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name']) || '').trim().toLowerCase();
 
-              // Jika ditemukan bawahan di leave_requests, masukkan ke daftar bawahan
               if (hasDirectMgr) {
                 if (empEmail) {
                   subordinateIdentifiers.add(empEmail);
@@ -391,15 +397,11 @@ export default function Approval() {
         if (attErr) {
           console.error("[Approval] Error query table attendance:", attErr.message);
         } else if (attData) {
-          console.log("[Approval Debug] Data mentah attendance berhasil diambil:", attData.length, "baris.");
-          if (attData.length > 0) {
-            console.log("[Approval Debug] Contoh kolom baris pertama attendance:", attData[0]);
-          }
-
           myAttendance = attData
             .filter(row => {
               const status = getRowStatus(row);
-              const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
+              // Loloskan jika status relevan (Pending/Approved) atau jika tidak ada status spesifik tetapi milik bawahan
+              const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || !status;
               const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
               const isSub = checkIsSubordinate(row);
 
@@ -411,7 +413,7 @@ export default function Approval() {
               _sourceTable: 'attendance'
             }));
 
-          console.log("[Approval Debug] Data presensi yang lolos filter bawahan & approval:", myAttendance.length);
+          console.log("[Approval Debug] Data presensi bawahan siap tampil:", myAttendance.length);
         }
       } catch (e) {
         console.error("[Approval] Exception saat query attendance:", e);
@@ -518,7 +520,7 @@ export default function Approval() {
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'employee_name'], 'Employee');
     const reqType = item._category === 'Leave'
       ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type'], 'Leave')
-      : (getPropCaseInsensitive(item, ['Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Attendance'));
+      : (getPropCaseInsensitive(item, ['Action', 'action', 'Type', 'type', 'Attendance Type'], 'Attendance'));
 
     if (!empEmail || !empEmail.includes('@')) return;
 
@@ -640,7 +642,6 @@ export default function Approval() {
           } catch (e) {}
           validKeys = Array.from(new Set(validKeys.filter(Boolean)));
 
-          // 1 & 2: Day Off Payment & Extra Off
           if (leaveType === 'Day Off Payment' || leaveType === 'Extra Off') {
             const { data: hSample } = await supabase.from('holiday_balance').select('*').limit(1);
             const hCols = hSample && hSample.length > 0 ? Object.keys(hSample[0]) : [];
@@ -739,10 +740,7 @@ export default function Approval() {
             await supabase.from('employee_directory').update({
               [balCol]: unusedCount
             }).ilike(dirEmailCol, empEmail);
-          }
-
-          // 3: Annual Leave
-          else if (leaveType === 'Annual Leave') {
+          } else if (leaveType === 'Annual Leave') {
             await supabase.from('schedule').update({
               [schedTypeCol]: leaveType
             })
@@ -759,10 +757,7 @@ export default function Approval() {
                 [annBalCol]: Math.max(0, currBal - totalDays)
               }).ilike(dirEmailCol, empEmail);
             }
-          }
-
-          // 4, 5, 6, 7: Other Leaves
-          else if (['Sick Leave', 'Maternity Leave', 'Compassionate Leave', 'Unpaid Leave'].includes(leaveType)) {
+          } else if (['Sick Leave', 'Maternity Leave', 'Compassionate Leave', 'Unpaid Leave'].includes(leaveType)) {
             await supabase.from('schedule').update({
               [schedTypeCol]: leaveType
             })
@@ -797,9 +792,9 @@ export default function Approval() {
   const handleCancelApproved = async (item) => {
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Employee');
     const reqCategory = item._category || 'Leave';
-    const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], reqCategory);
+    const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Action', 'action', 'Type', 'type'], reqCategory);
 
-    if (!window.confirm(`Batalkan persetujuan ${reqType} untuk ${empName} dan kembalikan kuota/saldo ke Unused?`)) {
+    if (!window.confirm(`Batalkan persetujuan ${reqType} untuk ${empName}?`)) {
       return;
     }
 
@@ -877,7 +872,6 @@ export default function Approval() {
         } catch (e) {}
         validKeys = Array.from(new Set(validKeys.filter(Boolean)));
 
-        // 1 & 2: Day Off Payment & Extra Off -> Revert to Unused
         if (leaveType === 'Day Off Payment' || leaveType === 'Extra Off') {
           const { data: hSample } = await supabase.from('holiday_balance').select('*').limit(1);
           const hCols = hSample && hSample.length > 0 ? Object.keys(hSample[0]) : [];
@@ -939,14 +933,12 @@ export default function Approval() {
             }
           }
 
-          // Reset schedule back to Working Day
           await supabase.from('schedule').update({
             [schedTypeCol]: 'Working Day'
           })
           .ilike(schedEmpCol, `%${empEmail}%`)
           .eq(schedDateCol, fromDate);
 
-          // Recount Unused in holiday_balance
           let recheckQuery = supabase.from('holiday_balance').select('*').limit(5000);
           if (orConditions) {
             recheckQuery = recheckQuery.or(orConditions);
@@ -975,10 +967,7 @@ export default function Approval() {
           await supabase.from('employee_directory').update({
             [balCol]: unusedCount
           }).ilike(dirEmailCol, empEmail);
-        }
-
-        // 3: Annual Leave -> Restore balance in employee_directory & reset schedule
-        else if (leaveType === 'Annual Leave') {
+        } else if (leaveType === 'Annual Leave') {
           await supabase.from('schedule').update({
             [schedTypeCol]: 'Working Day'
           })
@@ -995,10 +984,7 @@ export default function Approval() {
               [annBalCol]: currBal + totalDays
             }).ilike(dirEmailCol, empEmail);
           }
-        }
-
-        // 4, 5, 6, 7: Other Leaves -> Reset schedule
-        else if (['Sick Leave', 'Maternity Leave', 'Compassionate Leave', 'Unpaid Leave'].includes(leaveType)) {
+        } else if (['Sick Leave', 'Maternity Leave', 'Compassionate Leave', 'Unpaid Leave'].includes(leaveType)) {
           await supabase.from('schedule').update({
             [schedTypeCol]: 'Working Day'
           })
@@ -1010,7 +996,7 @@ export default function Approval() {
 
       await sendNotificationEmail(item, 'Cancelled', 'Persetujuan cuti telah dibatalkan oleh Line Manager dan kuota/saldo telah dikembalikan.');
 
-      alert('Persetujuan berhasil dibatalkan dan kuota/saldo telah dikembalikan!');
+      alert('Persetujuan berhasil dibatalkan!');
       setIsDetailModalOpen(false);
       setSelectedRequest(null);
       refreshAllData();
@@ -1055,26 +1041,28 @@ export default function Approval() {
     return attendanceRequests.filter(r => isApprovedStatus(getRowStatus(r))).length;
   }, [attendanceRequests]);
 
-  const currentLeaveCount = statusTab === 'approved' ? approvedLeavesCount : pendingLeavesCount;
-  const currentAttCount = statusTab === 'approved' ? approvedAttCount : pendingAttCount;
+  // Handler pergantian tab kategori agar tidak stuck di filter kosong
+  const handleSelectTab = (tab) => {
+    setActiveTab(tab);
+    if (tab === 'attendance') {
+      if (statusTab === 'pending' && pendingAttCount === 0 && approvedAttCount > 0) {
+        setStatusTab('all');
+      }
+    } else if (tab === 'leave') {
+      if (statusTab === 'pending' && pendingLeavesCount === 0 && approvedLeavesCount > 0) {
+        setStatusTab('all');
+      }
+    }
+  };
 
   // Filtered List based on status tab, category tab, and selected employee
   const combinedList = useMemo(() => {
-    let list = [];
-    if (activeTab === 'leave') {
-      list = [...leaveRequests];
-      if (statusTab === 'pending') {
-        list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
-      } else if (statusTab === 'approved') {
-        list = list.filter(item => isApprovedStatus(getRowStatus(item)));
-      }
-    } else if (activeTab === 'attendance') {
-      list = [...attendanceRequests];
-      if (statusTab === 'pending') {
-        list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
-      } else if (statusTab === 'approved') {
-        list = list.filter(item => isApprovedStatus(getRowStatus(item)));
-      }
+    let list = activeTab === 'leave' ? [...leaveRequests] : [...attendanceRequests];
+
+    if (statusTab === 'pending') {
+      list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
+    } else if (statusTab === 'approved') {
+      list = list.filter(item => isApprovedStatus(getRowStatus(item)));
     }
 
     if (selectedEmployee && selectedEmployee !== 'all') {
@@ -1095,8 +1083,8 @@ export default function Approval() {
     }
 
     return list.sort((a, b) => {
-      const dtA = parseFlexibleDate(getPropCaseInsensitive(a, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'created_at'])) || new Date(0);
-      const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'created_at'])) || new Date(0);
+      const dtA = parseFlexibleDate(getPropCaseInsensitive(a, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'Time', 'time', 'created_at'])) || new Date(0);
+      const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'Time', 'time', 'created_at'])) || new Date(0);
       return dtB.getTime() - dtA.getTime();
     });
   }, [statusTab, activeTab, leaveRequests, attendanceRequests, selectedEmployee]);
@@ -1142,27 +1130,27 @@ export default function Approval() {
           {/* Filters: Category & Employee Dropdown */}
           <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-4 pt-3 border-t border-gray-100">
             
-            {/* Mobile Top Row: Category Tabs (Leave & Attendance) + Status Dropdown */}
+            {/* Category Tabs + Status Dropdown */}
             <div className="flex flex-row justify-between items-center gap-2 w-full sm:w-auto">
               
               {/* Category Filter Tabs */}
               <div className="flex p-1 bg-gray-100 rounded-xl space-x-1 shrink-0">
                 <button
-                  onClick={() => setActiveTab('leave')}
+                  onClick={() => handleSelectTab('leave')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'leave' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
-                  Leave ({currentLeaveCount})
+                  Leave ({leaveRequests.length})
                 </button>
                 <button
-                  onClick={() => setActiveTab('attendance')}
+                  onClick={() => handleSelectTab('attendance')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'attendance' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
-                  Attendance ({currentAttCount})
+                  Attendance ({attendanceRequests.length})
                 </button>
               </div>
 
-              {/* Status Dropdown Filter */}
-              <div className="relative flex-1 sm:flex-none sm:min-w-[160px]">
+              {/* Status Dropdown Filter: All, Pending, Approved */}
+              <div className="relative flex-1 sm:flex-none sm:min-w-[170px]">
                 <select
                   value={statusTab}
                   onChange={(e) => setStatusTab(e.target.value)}
@@ -1174,13 +1162,20 @@ export default function Approval() {
                     backgroundSize: '1rem'
                   }}
                 >
-                  <option value="pending">Pending ({activeTab === 'leave' ? pendingLeavesCount : pendingAttCount})</option>
-                  <option value="approved">Approved ({activeTab === 'leave' ? approvedLeavesCount : approvedAttCount})</option>
+                  <option value="all">
+                    All Status ({activeTab === 'leave' ? leaveRequests.length : attendanceRequests.length})
+                  </option>
+                  <option value="pending">
+                    Pending ({activeTab === 'leave' ? pendingLeavesCount : pendingAttCount})
+                  </option>
+                  <option value="approved">
+                    Approved ({activeTab === 'leave' ? approvedLeavesCount : approvedAttCount})
+                  </option>
                 </select>
               </div>
             </div>
 
-            {/* Dropdown filter Employee from employee_directory */}
+            {/* Dropdown filter Employee */}
             <div className="relative w-full sm:w-auto sm:min-w-[240px]">
               <select
                 value={selectedEmployee}
@@ -1211,8 +1206,8 @@ export default function Approval() {
               <tr>
                 <th className="px-4 py-3">Category</th>
                 <th className="px-4 py-3">Employee</th>
-                <th className="px-4 py-3">Request Type</th>
-                <th className="px-4 py-3">Date / Period</th>
+                <th className="px-4 py-3">Request / Action</th>
+                <th className="px-4 py-3">Date / Time</th>
                 <th className="px-4 py-3 text-center">Status</th>
                 <th className="px-4 py-3 text-center">Action</th>
               </tr>
@@ -1238,7 +1233,9 @@ export default function Approval() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       <p className="font-semibold text-gray-600 text-sm">No requests found.</p>
-                      <p className="text-xs text-gray-400 mt-1">There are no {statusTab} requests matching your current filter.</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        There are no {statusTab !== 'all' ? statusTab : ''} records matching your current filter.
+                      </p>
                     </div>
                   </td>
                 </tr>
@@ -1250,17 +1247,18 @@ export default function Approval() {
                   
                   const reqType = isLeave
                     ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], 'Leave')
-                    : getPropCaseInsensitive(item, ['Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type', 'request_type'], 'Attendance Correction');
+                    : getPropCaseInsensitive(item, ['Action', 'action', 'Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Attendance');
 
-                  const status = getRowStatus(item) || 'Pending Approval';
+                  const status = getRowStatus(item) || 'Approved';
                   let dateInfo = '-';
                   if (isLeave) {
                     const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']), lang);
                     const toDate = formatDateDisplay(getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']), lang);
                     dateInfo = `${fromDate} - ${toDate}`;
                   } else {
-                    const attDate = formatDateDisplay(getPropCaseInsensitive(item, ['Date', 'date', 'attendance_date', 'CreatedDate', 'created_date', 'Tanggal', 'tanggal']), lang);
-                    dateInfo = attDate;
+                    const attDate = formatDateDisplay(getPropCaseInsensitive(item, ['Date', 'date', 'attendance_date', 'CreatedDate', 'created_date', 'Tanggal']), lang);
+                    const attTime = formatTimeDisplay(getPropCaseInsensitive(item, ['Time', 'time', 'Clock In', 'Clock Out', 'time_in', 'time_out']));
+                    dateInfo = attTime ? `${attDate} (${attTime})` : attDate;
                   }
 
                   return (
@@ -1311,10 +1309,10 @@ export default function Approval() {
                                 disabled={isProcessing}
                                 onClick={() => handleCancelApproved(item)}
                                 className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 active:scale-95 text-red-600 border border-red-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer mx-auto"
-                                title="Cancel Approval & Restore Balance"
+                                title="Cancel Approval"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                                <span>Cancel Approval</span>
+                                <span>Cancel</span>
                               </button>
                             );
                           }
@@ -1325,7 +1323,7 @@ export default function Approval() {
                                   disabled={isProcessing}
                                   onClick={() => handleCancelApproved(item)}
                                   className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 active:scale-95 text-purple-700 border border-purple-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
-                                  title="Approve Cancellation & Restore Balance"
+                                  title="Approve Cancellation"
                                 >
                                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
                                   <span>Approve Cancel</span>
@@ -1537,17 +1535,17 @@ export default function Approval() {
             <div className="mt-4 space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                  <span className="text-[10px] text-gray-400 font-semibold block">Request Type</span>
+                  <span className="text-[10px] text-gray-400 font-semibold block">Request / Action</span>
                   <span className="text-xs sm:text-sm font-bold text-blue-700">
                     {selectedRequest._category === 'Leave'
                       ? getPropCaseInsensitive(selectedRequest, ['Leave Type', 'leave_type', 'Type', 'type'], '-')
-                      : getPropCaseInsensitive(selectedRequest, ['Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Correction')}
+                      : getPropCaseInsensitive(selectedRequest, ['Action', 'action', 'Type', 'type', 'Attendance Type'], 'Attendance')}
                   </span>
                 </div>
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block">Current Status</span>
-                  <span className="text-xs sm:text-sm font-bold text-yellow-600">
-                    {getRowStatus(selectedRequest) || 'Pending Approval'}
+                  <span className="text-xs sm:text-sm font-bold text-green-700">
+                    {getRowStatus(selectedRequest) || 'Approved'}
                   </span>
                 </div>
               </div>
@@ -1587,46 +1585,42 @@ export default function Approval() {
               ) : (
                 <>
                   <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                    <span className="text-[10px] text-gray-400 font-semibold block">Attendance Date</span>
+                    <span className="text-[10px] text-gray-400 font-semibold block">Attendance Date & Time</span>
                     <span className="text-xs sm:text-sm font-semibold text-gray-800">
-                      {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['Date', 'date', 'attendance_date', 'CreatedDate', 'Tanggal', 'tanggal']), lang)}
+                      {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['Date', 'date', 'attendance_date', 'CreatedDate']), lang)}{' '}
+                      ({formatTimeDisplay(getPropCaseInsensitive(selectedRequest, ['Time', 'time', 'CreatedDate'])) || '--:--'})
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  {getPropCaseInsensitive(selectedRequest, ['Location', 'location']) && (
                     <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                      <span className="text-[10px] text-gray-400 font-semibold block">Clock In</span>
-                      <span className="text-xs sm:text-sm font-bold text-gray-800">
-                        {getPropCaseInsensitive(selectedRequest, ['Clock In', 'clock_in', 'In Time', 'in_time', 'time_in', 'jam_masuk'], '--:--')}
+                      <span className="text-[10px] text-gray-400 font-semibold block">GPS Location</span>
+                      <span className="text-xs font-semibold text-blue-600">
+                        {getPropCaseInsensitive(selectedRequest, ['Location', 'location'])}
                       </span>
                     </div>
-                    <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                      <span className="text-[10px] text-gray-400 font-semibold block">Clock Out</span>
-                      <span className="text-xs sm:text-sm font-bold text-gray-800">
-                        {getPropCaseInsensitive(selectedRequest, ['Clock Out', 'clock_out', 'Out Time', 'out_time', 'time_out', 'jam_keluar'], '--:--')}
-                      </span>
-                    </div>
-                  </div>
+                  )}
                 </>
               )}
 
               <div className="p-3 bg-white border border-gray-200 rounded-xl">
                 <span className="text-[10px] text-gray-400 font-semibold block">Reason / Request Notes</span>
                 <p className="text-xs text-gray-700 mt-1 whitespace-pre-wrap">
-                  {getPropCaseInsensitive(selectedRequest, ['Reason', 'reason', 'Description', 'description', 'notes', 'Notes', 'keterangan', 'alasan'], 'No additional notes provided.')}
+                  {getPropCaseInsensitive(selectedRequest, ['Reason', 'reason', 'Description', 'description', 'notes', 'Notes', 'keterangan'], 'No additional notes provided.')}
                 </p>
               </div>
 
-              {getPropCaseInsensitive(selectedRequest, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo', 'Link']) && (
+              {/* Attachment Preview with Link priority */}
+              {getPropCaseInsensitive(selectedRequest, ['Link', 'link', 'Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo']) && (
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block mb-2">Attachment / Proof</span>
                   <div className="flex items-center gap-3">
                     <img
-                      src={getPropCaseInsensitive(selectedRequest, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo'])}
+                      src={getPropCaseInsensitive(selectedRequest, ['Link', 'link', 'Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo'])}
                       alt="Attachment"
                       className="w-16 h-16 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80 transition"
                       onClick={() => {
-                        setPhotoPreviewUrl(getPropCaseInsensitive(selectedRequest, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo']));
+                        setPhotoPreviewUrl(getPropCaseInsensitive(selectedRequest, ['Link', 'link', 'Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo']));
                         setIsPhotoModalOpen(true);
                       }}
                       onError={(e) => { e.target.onerror = null; e.target.src = 'https://cdn-icons-png.flaticon.com/128/337/337946.png'; }}
@@ -1634,14 +1628,14 @@ export default function Approval() {
                     <div>
                       <button
                         onClick={() => {
-                          setPhotoPreviewUrl(getPropCaseInsensitive(selectedRequest, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo']));
+                          setPhotoPreviewUrl(getPropCaseInsensitive(selectedRequest, ['Link', 'link', 'Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo']));
                           setIsPhotoModalOpen(true);
                         }}
                         className="text-xs text-blue-600 hover:underline font-bold"
                       >
                         Click to enlarge preview
                       </button>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Medical certificate / attendance photo / supporting documents</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">Attendance photo / document preview</p>
                     </div>
                   </div>
                 </div>
@@ -1712,13 +1706,13 @@ export default function Approval() {
             </p>
 
             <label className="block text-xs font-semibold text-gray-700 mb-1">
-              Rejection Reason <span className="text-gray-400 font-normal">(optional / sent to employee)</span>
+              Rejection Reason <span className="text-gray-400 font-normal">(optional)</span>
             </label>
             <textarea
               rows="3"
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="e.g. Schedule conflict with another shift / incomplete proof documents..."
+              placeholder="e.g. Incomplete proof / conflict with schedule..."
               className="w-full p-2.5 text-xs border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-400 focus:outline-none mb-4"
             />
 
