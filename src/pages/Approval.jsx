@@ -369,23 +369,26 @@ export default function Approval() {
           
           const uniqueMap = new Map();
           subordinates.forEach(emp => {
-            // Kita ambil kedua jenis email (work email dan personal/login email) agar fallback presensi tidak meleset
-            const workEmail = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
-            const personalEmail = (getPropCaseInsensitive(emp, ['email', 'Email', 'user_uid']) || '').trim().toLowerCase();
+            const email = (getPropCaseInsensitive(emp, [
+              'Employee work email',
+              'employee_work_email',
+              'work_email',
+              'work email',
+              'Work Email',
+              'email',
+              'Email',
+              'user_uid'
+            ]) || '').trim().toLowerCase();
 
-            const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], workEmail || personalEmail);
+            const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
             const id = (getPropCaseInsensitive(emp, ['Employee ID', 'employee_id', 'id', 'Barcode', 'barcode', 'nik', 'nip']) || '').trim().toLowerCase();
 
-            const primaryEmail = workEmail || personalEmail;
-
-            if (primaryEmail) {
-              if (!uniqueMap.has(primaryEmail)) {
-                uniqueMap.set(primaryEmail, { email: primaryEmail, name });
+            if (email) {
+              subordinateIdentifiers.add(email);
+              if (!uniqueMap.has(email)) {
+                uniqueMap.set(email, { email, name });
               }
             }
-
-            if (workEmail) subordinateIdentifiers.add(workEmail);
-            if (personalEmail) subordinateIdentifiers.add(personalEmail);
             if (name) subordinateIdentifiers.add(name.trim().toLowerCase());
             if (id) subordinateIdentifiers.add(id);
           });
@@ -1657,7 +1660,7 @@ export default function Approval() {
                 </div>
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block">Current Status</span>
-                  <span className="text-xs sm:text-sm font-bold text-green-700">
+                  <span className={`text-xs sm:text-sm font-bold ${isRejectedStatus(getRowStatus(selectedRequest)) || (getRowStatus(selectedRequest) || '').toLowerCase().replace(/[\s_-]/g, '') === 'cancelled' ? 'text-red-600' : isApprovedStatus(getRowStatus(selectedRequest)) ? 'text-green-700' : 'text-yellow-600'}`}>
                     {getRowStatus(selectedRequest) || 'Approved'}
                   </span>
                 </div>
@@ -1765,6 +1768,9 @@ export default function Approval() {
               </button>
               {(() => {
                 const s = getRowStatus(selectedRequest);
+                if (isRejectedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'cancelled') {
+                  return null;
+                }
                 if (isApprovedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel') {
                   return (
                     <button
