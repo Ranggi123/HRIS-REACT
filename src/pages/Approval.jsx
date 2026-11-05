@@ -77,6 +77,8 @@ const isPendingApprovalStatus = (status) => {
     s === 'submitted' ||
     s === 'review' ||
     s === 'waiting' ||
+    s === 'waitingapproval' ||
+    s === 'needapproval' ||
     s.includes('pending') ||
     s.includes('menunggu') ||
     s.includes('waiting')
@@ -91,30 +93,38 @@ const isApprovedStatus = (status) => {
     s === 'approve' ||
     s === 'setuju' ||
     s === 'disetujui' ||
+    s === 'diterima' ||
     s.includes('approve') ||
-    s.includes('setuju')
+    s.includes('setuju') ||
+    s.includes('disetujui')
   );
 };
 
-// Prioritaskan kolom khusus Approval agar tidak tertimpa kolom "Status" presensi (seperti "Present" / "Late")
+// Prioritaskan kolom approval agar tidak tertimpa kolom "status" presensi (seperti "Present" / "Late")
 const getRowStatus = (row) => {
   if (!row) return '';
-  return getPropCaseInsensitive(
+  const explicitApproval = getPropCaseInsensitive(
     row,
     [
       'Approval Status',
       'approval_status',
       'Status Approval',
       'status_approval',
+      'Approval',
+      'approval',
       'Request Status',
       'request_status',
       'Status Pengajuan',
       'status_pengajuan',
-      'Status',
-      'status'
+      'Approval_Status',
+      'Status_Approval'
     ],
     ''
   );
+  if (explicitApproval) return explicitApproval;
+
+  // Fallback ke kolom Status umum
+  return getPropCaseInsensitive(row, ['Status', 'status'], '');
 };
 
 const matchesLineManager = (record, targetEmail, targetName = '') => {
@@ -264,7 +274,7 @@ export default function Approval() {
           .limit(2000);
 
         if (dirErr) {
-          console.warn("Error querying employee_directory:", dirErr.message);
+          console.warn("[Approval] Error fetching employee_directory:", dirErr.message);
         } else if (dirData) {
           const subordinates = dirData.filter(row => matchesLineManager(row, userWorkEmail, userName));
           
@@ -298,22 +308,34 @@ export default function Approval() {
           setTeamMembers(Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
         }
       } catch (err) {
-        console.warn("Could not query employee_directory:", err);
+        console.warn("[Approval] Could not query employee_directory:", err);
       }
 
-      // Helper untuk mengecek apakah sebuah baris adalah milik bawahan
+      // Helper pencocokan data karyawan bawahan
       const checkIsSubordinate = (row) => {
-        const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email']) || '').trim().toLowerCase();
-        const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name']) || '').trim().toLowerCase();
-        const empId = (getPropCaseInsensitive(row, ['Employee ID', 'employee_id', 'employeeid', 'id', 'Barcode', 'barcode', 'user_id', 'nik', 'nip']) || '').trim().toLowerCase();
+        if (!row) return false;
+        const empEmail = (getPropCaseInsensitive(row, [
+          'Employee', 'employee', 'email', 'Email', 'user_uid', 'employee_email',
+          'work_email', 'work email', 'Employee work email', 'user_email'
+        ]) || '').trim().toLowerCase();
 
-        return (
-          (empEmail && subordinateEmails.includes(empEmail)) ||
-          (empEmail && subordinateIdentifiers.has(empEmail)) ||
-          (empName && subordinateIdentifiers.has(empName)) ||
-          (empId && subordinateIdentifiers.has(empId)) ||
-          subordinateEmails.some(sub => empEmail && (empEmail.includes(sub) || sub.includes(empEmail)))
-        );
+        const empName = (getPropCaseInsensitive(row, [
+          'Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'
+        ]) || '').trim().toLowerCase();
+
+        const empId = (getPropCaseInsensitive(row, [
+          'Employee ID', 'employee_id', 'employeeid', 'id', 'Barcode', 'barcode',
+          'nik', 'nip', 'user_id', 'uid'
+        ]) || '').trim().toLowerCase();
+
+        if (empEmail && (subordinateEmails.includes(empEmail) || subordinateIdentifiers.has(empEmail))) return true;
+        if (empName && subordinateIdentifiers.has(empName)) return true;
+        if (empId && subordinateIdentifiers.has(empId)) return true;
+
+        if (empEmail && subordinateEmails.some(sub => empEmail.includes(sub) || sub.includes(empEmail))) return true;
+        if (empName && Array.from(subordinateIdentifiers).some(id => id && (empName.includes(id) || id.includes(empName)))) return true;
+
+        return false;
       };
 
       // 2. Fetch Leave Requests (Pending and Approved)
@@ -325,7 +347,7 @@ export default function Approval() {
           .limit(2000);
 
         if (lvError) {
-          console.warn("Error fetching leave_requests:", lvError.message);
+          console.warn("[Approval] Error fetching leave_requests:", lvError.message);
         } else if (lvData) {
           myLeaves = lvData
             .filter(row => {
@@ -335,8 +357,15 @@ export default function Approval() {
               const isSub = checkIsSubordinate(row);
 
               const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']) || '').trim().toLowerCase();
-              if (hasDirectMgr && empEmail) {
-                subordinateIdentifiers.add(empEmail);
+              const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name']) || '').trim().toLowerCase();
+
+              // Jika ditemukan bawahan di leave_requests, masukkan ke daftar bawahan
+              if (hasDirectMgr) {
+                if (empEmail) {
+                  subordinateIdentifiers.add(empEmail);
+                  if (!subordinateEmails.includes(empEmail)) subordinateEmails.push(empEmail);
+                }
+                if (empName) subordinateIdentifiers.add(empName);
               }
 
               return isRelevant && (hasDirectMgr || isSub);
@@ -348,40 +377,26 @@ export default function Approval() {
             }));
         }
       } catch (e) {
-        console.warn("Failed fetching leave_requests:", e);
+        console.warn("[Approval] Failed fetching leave_requests:", e);
       }
 
-      // 3. Fetch Attendance Requests (Mencoba 'attendance_requests' dahulu, lalu fallback ke 'attendance')
+      // 3. Fetch Attendance Requests langsung dari tabel 'attendance'
       let myAttendance = [];
       try {
-        let rawAttData = null;
-        let actualAttTable = 'attendance_requests';
-
-        const { data: attReqData, error: attReqErr } = await supabase
-          .from('attendance_requests')
+        const { data: attData, error: attErr } = await supabase
+          .from('attendance')
           .select('*')
-          .limit(2000);
+          .limit(3000);
 
-        if (!attReqErr && attReqData && attReqData.length > 0) {
-          rawAttData = attReqData;
-          actualAttTable = 'attendance_requests';
-        } else {
-          // Fallback query ke tabel 'attendance'
-          const { data: directAttData, error: directAttErr } = await supabase
-            .from('attendance')
-            .select('*')
-            .limit(2000);
-
-          if (directAttErr) {
-            console.warn("Both attendance_requests & attendance returned error:", directAttErr.message);
-          } else {
-            rawAttData = directAttData || [];
-            actualAttTable = 'attendance';
+        if (attErr) {
+          console.error("[Approval] Error query table attendance:", attErr.message);
+        } else if (attData) {
+          console.log("[Approval Debug] Data mentah attendance berhasil diambil:", attData.length, "baris.");
+          if (attData.length > 0) {
+            console.log("[Approval Debug] Contoh kolom baris pertama attendance:", attData[0]);
           }
-        }
 
-        if (rawAttData && rawAttData.length > 0) {
-          myAttendance = rawAttData
+          myAttendance = attData
             .filter(row => {
               const status = getRowStatus(row);
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
@@ -393,11 +408,13 @@ export default function Approval() {
             .map(row => ({
               ...row,
               _category: 'Attendance',
-              _sourceTable: actualAttTable
+              _sourceTable: 'attendance'
             }));
+
+          console.log("[Approval Debug] Data presensi yang lolos filter bawahan & approval:", myAttendance.length);
         }
       } catch (e) {
-        console.warn("Could not query attendance table:", e);
+        console.error("[Approval] Exception saat query attendance:", e);
       }
 
       // 4. Fetch Team Schedule
@@ -415,14 +432,14 @@ export default function Approval() {
           });
         }
       } catch (e) {
-        console.warn("Could not query schedule table:", e);
+        console.warn("[Approval] Could not query schedule table:", e);
       }
 
       setLeaveRequests(myLeaves);
       setAttendanceRequests(myAttendance);
       setTeamScheduleRecords(teamSched);
     } catch (err) {
-      console.error('Error fetching approval records:', err);
+      console.error('[Approval] Error fetching approval records:', err);
     }
     setLoading(false);
   }, [userWorkEmail, userName]);
@@ -546,12 +563,13 @@ export default function Approval() {
       const table = item._sourceTable || (item._category === 'Attendance' ? 'attendance' : 'leave_requests');
       const cols = Object.keys(item);
 
-      // Prioritaskan kolom approval agar tidak menimpa status presensi (misal: "Present")
       const statusCol = resolveTableColumn(cols, [
         'Approval Status',
         'approval_status',
         'Status Approval',
         'status_approval',
+        'Approval',
+        'approval',
         'Request Status',
         'request_status',
         'Status',
@@ -795,6 +813,8 @@ export default function Approval() {
         'approval_status',
         'Status Approval',
         'status_approval',
+        'Approval',
+        'approval',
         'Request Status',
         'request_status',
         'Status',
@@ -1225,7 +1245,7 @@ export default function Approval() {
               ) : (
                 combinedList.map((item, idx) => {
                   const isLeave = item._category === 'Leave';
-                  const employeeName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name'], 'No Name');
+                  const employeeName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'], 'No Name');
                   const employeeEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email'], '-');
                   
                   const reqType = isLeave
@@ -1504,7 +1524,7 @@ export default function Approval() {
             <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Employee Information</span>
               <div className="text-sm font-bold text-gray-800">
-                {getPropCaseInsensitive(selectedRequest, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name'], '-')}
+                {getPropCaseInsensitive(selectedRequest, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'], '-')}
               </div>
               <div className="text-xs text-gray-500">
                 Email: {getPropCaseInsensitive(selectedRequest, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email'], '-')}
