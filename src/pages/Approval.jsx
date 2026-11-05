@@ -53,14 +53,21 @@ const formatTimeDisplay = (timeVal) => {
   return m ? `${m[1].padStart(2, '0')}:${m[2]}` : str;
 };
 
+// Pengecekan cerdas untuk kolom, termasuk support pembongkaran data Relation/Join Supabase (Object)
 const getPropCaseInsensitive = (obj, candidateKeys, fallback = '') => {
   if (!obj) return fallback;
   const keys = Object.keys(obj);
   for (const cand of candidateKeys) {
     const normalizedCand = cand.toLowerCase().replace(/[\s_-]/g, '');
     const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedCand);
-    if (found && obj[found] !== null && obj[found] !== undefined && String(obj[found]).trim() !== '') {
-      return String(obj[found]).trim();
+    if (found && obj[found] !== null && obj[found] !== undefined) {
+      const val = obj[found];
+      if (typeof val === 'object' && !Array.isArray(val)) {
+        return String(val.email || val.work_email || val.Employee_work_email || val.name || val.Name || val.Email || JSON.stringify(val)).trim();
+      }
+      if (String(val).trim() !== '') {
+        return String(val).trim();
+      }
     }
   }
   return fallback;
@@ -76,7 +83,7 @@ const resolveTableColumn = (knownCols, candidates) => {
   return null;
 };
 
-// Approval Status Checkers (Bilingual: ID & EN)
+// Approval Status Checkers
 const isPendingApprovalStatus = (status) => {
   if (!status) return false;
   const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
@@ -132,22 +139,10 @@ const isRejectedStatus = (status) => {
 
 const getRowStatus = (row) => {
   if (!row) return '';
-  const explicitApproval = getPropCaseInsensitive(
-    row,
-    [
-      'Approval Status',
-      'approval_status',
-      'Status Approval',
-      'status_approval',
-      'Approval',
-      'approval',
-      'Request Status',
-      'request_status',
-      'Status Pengajuan',
-      'status_pengajuan'
-    ],
-    ''
-  );
+  const explicitApproval = getPropCaseInsensitive(row, [
+    'Approval Status', 'approval_status', 'Status Approval', 'status_approval',
+    'Approval', 'approval', 'Request Status', 'request_status', 'Status Pengajuan', 'status_pengajuan'
+  ], '');
   if (explicitApproval) return explicitApproval;
 
   return getPropCaseInsensitive(row, ['Status', 'status'], '');
@@ -156,30 +151,14 @@ const getRowStatus = (row) => {
 const matchesLineManager = (record, targetEmail, targetName = '', extraKeys = []) => {
   if (!record) return false;
   const mgrVal = getPropCaseInsensitive(record, [
-    'Line Manager work email',
-    'line_manager_work_email',
-    'Line Manager Email',
-    'line_manager_email',
-    'Line Manager',
-    'line_manager',
-    'Line_Manager',
-    'linemanager',
-    'manager_email',
-    'Manager Email',
-    'Manager',
-    'manager',
-    'Approver Email',
-    'approver_email',
-    'Approver',
-    'approver',
-    'Atasan Email',
-    'atasan_email',
-    'Atasan',
-    'atasan',
-    'approval_line_manager'
+    'Line Manager work email', 'line_manager_work_email', 'Line Manager Email',
+    'line_manager_email', 'Line Manager', 'line_manager', 'Line_Manager', 'linemanager',
+    'manager_email', 'Manager Email', 'Manager', 'manager',
+    'Approver Email', 'approver_email', 'Approver', 'approver',
+    'Atasan Email', 'atasan_email', 'Atasan', 'atasan', 'approval_line_manager'
   ], '').trim().toLowerCase();
 
-  // STRICT: Jika kolom tidak ada, kosong, '-', 'null', atau 'undefined', LANGSUNG TOLAK
+  // STRICT MATCH: Jika kosong atau '-' otomatis ditolak
   if (!mgrVal || mgrVal === '-' || mgrVal === 'null' || mgrVal === 'undefined') {
     return false;
   }
@@ -261,8 +240,8 @@ export default function Approval() {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [teamScheduleModalData, setTeamScheduleModalData] = useState(null);
 
-  // Filter States: 'all' | 'pending' | 'approved' | 'rejected'
-  const [statusTab, setStatusTab] = useState('pending'); // Default: Pending
+  // Filter States
+  const [statusTab, setStatusTab] = useState('pending'); // Default to pending
   const [activeTab, setActiveTab] = useState('leave'); // 'leave' | 'attendance'
   const [selectedEmployee, setSelectedEmployee] = useState('all');
 
@@ -272,48 +251,37 @@ export default function Approval() {
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [itemToReject, setItemToReject] = useState(null);
-  
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
 
-  // Line Manager Work Email of current logged in user
-  const userWorkEmail = useMemo(() => {
+  // Identifikasi sesi login
+  const sessionEmail = useMemo(() => {
     return (
       getPropCaseInsensitive(currentUser, [
-        'Employee work email',
-        'employee_work_email',
-        'work_email',
-        'work email',
-        'Work Email',
-        'email',
-        'Email',
-        'user_uid',
-        'USER_UID'
+        'email', 'Email', 'user_uid', 'USER_UID', 'Employee work email', 'work_email'
       ]) || ''
     ).trim().toLowerCase();
   }, [currentUser]);
 
-  const userName = useMemo(() => {
-    return getPropCaseInsensitive(currentUser, ['Name', 'name', 'nama', 'fullname', 'full_name'], userWorkEmail.split('@')[0] || 'Manager');
-  }, [currentUser, userWorkEmail]);
+  const sessionName = useMemo(() => {
+    return getPropCaseInsensitive(currentUser, ['Name', 'name', 'nama', 'fullname', 'full_name'], sessionEmail.split('@')[0] || 'Manager');
+  }, [currentUser, sessionEmail]);
 
   const [actualUserWorkEmail, setActualUserWorkEmail] = useState('');
   const [actualUserName, setActualUserName] = useState('');
 
-  // Fetch Requests, Directory, and Schedule for this Line Manager
-  // Fetch Requests, Directory, and Schedule for this Line Manager
   const refreshAllData = useCallback(async () => {
-    if (!userWorkEmail && !userName) return;
+    if (!sessionEmail && !sessionName) return;
     setLoading(true);
 
     try {
+      let realWorkEmail = sessionEmail;
+      let realName = sessionName;
       let subordinateEmails = [];
       const subordinateIdentifiers = new Set();
       const employeeDirectoryMap = new Map();
-      let realWorkEmail = userWorkEmail;
-      let realName = userName;
 
-      // 1. Fetch Subordinate Employees from employee_directory
+      // 1. Ambil data dari employee_directory (Verifikasi Work Email)
       try {
         const { data: dirData, error: dirErr } = await supabase
           .from('employee_directory')
@@ -323,15 +291,14 @@ export default function Approval() {
         if (dirErr) {
           console.warn("[Approval] Error fetching employee_directory:", dirErr.message);
         } else if (dirData) {
-          // Cari profil manajer sendiri di database untuk mendapatkan Work Email resmi
           const myProfile = dirData.find(emp => {
             const empEmail = (getPropCaseInsensitive(emp, ['Email', 'email', 'user_uid']) || '').trim().toLowerCase();
-            const empWorkEmail = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
+            const empWorkEmail = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email']) || '').trim().toLowerCase();
             const empName = (getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name']) || '').trim().toLowerCase();
             const empJob = (getPropCaseInsensitive(emp, ['Job Title', 'job_title']) || '').trim().toLowerCase();
 
-            if (userWorkEmail && (empEmail === userWorkEmail || empWorkEmail === userWorkEmail)) return true;
-            if (userName && empName === userName.toLowerCase()) return true;
+            if (sessionEmail && (empEmail === sessionEmail || empWorkEmail === sessionEmail)) return true;
+            if (sessionName && empName === sessionName.toLowerCase()) return true;
             if (empJob.includes('business applications manager')) return true;
             return false;
           });
@@ -347,37 +314,24 @@ export default function Approval() {
           setActualUserWorkEmail(realWorkEmail);
           setActualUserName(realName);
 
-          // Kumpulan kunci manajer (work email, login email, nama, username)
           const managerKeys = Array.from(new Set([
-            userWorkEmail,
             realWorkEmail,
-            userName.toLowerCase(),
             realName.toLowerCase(),
-            userWorkEmail.includes('@') ? userWorkEmail.split('@')[0] : '',
             realWorkEmail.includes('@') ? realWorkEmail.split('@')[0] : ''
           ])).filter(Boolean);
 
-          // Simpan mapping nama karyawan untuk lookup nama di presensi
           dirData.forEach(emp => {
             const email = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Email', 'email']) || '').trim().toLowerCase();
             const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
             if (email) employeeDirectoryMap.set(email, name);
           });
 
-          // Subordinates: Line Manager di directory harus cocok dengan manajer
           const subordinates = dirData.filter(row => matchesLineManager(row, realWorkEmail, realName, managerKeys));
           
           const uniqueMap = new Map();
           subordinates.forEach(emp => {
             const email = (getPropCaseInsensitive(emp, [
-              'Employee work email',
-              'employee_work_email',
-              'work_email',
-              'work email',
-              'Work Email',
-              'email',
-              'Email',
-              'user_uid'
+              'Employee work email', 'employee_work_email', 'work_email', 'email', 'Email', 'user_uid'
             ]) || '').trim().toLowerCase();
 
             const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
@@ -395,27 +349,22 @@ export default function Approval() {
 
           subordinateEmails = Array.from(uniqueMap.keys());
           setTeamMembers(Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
-          console.log("[Approval Debug] Subordinate emails found:", subordinateEmails);
         }
       } catch (err) {
         console.warn("[Approval] Could not query employee_directory:", err);
       }
 
       const allManagerKeys = Array.from(new Set([
-        userWorkEmail,
         realWorkEmail,
-        userName.toLowerCase(),
         realName.toLowerCase(),
-        userWorkEmail.includes('@') ? userWorkEmail.split('@')[0] : '',
         realWorkEmail.includes('@') ? realWorkEmail.split('@')[0] : ''
       ])).filter(Boolean);
 
-      // Helper pencocokan data karyawan bawahan (murni mengacu pada kolom Employee/Email)
       const checkIsSubordinate = (row) => {
         if (!row) return false;
         const empEmail = (getPropCaseInsensitive(row, [
-          'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
-          'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
+          'Employee Email', 'employee_email', 'Employee', 'employee', 'email', 'Email', 'user_uid',
+          'work_email', 'work email', 'Employee work email', 'user_email', 'CreatedBy'
         ]) || '').trim().toLowerCase();
 
         const empName = (getPropCaseInsensitive(row, [
@@ -423,8 +372,7 @@ export default function Approval() {
         ]) || '').trim().toLowerCase();
 
         const empId = (getPropCaseInsensitive(row, [
-          'Employee ID', 'employee_id', 'employeeid', 'id', 'Barcode', 'barcode',
-          'nik', 'nip', 'user_id', 'uid'
+          'Employee ID', 'employee_id', 'employeeid', 'id', 'Barcode', 'barcode', 'nik', 'nip', 'user_id', 'uid'
         ]) || '').trim().toLowerCase();
 
         if (empEmail && (subordinateEmails.includes(empEmail) || subordinateIdentifiers.has(empEmail))) return true;
@@ -437,7 +385,7 @@ export default function Approval() {
         return false;
       };
 
-      // 2. Fetch Leave Requests: STRICT MATCH (Hanya jika Line Manager cocok; jika kosong/'-' otomatis ditolak)
+      // 2. Fetch Leave Requests
       let myLeaves = [];
       try {
         const { data: lvData, error: lvError } = await supabase
@@ -451,11 +399,8 @@ export default function Approval() {
           myLeaves = lvData
             .filter(row => {
               const status = getRowStatus(row);
-              // Loloskan jika status Pending, Approved, atau Cancelled/Rejected
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
-              // STRICT: Pengajuan cuti WAJIB memiliki Line Manager yang cocok. Tidak ada fallback!
               const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
-
               return isRelevant && hasDirectMgr;
             })
             .map(row => ({
@@ -468,7 +413,7 @@ export default function Approval() {
         console.warn("[Approval] Failed fetching leave_requests:", e);
       }
 
-      // 3. Fetch Attendance Requests langsung dari tabel 'attendance'
+      // 3. Fetch Attendance Requests
       let myAttendance = [];
       try {
         const { data: attData, error: attErr } = await supabase
@@ -479,25 +424,18 @@ export default function Approval() {
         if (attErr) {
           console.error("[Approval] Error query table attendance:", attErr.message);
         } else if (attData) {
-          console.log("[Approval Debug] Total raw attendance rows in Supabase:", attData.length);
           myAttendance = attData
             .filter(row => {
               const status = getRowStatus(row);
-              // Hanya tampilkan status Pending / menunggu persetujuan (Approved tidak ditampilkan)
               const isPending = isPendingApprovalStatus(status) || !status;
               if (!isPending) return false;
 
-              // 1. Cek kolom Line Manager di baris presensi jika ada
               const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
-              // 2. Cek apakah pembuatnya bawahan (via Employee, email, dsb)
               const isSub = checkIsSubordinate(row);
-
               return hasDirectMgr || isSub;
             })
             .map(row => {
-              const creatorEmail = (getPropCaseInsensitive(row, [
-                'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'user_uid'
-              ]) || '').trim().toLowerCase();
+              const creatorEmail = (getPropCaseInsensitive(row, ['Employee Email', 'employee_email', 'Employee', 'employee', 'email', 'user_uid']) || '').trim().toLowerCase();
               const autoName = employeeDirectoryMap.get(creatorEmail) || '';
 
               return {
@@ -508,8 +446,6 @@ export default function Approval() {
                 _sourceTable: 'attendance'
               };
             });
-
-          console.log("[Approval Debug] Data presensi bawahan siap tampil:", myAttendance.length);
         }
       } catch (e) {
         console.error("[Approval] Exception saat query attendance:", e);
@@ -540,7 +476,7 @@ export default function Approval() {
       console.error('[Approval] Error fetching approval records:', err);
     }
     setLoading(false);
-  }, [userWorkEmail, userName]);
+  }, [sessionEmail, sessionName]);
 
   useEffect(() => {
     refreshAllData();
@@ -564,13 +500,7 @@ export default function Approval() {
     }
     return teamScheduleRecords.filter(item => {
       const email = (getPropCaseInsensitive(item, [
-        'Employee',
-        'employee',
-        'email',
-        'user_uid',
-        'employee_email',
-        'work_email',
-        'Employee work email'
+        'Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email'
       ]) || '').toLowerCase();
       return email === selectedEmployee.toLowerCase();
     });
@@ -627,11 +557,11 @@ export default function Approval() {
       <div style="font-family: Arial, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
         <h2 style="color: ${statusColor}; margin-top: 0; font-size: 18px;">Request ${newStatus}</h2>
         <p style="font-size: 14px;">Hello <strong>${empName}</strong>,</p>
-        <p style="font-size: 14px;">Your <strong>${reqType} (${item._category})</strong> request status has been updated to <strong>${newStatus}</strong> by your Line Manager (<strong>${userName}</strong>).</p>
+        <p style="font-size: 14px;">Your <strong>${reqType} (${item._category})</strong> request status has been updated to <strong>${newStatus}</strong> by your Line Manager (<strong>${actualUserName || sessionName}</strong>).</p>
         ${reason ? `<p style="font-size: 14px; background: #fef2f2; border-left: 4px solid #ef4444; padding: 10px; margin: 15px 0;"><strong>Notes:</strong> ${reason}</p>` : ''}
         <div style="margin-top: 20px; padding: 12px; background: #f8fafc; border-radius: 8px; font-size: 13px;">
           <p style="margin: 4px 0;"><strong>Status:</strong> <span style="color: ${statusColor}; font-weight: bold;">${newStatus}</span></p>
-          <p style="margin: 4px 0;"><strong>Line Manager:</strong> ${userWorkEmail}</p>
+          <p style="margin: 4px 0;"><strong>Line Manager:</strong> ${actualUserWorkEmail || sessionEmail}</p>
         </div>
       </div>
     `;
@@ -646,7 +576,7 @@ export default function Approval() {
           subject: `[${newStatus}] ${item._category} Request - ${empName}`,
           body: emailHtml,
           htmlBody: emailHtml,
-          fromEmail: userWorkEmail
+          fromEmail: actualUserWorkEmail || sessionEmail
         })
       });
     } catch (e) {
@@ -661,28 +591,14 @@ export default function Approval() {
       const table = item._sourceTable || (item._category === 'Attendance' ? 'attendance' : 'leave_requests');
       const cols = Object.keys(item);
 
-      const statusCol = resolveTableColumn(cols, [
-        'Approval Status',
-        'approval_status',
-        'Status Approval',
-        'status_approval',
-        'Approval',
-        'approval',
-        'Request Status',
-        'request_status',
-        'Status',
-        'status'
-      ]) || 'Status';
-
+      const statusCol = resolveTableColumn(cols, ['Approval Status', 'approval_status', 'Status Approval', 'status_approval', 'Approval', 'approval', 'Request Status', 'request_status', 'Status', 'status']) || 'Status';
       const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'attendance_id', 'Attendance ID', 'no', '_id']);
 
       const nowIso = new Date().toISOString();
-      const payload = {
-        [statusCol]: newStatus
-      };
+      const payload = { [statusCol]: newStatus };
 
       const approverCol = resolveTableColumn(cols, ['approved_by', 'Approved By', 'action_by', 'Action By', 'lasteditby', 'last_edit_by']);
-      if (approverCol) payload[approverCol] = userWorkEmail;
+      if (approverCol) payload[approverCol] = actualUserWorkEmail || sessionEmail;
 
       const dateCol = resolveTableColumn(cols, ['approved_date', 'Approved Date', 'approved_at', 'lasteditdate', 'last_editdate', 'last_edit_date']);
       if (dateCol) payload[dateCol] = nowIso;
@@ -799,14 +715,12 @@ export default function Approval() {
               }
             }
 
-            // Update schedule
             await supabase.from('schedule').update({
               [schedTypeCol]: leaveType
             })
             .ilike(schedEmpCol, `%${empEmail}%`)
             .eq(schedDateCol, fromDate);
 
-            // Recalculate Balance
             let recheckQuery = supabase.from('holiday_balance').select('*').limit(5000);
             if (orConditions) {
                recheckQuery = recheckQuery.or(orConditions);
@@ -884,7 +798,6 @@ export default function Approval() {
     setIsProcessing(false);
   };
 
-  // Action: Cancel Approved Request and Revert Balances to Unused
   const handleCancelApproved = async (item) => {
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Employee');
     const reqCategory = item._category || 'Leave';
@@ -898,29 +811,16 @@ export default function Approval() {
     try {
       const table = item._sourceTable || (reqCategory === 'Attendance' ? 'attendance' : 'leave_requests');
       const cols = Object.keys(item);
-
-      const statusCol = resolveTableColumn(cols, [
-        'Approval Status',
-        'approval_status',
-        'Status Approval',
-        'status_approval',
-        'Approval',
-        'approval',
-        'Request Status',
-        'request_status',
-        'Status',
-        'status'
-      ]) || 'Status';
-
+      const statusCol = resolveTableColumn(cols, ['Approval Status', 'approval_status', 'Status Approval', 'status_approval', 'Approval', 'approval', 'Request Status', 'request_status', 'Status', 'status']) || 'Status';
       const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'attendance_id', 'Attendance ID', 'no', '_id']);
-
       const nowIso = new Date().toISOString();
+      
       const payload = {
         [statusCol]: 'Cancelled'
       };
 
       const approverCol = resolveTableColumn(cols, ['approved_by', 'Approved By', 'action_by', 'Action By', 'lasteditby', 'last_edit_by']);
-      if (approverCol) payload[approverCol] = userWorkEmail;
+      if (approverCol) payload[approverCol] = actualUserWorkEmail || sessionEmail;
 
       const dateCol = resolveTableColumn(cols, ['approved_date', 'Approved Date', 'approved_at', 'lasteditdate', 'last_editdate', 'last_edit_date']);
       if (dateCol) payload[dateCol] = nowIso;
@@ -988,7 +888,7 @@ export default function Approval() {
             const isTypeMatch = leaveType.toLowerCase().includes('extra')
               ? (t.includes('extra off') || t.includes('extra'))
               : (t.includes('day off') || t.includes('dayoff'));
-            if (!isTypeMatch) return false;
+              if (!isTypeMatch) return false;
 
             const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
             return validKeys.some(k => empVal === k || empVal.includes(k) || k.includes(empVal));
@@ -1120,7 +1020,6 @@ export default function Approval() {
     handleUpdateStatus(itemToReject, 'Rejected', rejectReason);
   };
 
-  // Counts for Badges
   const pendingLeavesCount = useMemo(() => {
     return leaveRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   }, [leaveRequests]);
@@ -1137,25 +1036,10 @@ export default function Approval() {
     return attendanceRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   }, [attendanceRequests]);
 
-  const approvedAttCount = useMemo(() => {
-    return attendanceRequests.filter(r => isApprovedStatus(getRowStatus(r))).length;
-  }, [attendanceRequests]);
-
-  // Handler pergantian tab kategori agar tidak stuck di filter kosong
   const handleSelectTab = (tab) => {
     setActiveTab(tab);
-    if (tab === 'attendance') {
-      if (statusTab === 'pending' && pendingAttCount === 0 && approvedAttCount > 0) {
-        setStatusTab('all');
-      }
-    } else if (tab === 'leave') {
-      if (statusTab === 'pending' && pendingLeavesCount === 0 && approvedLeavesCount > 0) {
-        setStatusTab('all');
-      }
-    }
   };
 
-  // Filtered List based on status tab, category tab, and selected employee
   const combinedList = useMemo(() => {
     let list = activeTab === 'leave' ? [...leaveRequests] : [...attendanceRequests];
 
@@ -1173,15 +1057,9 @@ export default function Approval() {
       const target = selectedEmployee.toLowerCase();
       list = list.filter(item => {
         const empEmail = (getPropCaseInsensitive(item, [
-          'Employee',
-          'employee',
-          'email',
-          'user_uid',
-          'employee_email',
-          'work_email',
-          'Employee work email'
+          'Employee', 'employee', 'email', 'user_uid', 'employee_email',
+          'work_email', 'Employee work email'
         ]) || '').toLowerCase();
-
         return empEmail === target;
       });
     }
@@ -1195,11 +1073,7 @@ export default function Approval() {
 
   return (
     <div className="w-full text-gray-800 font-sans">
-      
-      {/* 1. Unified Main Card: Controls, Filters, and Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-6 w-full">
-        
-        {/* Top Header Row & Filters */}
         <div className="p-4 sm:p-6 pb-4 border-b border-gray-100">
           <div className="flex flex-row justify-between items-start sm:items-center gap-2 sm:gap-3">
             <div className="flex items-center gap-2 sm:gap-3 flex-1 pr-2 sm:pr-3">
@@ -1210,13 +1084,11 @@ export default function Approval() {
               </div>
               <h2 className="text-base sm:text-xl font-bold text-gray-900 break-words">Approval Requests</h2>
             </div>
-
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
               <div className="hidden md:flex bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs">
                 <span className="text-gray-400 mr-1.5 font-medium">Line Manager:</span>
-                <span className="font-semibold text-gray-700">{actualUserWorkEmail || userWorkEmail || 'Not Logged In'}</span>
+                <span className="font-semibold text-gray-700">{actualUserWorkEmail || sessionEmail || 'Not Logged In'}</span>
               </div>
-
               <button
                 onClick={refreshAllData}
                 disabled={loading}
@@ -1231,13 +1103,8 @@ export default function Approval() {
             </div>
           </div>
 
-          {/* Filters: Category & Employee Dropdown */}
           <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-4 pt-3 border-t border-gray-100">
-            
-            {/* Category Tabs + Status Dropdown */}
             <div className="flex flex-row justify-between items-center gap-2 w-full sm:w-auto">
-              
-              {/* Category Filter Tabs */}
               <div className="flex p-1 bg-gray-100 rounded-xl space-x-1 shrink-0">
                 <button
                   onClick={() => handleSelectTab('leave')}
@@ -1252,8 +1119,6 @@ export default function Approval() {
                   Attendance ({pendingAttCount})
                 </button>
               </div>
-
-              {/* Status Dropdown Filter: Hanya tampil saat tab Leave */}
               {activeTab === 'leave' && (
                 <div className="relative flex-1 sm:flex-none sm:min-w-[170px]">
                   <select
@@ -1267,24 +1132,15 @@ export default function Approval() {
                       backgroundSize: '1rem'
                     }}
                   >
-                    <option value="pending">
-                      Pending ({pendingLeavesCount})
-                    </option>
-                    <option value="approved">
-                      Approved ({approvedLeavesCount})
-                    </option>
-                    <option value="rejected">
-                      Cancel / Reject ({rejectedLeavesCount})
-                    </option>
-                    <option value="all">
-                      All Status ({leaveRequests.length})
-                    </option>
+                    <option value="pending">Pending ({pendingLeavesCount})</option>
+                    <option value="approved">Approved ({approvedLeavesCount})</option>
+                    <option value="rejected">Cancel / Reject ({rejectedLeavesCount})</option>
+                    <option value="all">All Status ({leaveRequests.length})</option>
                   </select>
                 </div>
               )}
             </div>
 
-            {/* Dropdown filter Employee */}
             <div className="relative w-full sm:w-auto sm:min-w-[240px]">
               <select
                 value={selectedEmployee}
@@ -1308,7 +1164,6 @@ export default function Approval() {
           </div>
         </div>
 
-        {/* Main List Table */}
         <div className="overflow-x-auto w-full">
           <table className="w-full text-sm text-left text-gray-600">
             <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
@@ -1343,7 +1198,7 @@ export default function Approval() {
                       </svg>
                       <p className="font-semibold text-gray-600 text-sm">No requests found.</p>
                       <p className="text-xs text-gray-400 mt-1">
-                        There are no {statusTab !== 'all' ? statusTab : ''} records matching your current filter.
+                        There are no records matching your current filter.
                       </p>
                     </div>
                   </td>
@@ -1398,7 +1253,7 @@ export default function Approval() {
                           let badgeClass = 'bg-yellow-100 text-yellow-800 border-yellow-200';
                           if (isApprovedStatus(status)) {
                             badgeClass = 'bg-green-100 text-green-700 border-green-200';
-                          } else if (status.toLowerCase().includes('reject') || status.toLowerCase().includes('cancel')) {
+                          } else if (isRejectedStatus(status)) {
                             badgeClass = 'bg-red-100 text-red-700 border-red-200';
                           }
                           return (
@@ -1412,6 +1267,9 @@ export default function Approval() {
                       <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         {(() => {
                           const s = getRowStatus(item);
+                          if (isRejectedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'cancelled') {
+                            return <span className="text-[11px] text-gray-400 italic font-semibold px-2 py-1 bg-gray-50 rounded-md">No Action</span>;
+                          }
                           if (isApprovedStatus(s)) {
                             return (
                               <button
@@ -1486,7 +1344,6 @@ export default function Approval() {
         </div>
       </div>
 
-      {/* 2. Team Working Calendar Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 w-full">
         <div className="flex flex-row justify-between items-start sm:items-center pb-4 mb-4 border-b border-gray-100 gap-2 sm:gap-3">
           <div className="flex-1 pr-2 sm:pr-3">
@@ -1517,7 +1374,6 @@ export default function Approval() {
           </div>
         </div>
 
-        {/* Days of Week Header */}
         <div className="grid grid-cols-7 text-center text-xs font-bold pt-1 mb-1">
           <span className="text-red-500">Sun</span>
           <span className="text-gray-700">Mon</span>
@@ -1528,7 +1384,6 @@ export default function Approval() {
           <span className="text-blue-600">Sat</span>
         </div>
 
-        {/* Calendar Grid */}
         <div className="grid grid-cols-7 gap-1 sm:gap-1.5 text-center text-xs">
           {Array.from({ length: firstDayIndex }).map((_, idx) => (
             <div key={`empty-${idx}`} className="h-20 sm:h-24 bg-gray-50 border border-dashed border-gray-200 rounded-xl opacity-40"></div>
@@ -1563,9 +1418,6 @@ export default function Approval() {
         </div>
       </div>
 
-      {/* --- MODALS --- */}
-      
-      {/* Team Schedule Date Detail Modal */}
       {teamScheduleModalData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setTeamScheduleModalData(null)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-5 border border-gray-100" onClick={e => e.stopPropagation()}>
@@ -1608,7 +1460,6 @@ export default function Approval() {
         </div>
       )}
 
-      {/* Detail Request Modal */}
       {isDetailModalOpen && selectedRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-4 sm:p-6 border border-gray-100 max-h-[90vh] overflow-y-auto">
@@ -1761,6 +1612,9 @@ export default function Approval() {
               </button>
               {(() => {
                 const s = getRowStatus(selectedRequest);
+                if (isRejectedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'cancelled') {
+                  return null;
+                }
                 if (isApprovedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel') {
                   return (
                     <button
@@ -1804,7 +1658,6 @@ export default function Approval() {
         </div>
       )}
 
-      {/* Reject Modal Dialog */}
       {isRejectModalOpen && itemToReject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-5 border border-gray-100">
@@ -1848,7 +1701,6 @@ export default function Approval() {
         </div>
       )}
 
-      {/* Proof / Image Preview Modal */}
       {isPhotoModalOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
