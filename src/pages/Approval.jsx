@@ -134,36 +134,12 @@ const getRowStatus = (row) => {
   return getPropCaseInsensitive(row, ['Status', 'status'], '');
 };
 
-// Helper pencocokan Line Manager strictly dengan userWorkEmail
-const matchesLineManager = (record, targetEmail) => {
-  if (!record || !targetEmail) return false;
-  const mgrVal = getPropCaseInsensitive(record, [
-    'Line Manager work email',
-    'line_manager_work_email',
-    'Line Manager Email',
-    'line_manager_email',
-    'Line Manager',
-    'line_manager',
-    'manager_email',
-    'Manager Email',
-    'Approver Email',
-    'approver_email',
-    'Approver',
-    'approver',
-    'Atasan Email',
-    'atasan_email'
-  ], '').trim().toLowerCase();
-
-  if (!mgrVal) return false;
-  const tEmail = targetEmail.trim().toLowerCase();
-
-  return mgrVal === tEmail || mgrVal.includes(tEmail);
-};
-
-// Verifikasi apakah pengajuan milik Line Manager yang sedang login (STRICT MATCH + SUBORDINATE FALLBACK)
-const isRecordForLineManager = (record, targetEmail, subordinateEmails = []) => {
-  if (!record || !targetEmail) return false;
-  const tEmail = targetEmail.trim().toLowerCase();
+// Helper pencocokan Line Manager strictly dengan userWorkEmail atau nama
+const matchesLineManager = (record, targetEmail, targetName = '') => {
+  if (!record || (!targetEmail && !targetName)) return false;
+  const tEmail = (targetEmail || '').trim().toLowerCase();
+  const tName = (targetName || '').trim().toLowerCase();
+  const tUser = tEmail.includes('@') ? tEmail.split('@')[0] : '';
 
   const mgrVal = getPropCaseInsensitive(record, [
     'Line Manager work email',
@@ -182,29 +158,18 @@ const isRecordForLineManager = (record, targetEmail, subordinateEmails = []) => 
     'atasan_email'
   ], '').trim().toLowerCase();
 
-  // 1. Jika tabel memiliki kolom Line Manager dan isinya ada, cocokkan STRICT
-  if (mgrVal && mgrVal !== '-' && mgrVal !== 'null' && mgrVal !== 'undefined') {
-    return mgrVal === tEmail || mgrVal.includes(tEmail);
+  // STRICT: Jika kolom tidak ada, kosong, atau '-', LANGSUNG TOLAK. (No fallback)
+  if (!mgrVal || mgrVal === '-' || mgrVal === 'null' || mgrVal === 'undefined') {
+    return false;
   }
 
-  // 2. Jika tabel TIDAK memiliki kolom Line Manager (seperti tabel attendance pada umumnya),
-  // kita cek apakah email karyawan di record ini ada di dalam daftar subordinateEmails.
-  // subordinateEmails sudah di-filter strictly (Line Manager = userWorkEmail) dari employee_directory.
-  const empEmail = (getPropCaseInsensitive(record, [
-    'Employee work email',
-    'employee_work_email',
-    'work_email',
-    'work email',
-    'Work Email',
-    'Employee',
-    'employee',
-    'email',
-    'Email',
-    'user_uid'
-  ]) || '').trim().toLowerCase();
+  if (tEmail && (mgrVal === tEmail || mgrVal.includes(tEmail) || tEmail.includes(mgrVal))) return true;
+  if (tUser && tUser.length > 2 && (mgrVal === tUser || mgrVal.includes(tUser) || tUser.includes(mgrVal))) return true;
+  if (tName && tName.length > 2 && (mgrVal === tName || mgrVal.includes(tName) || tName.includes(mgrVal))) return true;
 
-  return Boolean(empEmail && subordinateEmails.includes(empEmail));
+  return false;
 };
+
 
 // Calendar Date Matcher
 const checkDateMatch = (rawDbDate, targetYear, targetMonth, targetDay) => {
@@ -367,7 +332,7 @@ export default function Approval() {
           console.warn("[Approval] Error fetching employee_directory:", dirErr.message);
         } else if (dirData) {
           // Gunakan realWorkEmail yang sudah divalidasi dari database
-          const subordinates = dirData.filter(row => matchesLineManager(row, realWorkEmail));
+          const subordinates = dirData.filter(row => matchesLineManager(row, realWorkEmail, realName));
           
           const uniqueMap = new Map();
           subordinates.forEach(emp => {
@@ -417,7 +382,7 @@ export default function Approval() {
             .filter(row => {
               const status = getRowStatus(row);
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
-              const isMyLineManager = isRecordForLineManager(row, realWorkEmail, subordinateEmails);
+              const isMyLineManager = matchesLineManager(row, realWorkEmail, realName);
 
               return isRelevant && isMyLineManager;
             })
@@ -447,7 +412,7 @@ export default function Approval() {
               const status = getRowStatus(row);
               // Untuk attendance tidak perlu yang approved, hanya yang pending atau blank yg butuh approve
               const isRelevant = isPendingApprovalStatus(status) || !status;
-              const isMyLineManager = isRecordForLineManager(row, realWorkEmail, subordinateEmails);
+              const isMyLineManager = matchesLineManager(row, realWorkEmail, realName);
 
               return isRelevant && isMyLineManager;
             })
