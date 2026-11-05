@@ -368,16 +368,6 @@ export default function Approval() {
         } else if (dirData) {
           // Gunakan realWorkEmail yang sudah divalidasi dari database
           const subordinates = dirData.filter(row => matchesLineManager(row, realWorkEmail));
-      try {
-        const { data: dirData, error: dirErr } = await supabase
-          .from('employee_directory')
-          .select('*')
-          .limit(2000);
-
-        if (dirErr) {
-          console.warn("[Approval] Error fetching employee_directory:", dirErr.message);
-        } else if (dirData) {
-          const subordinates = dirData.filter(row => matchesLineManager(row, realWorkEmail));
           
           const uniqueMap = new Map();
           subordinates.forEach(emp => {
@@ -427,7 +417,7 @@ export default function Approval() {
             .filter(row => {
               const status = getRowStatus(row);
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
-              const isMyLineManager = isRecordForLineManager(row, actualUserWorkEmail, subordinateEmails);
+              const isMyLineManager = isRecordForLineManager(row, realWorkEmail, subordinateEmails);
 
               return isRelevant && isMyLineManager;
             })
@@ -441,7 +431,7 @@ export default function Approval() {
         console.warn("[Approval] Failed fetching leave_requests:", e);
       }
 
-      // 3. Fetch Attendance Requests langsung dari tabel 'attendance'
+      // 3. Fetch Attendance Requests
       let myAttendance = [];
       try {
         const { data: attData, error: attErr } = await supabase
@@ -457,7 +447,7 @@ export default function Approval() {
               const status = getRowStatus(row);
               // Untuk attendance tidak perlu yang approved, hanya yang pending atau blank yg butuh approve
               const isRelevant = isPendingApprovalStatus(status) || !status;
-              const isMyLineManager = isRecordForLineManager(row, actualUserWorkEmail, subordinateEmails);
+              const isMyLineManager = isRecordForLineManager(row, realWorkEmail, subordinateEmails);
 
               return isRelevant && isMyLineManager;
             })
@@ -466,8 +456,6 @@ export default function Approval() {
               _category: 'Attendance',
               _sourceTable: 'attendance'
             }));
-
-          console.log("[Approval Debug] Data presensi bawahan siap tampil:", myAttendance.length);
         }
       } catch (e) {
         console.error("[Approval] Exception saat query attendance:", e);
@@ -498,7 +486,7 @@ export default function Approval() {
       console.error('[Approval] Error fetching approval records:', err);
     }
     setLoading(false);
-  }, [sessionIdentifier]);
+  }, [sessionIdentifier, sessionName]);
 
   useEffect(() => {
     refreshAllData();
