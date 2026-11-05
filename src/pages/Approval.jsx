@@ -1820,9 +1820,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
                   </div>
                 ) : (
                   <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                    <span className="text-[10px] text-gray-400 font-semibold block">Time / Shift Info</span>
+                    <span className="text-[10px] text-gray-400 font-semibold block">Last Edit Date</span>
                     <span className="text-xs sm:text-sm font-semibold text-gray-800">
-                      {getPropCaseInsensitive(selectedRequest, ['Time', 'time', 'Time In', 'time_in', 'Clock In', 'Clock Out', 'Shift', 'shift'], '-')}
+                      {formatDateTimeDisplay(getPropCaseInsensitive(selectedRequest, ['lasteditdate', 'last_edit_date', 'last_editdate', 'updated_at', 'Time', 'time', 'Time In', 'time_in', 'Clock In', 'Clock Out', 'Shift', 'shift']), lang)}
                     </span>
                   </div>
                 )}
