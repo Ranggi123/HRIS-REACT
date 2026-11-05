@@ -515,8 +515,8 @@ export default function Approval() {
           myAttendance = attData
             .filter(row => {
               const status = getRowStatus(row);
-              // Hanya tampilkan status Pending / menunggu persetujuan (Approved tidak ditampilkan)
-              const isPending = isPendingApprovalStatus(status) || !status;
+              // Hanya tampilkan status Pending / menunggu persetujuan (presensi reguler tanpa status diabaikan)
+              const isPending = isPendingApprovalStatus(status);
               if (!isPending) return false;
 
               // 1. Cek kolom Line Manager di baris presensi jika ada
@@ -1398,7 +1398,7 @@ export default function Approval() {
                     ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], 'Leave')
                     : getPropCaseInsensitive(item, ['Action', 'action', 'Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Attendance');
 
-                  const status = getRowStatus(item) || 'Approved';
+                  const status = getRowStatus(item) || (item._category === 'Leave' ? 'Approved' : 'Pending');
                   let dateInfo = '-';
                   if (isLeave) {
                     const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']), lang);
