@@ -1473,11 +1473,18 @@ export default function Approval({ currentUser: propCurrentUser }) {
                     ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'], 
                     teamMembers.find(m => m.email.toLowerCase() === employeeEmail.toLowerCase())?.name || employeeEmail
                   );
-                  const reqType = getPropCaseInsensitive(
+                  let reqType = getPropCaseInsensitive(
                     item, 
                     ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype', 'Action', 'action', 'Status Type', 'Attendance Type', 'attendance_type', 'Request Type', 'request_type', 'keterangan'], 
                     item._category === 'Attendance' ? 'Attendance' : 'Leave'
                   );
+                  
+                  if (item._category === 'Attendance') {
+                    const checkInOut = getPropCaseInsensitive(item, ['Are you checking out or Checking in?', 'Are you checking out or Checking in', 'Check In/Out', 'Check Type']);
+                    if (checkInOut && checkInOut !== '-') {
+                      reqType = checkInOut;
+                    }
+                  }
                   const status = getRowStatus(item) || 'Approved';
                   
                   const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date', 'created_at', 'CreatedDate']), lang);
@@ -1764,7 +1771,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block">Request / Action</span>
                   <span className="text-xs sm:text-sm font-bold text-blue-700">
-                    {getPropCaseInsensitive(selectedRequest, ['Leave Type', 'leave_type', 'Type', 'type', 'Action', 'action', 'Status Type', 'Attendance Type'], '-')}
+                    {selectedRequest._category === 'Attendance' 
+                      ? (getPropCaseInsensitive(selectedRequest, ['Are you checking out or Checking in?', 'Are you checking out or Checking in', 'Check In/Out', 'Check Type']) || 'Attendance') 
+                      : getPropCaseInsensitive(selectedRequest, ['Leave Type', 'leave_type', 'Type', 'type', 'Action', 'action', 'Status Type', 'Attendance Type'], '-')}
                   </span>
                 </div>
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
