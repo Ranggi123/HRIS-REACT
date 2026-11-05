@@ -253,7 +253,6 @@ export default function Approval() {
   const [loading, setLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [leaveRequests, setLeaveRequests] = useState([]);
-  const [attendanceRequests, setAttendanceRequests] = useState([]);
   
   // Team Calendar & Directory States
   const [teamMembers, setTeamMembers] = useState([]);
@@ -263,7 +262,6 @@ export default function Approval() {
 
   // Filter States: 'all' | 'pending' | 'approved' | 'rejected'
   const [statusTab, setStatusTab] = useState('pending'); // Default: Pending
-  const [activeTab, setActiveTab] = useState('leave'); // 'leave' | 'attendance'
   const [selectedEmployee, setSelectedEmployee] = useState('all');
 
   // Modals
@@ -367,7 +365,7 @@ export default function Approval() {
             realName.toLowerCase()
           ])).filter(k => k && k.length >= 2);
 
-          // Simpan mapping nama karyawan untuk lookup nama di presensi
+          // Simpan mapping nama karyawan untuk lookup nama
           dirData.forEach(emp => {
             const email = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Email', 'email']) || '').trim().toLowerCase();
             const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
@@ -425,37 +423,6 @@ export default function Approval() {
         realName.toLowerCase()
       ])).filter(k => k && k.length >= 2);
 
-      // Helper pencocokan data karyawan bawahan (murni mengacu pada kolom Employee/Email)
-      const checkIsSubordinate = (row) => {
-        if (!row) return false;
-        const empEmail = (getPropCaseInsensitive(row, [
-          'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
-          'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
-        ]) || '').trim().toLowerCase();
-
-        const empName = (getPropCaseInsensitive(row, [
-          'Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan', 'Employee', 'employee'
-        ]) || '').trim().toLowerCase();
-
-        const empId = (getPropCaseInsensitive(row, [
-          'Employee ID', 'employee_id', 'employeeid', 'id', 'Barcode', 'barcode',
-          'nik', 'nip', 'user_id', 'uid'
-        ]) || '').trim().toLowerCase();
-
-        if (empEmail && (subordinateEmails.includes(empEmail) || subordinateIdentifiers.has(empEmail))) return true;
-        if (empName && subordinateIdentifiers.has(empName)) return true;
-        if (empId && subordinateIdentifiers.has(empId)) return true;
-        
-        // Cek parsial nama jika Employee berisi nama yang tidak lengkap
-        if (empName && Array.from(subordinateIdentifiers).some(sub => sub.length > 3 && (empName.includes(sub) || sub.includes(empName)))) return true;
-        if (empEmail && Array.from(subordinateIdentifiers).some(sub => sub.length > 3 && (empEmail.includes(sub) || sub.includes(empEmail)))) return true;
-
-        if (empEmail && subordinateEmails.some(sub => empEmail.includes(sub) || sub.includes(empEmail))) return true;
-        if (empName && Array.from(subordinateIdentifiers).some(id => id && (empName.includes(id) || id.includes(empName)))) return true;
-
-        return false;
-      };
-
       // 2. Fetch Leave Requests: STRICT MATCH (Hanya jika Line Manager cocok; jika kosong/'-' otomatis ditolak)
       let myLeaves = [];
       try {
@@ -467,9 +434,6 @@ export default function Approval() {
         if (lvError) {
           console.warn("[Approval] Error fetching leave_requests:", lvError.message);
         } else if (lvData) {
-          const cleanUserWorkEmail = (userWorkEmail || '').trim().toLowerCase();
-          const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
-
           myLeaves = lvData
             .filter(row => {
               const status = getRowStatus(row);
@@ -496,73 +460,7 @@ export default function Approval() {
         console.warn("[Approval] Failed fetching leave_requests:", e);
       }
 
-      // NEW: Fetch Attendance Requests STRICTLY by Status="Pending Approval" and Line Manager=User Work Email
-      let myAttendance = [];
-      try {
-        const { data: attData, error: attErr } = await supabase
-          .from('attendance')
-          .select('*')
-          .limit(10000);
-
-        if (attErr) {
-          console.error("[Approval] Error query table attendance:", attErr.message);
-        } else if (attData) {
-          console.log("[Approval Debug] Total raw attendance rows in Supabase:", attData.length);
-          const cleanUserWorkEmail = (userWorkEmail || '').trim().toLowerCase();
-
-          myAttendance = attData
-            .filter(row => {
-              // 1. Check Status = Pending Approval
-              const status = getRowStatus(row);
-              const isPending = isPendingApprovalStatus(status);
-              
-              // Tampilkan yang relevant (pending, approved, rejected)
-              const isRelevant = isPending || isApprovedStatus(status) || isRejectedStatus(status);
-              if (!isRelevant) return false;
-
-              // 2. Check Line Manager = User Work Email precisely
-              const lineManager = getPropCaseInsensitive(row, [
-                'Line Manager work email', 'line_manager_work_email', 'Line Manager Email',
-                'line_manager_email', 'Line Manager', 'line_manager', 'manager_email',
-                'Approver Email', 'Atasan Email', 'approval_line_manager'
-              ], '').trim().toLowerCase();
-
-              if (!lineManager || lineManager === '-' || lineManager === 'null' || lineManager === 'undefined') {
-                return false;
-              }
-
-              // Jangan tampilkan pengajuan yang diajukan oleh user login sendiri
-              const empVal = (getPropCaseInsensitive(row, [
-                'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
-                'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
-              ]) || '').trim().toLowerCase();
-              
-              const isSelf = (empVal === cleanUserWorkEmail);
-
-              return (lineManager === cleanUserWorkEmail) && !isSelf;
-            })
-            .map(row => {
-              const creatorEmail = (getPropCaseInsensitive(row, [
-                'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'user_uid'
-              ]) || '').trim().toLowerCase();
-              const autoName = employeeDirectoryMap.get(creatorEmail) || '';
-
-              return {
-                ...row,
-                Name: row.Name || row.name || autoName || creatorEmail || 'Employee',
-                Employee: row.Employee || row.employee || creatorEmail,
-                _category: 'Attendance',
-                _sourceTable: 'attendance'
-              };
-            });
-
-          console.log("[Approval Debug] Data presensi bawahan siap tampil:", myAttendance.length);
-        }
-      } catch (e) {
-        console.error("[Approval] Exception saat query attendance:", e);
-      }
-
-      // 4. Fetch Team Schedule
+      // 3. Fetch Team Schedule
       let teamSched = [];
       try {
         const { data: schedData, error: schedErr } = await supabase
@@ -581,7 +479,6 @@ export default function Approval() {
       }
 
       setLeaveRequests(myLeaves);
-      setAttendanceRequests(myAttendance);
       setTeamScheduleRecords(teamSched);
     } catch (err) {
       console.error('[Approval] Error fetching approval records:', err);
@@ -661,9 +558,7 @@ export default function Approval() {
   const sendNotificationEmail = async (item, newStatus, reason = '') => {
     const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']);
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'employee_name'], 'Employee');
-    const reqType = item._category === 'Leave'
-      ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type'], 'Leave')
-      : (getPropCaseInsensitive(item, ['Are you checking out or Checking in?', 'are you checking out or checking in?', 'Are you checking out or checking in', 'Action', 'action', 'Type', 'type', 'Attendance Type'], 'Attendance'));
+    const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type'], 'Leave');
 
     if (!empEmail || !empEmail.includes('@')) return;
 
@@ -705,7 +600,7 @@ export default function Approval() {
   const handleUpdateStatus = async (item, newStatus, reason = '') => {
     setIsProcessing(true);
     try {
-      const table = item._sourceTable || (item._category === 'Attendance' ? 'attendance' : 'leave_requests');
+      const table = item._sourceTable || 'leave_requests';
       const cols = Object.keys(item);
 
       const statusCol = resolveTableColumn(cols, [
@@ -721,7 +616,7 @@ export default function Approval() {
         'status'
       ]) || 'Status';
 
-      const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'attendance_id', 'Attendance ID', 'no', '_id']);
+      const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'no', '_id']);
 
       const nowIso = new Date().toISOString();
       const payload = {
@@ -753,7 +648,7 @@ export default function Approval() {
       if (error) throw error;
 
       // --- LEAVE APPROVAL POST-LOGIC ---
-      if (newStatus === 'Approved' && item._category === 'Leave') {
+      if (newStatus === 'Approved') {
         const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'user_uid', 'email']);
         const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name']);
         const leaveType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '');
@@ -943,7 +838,7 @@ export default function Approval() {
 
     setIsProcessing(true);
     try {
-      const table = item._sourceTable || (reqCategory === 'Attendance' ? 'attendance' : 'leave_requests');
+      const table = item._sourceTable || 'leave_requests';
       const cols = Object.keys(item);
 
       const statusCol = resolveTableColumn(cols, [
@@ -959,7 +854,7 @@ export default function Approval() {
         'status'
       ]) || 'Status';
 
-      const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'attendance_id', 'Attendance ID', 'no', '_id']);
+      const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'no', '_id']);
 
       const nowIso = new Date().toISOString();
       const payload = {
@@ -1180,40 +1075,16 @@ export default function Approval() {
     return leaveRequests.filter(r => isRejectedStatus(getRowStatus(r))).length;
   }, [leaveRequests]);
 
-  const pendingAttCount = useMemo(() => {
-    return attendanceRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
-  }, [attendanceRequests]);
-
-  const approvedAttCount = useMemo(() => {
-    return attendanceRequests.filter(r => isApprovedStatus(getRowStatus(r))).length;
-  }, [attendanceRequests]);
-
-  // Handler pergantian tab kategori agar tidak stuck di filter kosong
-  const handleSelectTab = (tab) => {
-    setActiveTab(tab);
-    if (tab === 'attendance') {
-      if (statusTab === 'pending' && pendingAttCount === 0 && approvedAttCount > 0) {
-        setStatusTab('all');
-      }
-    } else if (tab === 'leave') {
-      if (statusTab === 'pending' && pendingLeavesCount === 0 && approvedLeavesCount > 0) {
-        setStatusTab('all');
-      }
-    }
-  };
-
-  // Filtered List based on status tab, category tab, and selected employee
+  // Filtered List based on status tab and selected employee
   const combinedList = useMemo(() => {
-    let list = activeTab === 'leave' ? [...leaveRequests] : [...attendanceRequests];
+    let list = [...leaveRequests];
 
-    if (activeTab === 'leave') {
-      if (statusTab === 'pending') {
-        list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
-      } else if (statusTab === 'approved') {
-        list = list.filter(item => isApprovedStatus(getRowStatus(item)));
-      } else if (statusTab === 'rejected') {
-        list = list.filter(item => isRejectedStatus(getRowStatus(item)));
-      }
+    if (statusTab === 'pending') {
+      list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
+    } else if (statusTab === 'approved') {
+      list = list.filter(item => isApprovedStatus(getRowStatus(item)));
+    } else if (statusTab === 'rejected') {
+      list = list.filter(item => isRejectedStatus(getRowStatus(item)));
     }
 
     if (selectedEmployee && selectedEmployee !== 'all') {
@@ -1238,7 +1109,7 @@ export default function Approval() {
       const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'Time', 'time', 'created_at'])) || new Date(0);
       return dtB.getTime() - dtA.getTime();
     });
-  }, [statusTab, activeTab, leaveRequests, attendanceRequests, selectedEmployee]);
+  }, [statusTab, leaveRequests, selectedEmployee]);
 
   return (
     <div className="w-full text-gray-800 font-sans">
@@ -1278,57 +1149,27 @@ export default function Approval() {
             </div>
           </div>
 
-          {/* Filters: Category & Employee Dropdown */}
+          {/* Filters: Status Dropdown & Employee Dropdown */}
           <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-4 pt-3 border-t border-gray-100">
             
-            {/* Category Tabs + Status Dropdown */}
-            <div className="flex flex-row justify-between items-center gap-2 w-full sm:w-auto">
-              
-              {/* Category Filter Tabs */}
-              <div className="flex p-1 bg-gray-100 rounded-xl space-x-1 shrink-0">
-                <button
-                  onClick={() => handleSelectTab('leave')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'leave' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  Leave ({pendingLeavesCount})
-                </button>
-                <button
-                  onClick={() => handleSelectTab('attendance')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'attendance' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  Attendance ({pendingAttCount})
-                </button>
-              </div>
-
-              {/* Status Dropdown Filter: Hanya tampil saat tab Leave */}
-              {activeTab === 'leave' && (
-                <div className="relative flex-1 sm:flex-none sm:min-w-[170px]">
-                  <select
-                    value={statusTab}
-                    onChange={(e) => setStatusTab(e.target.value)}
-                    className="w-full pl-3 pr-8 py-2 text-xs font-bold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer transition h-full"
-                    style={{
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                      backgroundRepeat: 'no-repeat',
-                      backgroundPosition: 'right 0.75rem center',
-                      backgroundSize: '1rem'
-                    }}
-                  >
-                    <option value="pending">
-                      Pending ({pendingLeavesCount})
-                    </option>
-                    <option value="approved">
-                      Approved ({approvedLeavesCount})
-                    </option>
-                    <option value="rejected">
-                      Cancel / Reject ({rejectedLeavesCount})
-                    </option>
-                    <option value="all">
-                      All Status ({leaveRequests.length})
-                    </option>
-                  </select>
-                </div>
-              )}
+            {/* Status Dropdown Filter */}
+            <div className="relative w-full sm:w-auto sm:min-w-[170px]">
+              <select
+                value={statusTab}
+                onChange={(e) => setStatusTab(e.target.value)}
+                className="w-full pl-3 pr-8 py-2 text-xs font-bold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer transition h-full"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 0.75rem center',
+                  backgroundSize: '1rem'
+                }}
+              >
+                <option value="pending">Pending ({pendingLeavesCount})</option>
+                <option value="approved">Approved ({approvedLeavesCount})</option>
+                <option value="rejected">Cancel / Reject ({rejectedLeavesCount})</option>
+                <option value="all">All Status ({leaveRequests.length})</option>
+              </select>
             </div>
 
             {/* Dropdown filter Employee */}
@@ -1397,25 +1238,13 @@ export default function Approval() {
                 </tr>
               ) : (
                 combinedList.map((item, idx) => {
-                  const isLeave = item._category === 'Leave';
                   const employeeName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'], 'No Name');
                   const employeeEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email'], '-');
-                  
-                  const reqType = isLeave
-                    ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], 'Leave')
-                    : getPropCaseInsensitive(item, ['Are you checking out or Checking in?', 'are you checking out or checking in?', 'Are you checking out or checking in', 'Action', 'action', 'Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Attendance');
-
-                  const status = getRowStatus(item) || (item._category === 'Leave' ? 'Approved' : 'Pending');
-                  let dateInfo = '-';
-                  if (isLeave) {
-                    const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']), lang);
-                    const toDate = formatDateDisplay(getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']), lang);
-                    dateInfo = `${fromDate} - ${toDate}`;
-                  } else {
-                    const attDate = formatDateDisplay(getPropCaseInsensitive(item, ['Date', 'date', 'attendance_date', 'CreatedDate', 'created_date', 'Tanggal']), lang);
-                    const attTime = formatTimeDisplay(getPropCaseInsensitive(item, ['Time', 'time', 'Clock In', 'Clock Out', 'time_in', 'time_out']));
-                    dateInfo = attTime ? `${attDate} (${attTime})` : attDate;
-                  }
+                  const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], 'Leave');
+                  const status = getRowStatus(item) || 'Approved';
+                  const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']), lang);
+                  const toDate = formatDateDisplay(getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']), lang);
+                  const dateInfo = `${fromDate} - ${toDate}`;
 
                   return (
                     <tr
@@ -1424,8 +1253,8 @@ export default function Approval() {
                       className="hover:bg-blue-50/40 transition cursor-pointer text-xs sm:text-sm border-b border-gray-100"
                     >
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`px-2 py-1 rounded-md text-[11px] font-bold border ${isLeave ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}>
-                          {item._category}
+                        <span className="px-2 py-1 rounded-md text-[11px] font-bold border bg-blue-50 text-blue-700 border-blue-200">
+                          Leave
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -1671,8 +1500,8 @@ export default function Approval() {
             
             <div className="flex justify-between items-center pb-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${selectedRequest._category === 'Leave' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}>
-                  {selectedRequest._category}
+                <span className="px-2 py-0.5 rounded text-[11px] font-bold border bg-blue-50 text-blue-700 border-blue-200">
+                  Leave
                 </span>
                 <h3 className="text-base sm:text-lg font-bold text-gray-800">Request Detail</h3>
               </div>
@@ -1702,9 +1531,7 @@ export default function Approval() {
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block">Request / Action</span>
                   <span className="text-xs sm:text-sm font-bold text-blue-700">
-                    {selectedRequest._category === 'Leave'
-                      ? getPropCaseInsensitive(selectedRequest, ['Leave Type', 'leave_type', 'Type', 'type'], '-')
-                      : getPropCaseInsensitive(selectedRequest, ['Action', 'action', 'Type', 'type', 'Attendance Type'], 'Attendance')}
+                    {getPropCaseInsensitive(selectedRequest, ['Leave Type', 'leave_type', 'Type', 'type'], '-')}
                   </span>
                 </div>
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
@@ -1715,74 +1542,35 @@ export default function Approval() {
                 </div>
               </div>
 
-              {selectedRequest._category === 'Leave' ? (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                      <span className="text-[10px] text-gray-400 font-semibold block">From Date</span>
-                      <span className="text-xs sm:text-sm font-semibold text-gray-800">
-                        {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['From Date', 'from_date', 'Start Date', 'start_date']), lang)}
-                      </span>
-                    </div>
-                    <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                      <span className="text-[10px] text-gray-400 font-semibold block">To Date</span>
-                      <span className="text-xs sm:text-sm font-semibold text-gray-800">
-                        {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['To Date', 'to_date', 'End Date', 'end_date']), lang)}
-                      </span>
-                    </div>
-                  </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-white border border-gray-200 rounded-xl">
+                  <span className="text-[10px] text-gray-400 font-semibold block">From Date</span>
+                  <span className="text-xs sm:text-sm font-semibold text-gray-800">
+                    {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['From Date', 'from_date', 'Start Date', 'start_date']), lang)}
+                  </span>
+                </div>
+                <div className="p-3 bg-white border border-gray-200 rounded-xl">
+                  <span className="text-[10px] text-gray-400 font-semibold block">To Date</span>
+                  <span className="text-xs sm:text-sm font-semibold text-gray-800">
+                    {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['To Date', 'to_date', 'End Date', 'end_date']), lang)}
+                  </span>
+                </div>
+              </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                      <span className="text-[10px] text-gray-400 font-semibold block">Total Days Requested</span>
-                      <span className="text-xs sm:text-sm font-black text-gray-800">
-                        {getPropCaseInsensitive(selectedRequest, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration'], '1')} Day(s)
-                      </span>
-                    </div>
-                    <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                      <span className="text-[10px] text-gray-400 font-semibold block">Remaining / Final Balance</span>
-                      <span className="text-xs sm:text-sm font-black text-gray-800">
-                        {getPropCaseInsensitive(selectedRequest, ['Final balance', 'final_balance', 'Final Balance'], '-')}
-                      </span>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                    <span className="text-[10px] text-gray-400 font-semibold block">Attendance Date & Time</span>
-                    <span className="text-xs sm:text-sm font-semibold text-gray-800">
-                      {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['Date', 'date', 'attendance_date', 'CreatedDate']), lang)}{' '}
-                      ({formatTimeDisplay(getPropCaseInsensitive(selectedRequest, ['Time', 'time', 'CreatedDate'])) || '--:--'})
-                    </span>
-                  </div>
-
-                  {getPropCaseInsensitive(selectedRequest, ['Location', 'location']) && (
-                    <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                      <span className="text-[10px] text-gray-400 font-semibold block mb-2">GPS Location</span>
-                      <div className="w-full h-32 sm:h-40 rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
-                        <iframe 
-                          width="100%" 
-                          height="100%" 
-                          style={{ border: 0 }} 
-                          loading="lazy" 
-                          allowFullScreen 
-                          referrerPolicy="no-referrer-when-downgrade" 
-                          src={`https://maps.google.com/maps?q=${encodeURIComponent(getPropCaseInsensitive(selectedRequest, ['Location', 'location']))}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
-                        ></iframe>
-                      </div>
-                      <a 
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(getPropCaseInsensitive(selectedRequest, ['Location', 'location']))}`} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="text-[10px] text-blue-600 hover:underline mt-1.5 inline-block font-semibold"
-                      >
-                        Buka di aplikasi Google Maps &rarr;
-                      </a>
-                    </div>
-                  )}
-                </>
-              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-white border border-gray-200 rounded-xl">
+                  <span className="text-[10px] text-gray-400 font-semibold block">Total Days Requested</span>
+                  <span className="text-xs sm:text-sm font-black text-gray-800">
+                    {getPropCaseInsensitive(selectedRequest, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration'], '1')} Day(s)
+                  </span>
+                </div>
+                <div className="p-3 bg-white border border-gray-200 rounded-xl">
+                  <span className="text-[10px] text-gray-400 font-semibold block">Remaining / Final Balance</span>
+                  <span className="text-xs sm:text-sm font-black text-gray-800">
+                    {getPropCaseInsensitive(selectedRequest, ['Final balance', 'final_balance', 'Final Balance'], '-')}
+                  </span>
+                </div>
+              </div>
 
               <div className="p-3 bg-white border border-gray-200 rounded-xl">
                 <span className="text-[10px] text-gray-400 font-semibold block">Reason / Request Notes</span>
@@ -1885,7 +1673,7 @@ export default function Approval() {
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-5 border border-gray-100">
             <h3 className="text-base font-bold text-gray-900 mb-1">Confirm Request Rejection</h3>
             <p className="text-xs text-gray-500 mb-3">
-              You are about to reject the <strong>{itemToReject._category}</strong> request from{' '}
+              You are about to reject the <strong>Leave</strong> request from{' '}
               <strong>{getPropCaseInsensitive(itemToReject, ['Name', 'name', 'nama', 'fullname'])}</strong>.
             </p>
 
