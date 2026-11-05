@@ -193,7 +193,7 @@ const matchesLineManager = (record, targetEmail, targetName = '', extraKeys = []
 
   for (const key of allKeys) {
     if (key && key.length >= 2) {
-      if (mgrVal === key || mgrVal.includes(key) || key.includes(mgrVal)) {
+      if (mgrVal === key) { // BUG FIX: Menggunakan strict equal untuk mencegah false positive
         return true;
       }
     }
