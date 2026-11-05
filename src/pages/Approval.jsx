@@ -512,23 +512,18 @@ export default function Approval({ currentUser: propCurrentUser }) {
       try {
         let attData = [];
 
-        // Attempt 1: Fetch recent records (try id desc if supported)
+        // Attempt 1: Fetch recent records (tanpa order by id untuk mencegah 400 Bad Request)
         try {
-          const { data: recentAtt, error: orderErr } = await supabase
+          const { data: defAtt, error: attErr } = await supabase
             .from('attendance')
             .select('*')
-            .order('id', { ascending: false })
             .limit(3000);
 
-          if (!orderErr && recentAtt) {
-            attData = recentAtt;
-          } else {
-            const { data: defAtt } = await supabase.from('attendance').select('*').limit(3000);
-            if (defAtt) attData = defAtt;
+          if (!attErr && defAtt) {
+            attData = defAtt;
           }
         } catch (e) {
-          const { data: defAtt } = await supabase.from('attendance').select('*').limit(3000);
-          if (defAtt) attData = defAtt;
+          console.warn("Failed fetching attendance data:", e);
         }
 
         // Attempt 2: Explicitly query pending approval records to guarantee no pending records are missed
