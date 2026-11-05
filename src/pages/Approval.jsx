@@ -1660,7 +1660,7 @@ export default function Approval() {
                 </div>
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block">Current Status</span>
-                  <span className="text-xs sm:text-sm font-bold text-green-700">
+                  <span className={`text-xs sm:text-sm font-bold ${isRejectedStatus(getRowStatus(selectedRequest)) || (getRowStatus(selectedRequest) || '').toLowerCase().replace(/[\s_-]/g, '') === 'cancelled' ? 'text-red-600' : isApprovedStatus(getRowStatus(selectedRequest)) ? 'text-green-700' : 'text-yellow-600'}`}>
                     {getRowStatus(selectedRequest) || 'Approved'}
                   </span>
                 </div>
@@ -1768,6 +1768,9 @@ export default function Approval() {
               </button>
               {(() => {
                 const s = getRowStatus(selectedRequest);
+                if (isRejectedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'cancelled') {
+                  return null;
+                }
                 if (isApprovedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel') {
                   return (
                     <button
