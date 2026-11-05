@@ -253,6 +253,7 @@ export default function Approval() {
   const [loading, setLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [leaveRequests, setLeaveRequests] = useState([]);
+  const [attendanceRequests, setAttendanceRequests] = useState([]); // STATE BARU UNTUK ATTENDANCE
   
   // Team Calendar & Directory States
   const [teamMembers, setTeamMembers] = useState([]);
@@ -460,7 +461,43 @@ export default function Approval() {
         console.warn("[Approval] Failed fetching leave_requests:", e);
       }
 
-      // 3. Fetch Team Schedule
+      // 3. Fetch Attendance Requests (BARU)
+      let myAttendance = [];
+      try {
+        const { data: attData, error: attError } = await supabase
+          .from('attendance')
+          .select('*')
+          .limit(3000);
+
+        if (attError) {
+          console.warn("[Approval] Error fetching attendance:", attError.message);
+        } else if (attData) {
+          myAttendance = attData
+            .filter(row => {
+              const status = getRowStatus(row);
+              const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
+              const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
+
+              const empVal = (getPropCaseInsensitive(row, [
+                'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
+                'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
+              ]) || '').trim().toLowerCase();
+              const empPrefix = empVal.includes('@') ? empVal.split('@')[0] : empVal;
+              const isSelf = userPrefix && (empVal === cleanUserWorkEmail || empPrefix === userPrefix);
+
+              return isRelevant && hasDirectMgr && !isSelf;
+            })
+            .map(row => ({
+              ...row,
+              _category: 'Attendance',
+              _sourceTable: 'attendance'
+            }));
+        }
+      } catch (e) {
+        console.warn("[Approval] Failed fetching attendance:", e);
+      }
+
+      // 4. Fetch Team Schedule
       let teamSched = [];
       try {
         const { data: schedData, error: schedErr } = await supabase
@@ -479,6 +516,7 @@ export default function Approval() {
       }
 
       setLeaveRequests(myLeaves);
+      setAttendanceRequests(myAttendance);
       setTeamScheduleRecords(teamSched);
     } catch (err) {
       console.error('[Approval] Error fetching approval records:', err);
@@ -558,7 +596,7 @@ export default function Approval() {
   const sendNotificationEmail = async (item, newStatus, reason = '') => {
     const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']);
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'employee_name'], 'Employee');
-    const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type'], 'Leave');
+    const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'Action', 'action'], item._category || 'Leave');
 
     if (!empEmail || !empEmail.includes('@')) return;
 
@@ -648,7 +686,7 @@ export default function Approval() {
       if (error) throw error;
 
       // --- LEAVE APPROVAL POST-LOGIC ---
-      if (newStatus === 'Approved') {
+      if (newStatus === 'Approved' && item._category === 'Leave') {
         const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'user_uid', 'email']);
         const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name']);
         const leaveType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '');
@@ -1032,7 +1070,7 @@ export default function Approval() {
         }
       }
 
-      await sendNotificationEmail(item, 'Cancelled', 'Persetujuan cuti telah dibatalkan oleh Line Manager dan kuota/saldo telah dikembalikan.');
+      await sendNotificationEmail(item, 'Cancelled', 'Persetujuan request telah dibatalkan oleh Line Manager dan kuota/saldo telah dikembalikan (jika ada).');
 
       alert('Persetujuan berhasil dibatalkan!');
       setIsDetailModalOpen(false);
@@ -1062,22 +1100,27 @@ export default function Approval() {
     handleUpdateStatus(itemToReject, 'Rejected', rejectReason);
   };
 
+  // Combine both Leaves and Attendance for accurate count badges
+  const allRequests = useMemo(() => {
+    return [...leaveRequests, ...attendanceRequests];
+  }, [leaveRequests, attendanceRequests]);
+
   // Counts for Badges
-  const pendingLeavesCount = useMemo(() => {
-    return leaveRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
-  }, [leaveRequests]);
+  const pendingRequestsCount = useMemo(() => {
+    return allRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
+  }, [allRequests]);
 
-  const approvedLeavesCount = useMemo(() => {
-    return leaveRequests.filter(r => isApprovedStatus(getRowStatus(r))).length;
-  }, [leaveRequests]);
+  const approvedRequestsCount = useMemo(() => {
+    return allRequests.filter(r => isApprovedStatus(getRowStatus(r))).length;
+  }, [allRequests]);
 
-  const rejectedLeavesCount = useMemo(() => {
-    return leaveRequests.filter(r => isRejectedStatus(getRowStatus(r))).length;
-  }, [leaveRequests]);
+  const rejectedRequestsCount = useMemo(() => {
+    return allRequests.filter(r => isRejectedStatus(getRowStatus(r))).length;
+  }, [allRequests]);
 
   // Filtered List based on status tab and selected employee
   const combinedList = useMemo(() => {
-    let list = [...leaveRequests];
+    let list = [...allRequests];
 
     if (statusTab === 'pending') {
       list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
@@ -1109,7 +1152,7 @@ export default function Approval() {
       const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'Time', 'time', 'created_at'])) || new Date(0);
       return dtB.getTime() - dtA.getTime();
     });
-  }, [statusTab, leaveRequests, selectedEmployee]);
+  }, [statusTab, allRequests, selectedEmployee]);
 
   return (
     <div className="w-full text-gray-800 font-sans">
@@ -1165,10 +1208,10 @@ export default function Approval() {
                   backgroundSize: '1rem'
                 }}
               >
-                <option value="pending">Pending ({pendingLeavesCount})</option>
-                <option value="approved">Approved ({approvedLeavesCount})</option>
-                <option value="rejected">Cancel / Reject ({rejectedLeavesCount})</option>
-                <option value="all">All Status ({leaveRequests.length})</option>
+                <option value="pending">Pending ({pendingRequestsCount})</option>
+                <option value="approved">Approved ({approvedRequestsCount})</option>
+                <option value="rejected">Cancel / Reject ({rejectedRequestsCount})</option>
+                <option value="all">All Status ({allRequests.length})</option>
               </select>
             </div>
 
@@ -1240,11 +1283,12 @@ export default function Approval() {
                 combinedList.map((item, idx) => {
                   const employeeName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'], 'No Name');
                   const employeeEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email'], '-');
-                  const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], 'Leave');
+                  const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype', 'Action', 'action'], item._category || 'Leave');
                   const status = getRowStatus(item) || 'Approved';
-                  const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date']), lang);
-                  const toDate = formatDateDisplay(getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']), lang);
-                  const dateInfo = `${fromDate} - ${toDate}`;
+                  
+                  const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal']), lang);
+                  const toDateRaw = getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']);
+                  const dateInfo = toDateRaw ? `${fromDate} - ${formatDateDisplay(toDateRaw, lang)}` : fromDate;
 
                   return (
                     <tr
@@ -1253,8 +1297,8 @@ export default function Approval() {
                       className="hover:bg-blue-50/40 transition cursor-pointer text-xs sm:text-sm border-b border-gray-100"
                     >
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <span className="px-2 py-1 rounded-md text-[11px] font-bold border bg-blue-50 text-blue-700 border-blue-200">
-                          Leave
+                        <span className={`px-2 py-1 rounded-md text-[11px] font-bold border ${item._category === 'Attendance' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                          {item._category || 'Leave'}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -1500,8 +1544,8 @@ export default function Approval() {
             
             <div className="flex justify-between items-center pb-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded text-[11px] font-bold border bg-blue-50 text-blue-700 border-blue-200">
-                  Leave
+                <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${selectedRequest._category === 'Attendance' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                  {selectedRequest._category || 'Leave'}
                 </span>
                 <h3 className="text-base sm:text-lg font-bold text-gray-800">Request Detail</h3>
               </div>
@@ -1531,7 +1575,7 @@ export default function Approval() {
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block">Request / Action</span>
                   <span className="text-xs sm:text-sm font-bold text-blue-700">
-                    {getPropCaseInsensitive(selectedRequest, ['Leave Type', 'leave_type', 'Type', 'type'], '-')}
+                    {getPropCaseInsensitive(selectedRequest, ['Leave Type', 'leave_type', 'Type', 'type', 'Action', 'action'], '-')}
                   </span>
                 </div>
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
@@ -1544,33 +1588,45 @@ export default function Approval() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                  <span className="text-[10px] text-gray-400 font-semibold block">From Date</span>
+                  <span className="text-[10px] text-gray-400 font-semibold block">{selectedRequest._category === 'Attendance' ? 'Date' : 'From Date'}</span>
                   <span className="text-xs sm:text-sm font-semibold text-gray-800">
-                    {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['From Date', 'from_date', 'Start Date', 'start_date']), lang)}
+                    {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal']), lang)}
                   </span>
                 </div>
-                <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                  <span className="text-[10px] text-gray-400 font-semibold block">To Date</span>
-                  <span className="text-xs sm:text-sm font-semibold text-gray-800">
-                    {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['To Date', 'to_date', 'End Date', 'end_date']), lang)}
-                  </span>
-                </div>
+                
+                {selectedRequest._category === 'Leave' ? (
+                  <div className="p-3 bg-white border border-gray-200 rounded-xl">
+                    <span className="text-[10px] text-gray-400 font-semibold block">To Date</span>
+                    <span className="text-xs sm:text-sm font-semibold text-gray-800">
+                      {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['To Date', 'to_date', 'End Date', 'end_date']), lang)}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-white border border-gray-200 rounded-xl">
+                    <span className="text-[10px] text-gray-400 font-semibold block">Time / Shift Info</span>
+                    <span className="text-xs sm:text-sm font-semibold text-gray-800">
+                      {getPropCaseInsensitive(selectedRequest, ['Time', 'time', 'Time In', 'time_in', 'Clock In', 'Clock Out', 'Shift', 'shift'], '-')}
+                    </span>
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                  <span className="text-[10px] text-gray-400 font-semibold block">Total Days Requested</span>
-                  <span className="text-xs sm:text-sm font-black text-gray-800">
-                    {getPropCaseInsensitive(selectedRequest, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration'], '1')} Day(s)
-                  </span>
+              {selectedRequest._category === 'Leave' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-white border border-gray-200 rounded-xl">
+                    <span className="text-[10px] text-gray-400 font-semibold block">Total Days Requested</span>
+                    <span className="text-xs sm:text-sm font-black text-gray-800">
+                      {getPropCaseInsensitive(selectedRequest, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration'], '1')} Day(s)
+                    </span>
+                  </div>
+                  <div className="p-3 bg-white border border-gray-200 rounded-xl">
+                    <span className="text-[10px] text-gray-400 font-semibold block">Remaining / Final Balance</span>
+                    <span className="text-xs sm:text-sm font-black text-gray-800">
+                      {getPropCaseInsensitive(selectedRequest, ['Final balance', 'final_balance', 'Final Balance'], '-')}
+                    </span>
+                  </div>
                 </div>
-                <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                  <span className="text-[10px] text-gray-400 font-semibold block">Remaining / Final Balance</span>
-                  <span className="text-xs sm:text-sm font-black text-gray-800">
-                    {getPropCaseInsensitive(selectedRequest, ['Final balance', 'final_balance', 'Final Balance'], '-')}
-                  </span>
-                </div>
-              </div>
+              )}
 
               <div className="p-3 bg-white border border-gray-200 rounded-xl">
                 <span className="text-[10px] text-gray-400 font-semibold block">Reason / Request Notes</span>
@@ -1673,7 +1729,7 @@ export default function Approval() {
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-5 border border-gray-100">
             <h3 className="text-base font-bold text-gray-900 mb-1">Confirm Request Rejection</h3>
             <p className="text-xs text-gray-500 mb-3">
-              You are about to reject the <strong>Leave</strong> request from{' '}
+              You are about to reject the <strong>{itemToReject._category || 'Leave'}</strong> request from{' '}
               <strong>{getPropCaseInsensitive(itemToReject, ['Name', 'name', 'nama', 'fullname'])}</strong>.
             </p>
 
