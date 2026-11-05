@@ -291,8 +291,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [attendanceRequests, setAttendanceRequests] = useState([]);
 
-  // Active Category Tab: 'attendance' | 'leave' (Default to Attendance as requested)
-  const [activeCategoryTab, setActiveCategoryTab] = useState('attendance');
+  // Active Category Tab: 'leave' | 'attendance'
+  const [activeCategoryTab, setActiveCategoryTab] = useState('leave');
 
   // Team Calendar & Directory States
   const [teamMembers, setTeamMembers] = useState([]);
@@ -551,8 +551,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
           }
         } catch (e) {}
 
-        console.log(`[Approval] Total raw attendance records fetched: ${attData.length}`);
-
         if (attData && attData.length > 0) {
           myAttendance = attData
             .filter(row => {
@@ -577,8 +575,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
               _category: 'Attendance',
               _sourceTable: 'attendance'
             }));
-
-          console.log(`[Approval] Filtered attendance records for line manager (${cleanRealWorkEmail || topNavEmail}): ${myAttendance.length}`);
         }
       } catch (e) {
         console.warn("[Approval] Failed fetching attendance:", e);
@@ -1204,7 +1200,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
     handleUpdateStatus(itemToReject, 'Rejected', rejectReason);
   };
 
-  // Badge Counts for Categories
+  // -------------------------------------------------------------
+  // COUNTS & LIST FILTERING
+  // -------------------------------------------------------------
+  
+  // Total pending counts globally for the tab badges
   const pendingLeavesCount = useMemo(() => {
     return leaveRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   }, [leaveRequests]);
@@ -1213,25 +1213,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
     return attendanceRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   }, [attendanceRequests]);
 
-  // Active Category List
+  // Active Category List (either leave or attendance array)
   const activeCategoryList = useMemo(() => {
     return activeCategoryTab === 'attendance' ? attendanceRequests : leaveRequests;
   }, [activeCategoryTab, attendanceRequests, leaveRequests]);
 
-  // Counts for Badges within active Category
-  const pendingStatusCount = useMemo(() => {
-    return activeCategoryList.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
-  }, [activeCategoryList]);
-
-  const approvedStatusCount = useMemo(() => {
-    return activeCategoryList.filter(r => isApprovedStatus(getRowStatus(r))).length;
-  }, [activeCategoryList]);
-
-  const rejectedStatusCount = useMemo(() => {
-    return activeCategoryList.filter(r => isRejectedStatus(getRowStatus(r))).length;
-  }, [activeCategoryList]);
-
-  // Filtered List based on active category, status tab, and selected employee
+  // Combined status filtering based on statusTab and selectedEmployee
   const displayList = useMemo(() => {
     let list = [...activeCategoryList];
 
@@ -1255,7 +1242,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
           'work_email',
           'Employee work email'
         ]) || '').toLowerCase();
-
         return empEmail === target;
       });
     }
@@ -1267,160 +1253,133 @@ export default function Approval({ currentUser: propCurrentUser }) {
     });
   }, [activeCategoryList, statusTab, selectedEmployee]);
 
+  // Dropdown counts (dynamically changes based on active category)
+  const pendingStatusCount = activeCategoryList.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
+  const approvedStatusCount = activeCategoryList.filter(r => isApprovedStatus(getRowStatus(r))).length;
+  const rejectedStatusCount = activeCategoryList.filter(r => isRejectedStatus(getRowStatus(r))).length;
+
   return (
     <div className="w-full text-gray-800 font-sans">
       
       {/* 1. Unified Main Card: Controls, Filters, and Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-6 w-full">
         
-        {/* Top Header Row */}
-        <div className="p-4 sm:p-6 pb-4 border-b border-gray-100">
-          <div className="flex flex-row justify-between items-start sm:items-center gap-2 sm:gap-3">
-            <div className="flex items-center gap-2 sm:gap-3 flex-1 pr-2 sm:pr-3">
-              <div className="hidden sm:flex p-2.5 bg-blue-50 text-blue-600 rounded-xl">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-base sm:text-xl font-bold text-gray-900 break-words">Approval Portal</h2>
-                <p className="text-xs text-gray-500">Kelola persetujuan Absensi dan Cuti anggota tim Anda</p>
-              </div>
+        {/* Top Header Row (Simpler Header matching requested design) */}
+        <div className="p-4 sm:p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 bg-blue-50 text-blue-600 rounded-xl">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
             </div>
-
-            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              <div className="hidden md:flex bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs">
-                <span className="text-gray-400 mr-1.5 font-medium">Line Manager:</span>
-                <span className="font-semibold text-gray-700">{actualUserWorkEmail || topNavEmail || userWorkEmail || 'Not Logged In'}</span>
-              </div>
-
-              <button
-                onClick={refreshAllData}
-                disabled={loading}
-                className="px-3.5 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
-                title="Refresh Data"
-              >
-                <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span>{loading ? 'Loading...' : 'Refresh'}</span>
-              </button>
+            <h2 className="text-xl font-bold text-gray-900 tracking-tight">Approval Requests</h2>
+          </div>
+          
+          {/* Refresh & Manager Info hidden on small screens for cleaner look like image */}
+          <div className="hidden sm:flex items-center gap-3">
+            <div className="bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs">
+              <span className="text-gray-400 mr-1.5 font-medium">Line Manager:</span>
+              <span className="font-semibold text-gray-700">{actualUserWorkEmail || topNavEmail || userWorkEmail || '-'}</span>
             </div>
+            <button
+              onClick={refreshAllData}
+              disabled={loading}
+              className="p-2 border border-gray-200 hover:bg-gray-50 text-gray-600 rounded-xl transition shadow-sm active:scale-95 disabled:opacity-50"
+              title="Refresh Data"
+            >
+              <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
           </div>
         </div>
 
-        {/* --- TOMBOL PEMISAH TAB: ATTENDANCE & LEAVE --- */}
-        <div className="flex items-center gap-2 px-4 sm:px-6 pt-3 bg-gray-50/70 border-b border-gray-200">
-          <button
-            type="button"
-            onClick={() => setActiveCategoryTab('attendance')}
-            className={`py-2.5 px-4 rounded-t-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition cursor-pointer border-t-2 ${
-              activeCategoryTab === 'attendance'
-                ? 'bg-white border-purple-600 text-purple-700 shadow-xs'
-                : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100/60'
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span>Attendance Requests</span>
-            {pendingAttendanceCount > 0 && (
-              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                activeCategoryTab === 'attendance' ? 'bg-purple-100 text-purple-700' : 'bg-red-500 text-white'
-              }`}>
-                {pendingAttendanceCount}
-              </span>
-            )}
-          </button>
+        {/* --- TAB AND STATUS ROW AS REQUESTED IN IMAGE --- */}
+        <div className="p-4 sm:px-5 sm:py-4 bg-white flex flex-wrap items-center gap-2 border-b border-gray-100">
+          
+          {/* Custom Pill Tabs container */}
+          <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+            <button
+              onClick={() => setActiveCategoryTab('leave')}
+              className={`px-4 py-1.5 rounded-lg text-[13px] font-bold transition-colors ${
+                activeCategoryTab === 'leave'
+                  ? 'bg-white text-blue-700 shadow-sm border border-gray-200/50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+              }`}
+            >
+              Leave ({pendingLeavesCount})
+            </button>
+            <button
+              onClick={() => setActiveCategoryTab('attendance')}
+              className={`px-4 py-1.5 rounded-lg text-[13px] font-bold transition-colors ${
+                activeCategoryTab === 'attendance'
+                  ? 'bg-white text-blue-700 shadow-sm border border-gray-200/50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+              }`}
+            >
+              Attendance ({pendingAttendanceCount})
+            </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveCategoryTab('leave')}
-            className={`py-2.5 px-4 rounded-t-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition cursor-pointer border-t-2 ${
-              activeCategoryTab === 'leave'
-                ? 'bg-white border-blue-600 text-blue-700 shadow-xs'
-                : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100/60'
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <span>Leave Requests</span>
-            {pendingLeavesCount > 0 && (
-              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                activeCategoryTab === 'leave' ? 'bg-blue-100 text-blue-700' : 'bg-red-500 text-white'
-              }`}>
-                {pendingLeavesCount}
-              </span>
-            )}
-          </button>
-        </div>
+          {/* Status Filter matching image design */}
+          <div className="relative ml-0 sm:ml-2 w-full sm:w-[180px]">
+            <select
+              value={statusTab}
+              onChange={(e) => setStatusTab(e.target.value)}
+              className="w-full pl-3.5 pr-8 py-1.5 text-[13px] font-bold text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm cursor-pointer transition"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 0.75rem center',
+                backgroundSize: '1rem'
+              }}
+            >
+              <option value="pending">Pending ({pendingStatusCount})</option>
+              <option value="approved">Approved ({approvedStatusCount})</option>
+              <option value="rejected">Rejected ({rejectedStatusCount})</option>
+              <option value="all">All Status</option>
+            </select>
+          </div>
 
-        {/* Filters: Status Dropdown & Employee Dropdown */}
-        <div className="p-4 sm:p-6 py-3 border-b border-gray-100 bg-white">
-          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-            
-            {/* Status Dropdown Filter */}
-            <div className="relative w-full sm:w-auto sm:min-w-[170px]">
-              <select
-                value={statusTab}
-                onChange={(e) => setStatusTab(e.target.value)}
-                className="w-full pl-3 pr-8 py-2 text-xs font-bold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer transition h-full"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 0.75rem center',
-                  backgroundSize: '1rem'
-                }}
-              >
-                <option value="pending">Pending ({pendingStatusCount})</option>
-                <option value="approved">Approved ({approvedStatusCount})</option>
-                <option value="rejected">Cancel / Reject ({rejectedStatusCount})</option>
-                <option value="all">All Status ({activeCategoryList.length})</option>
-              </select>
-            </div>
-
-            {/* Dropdown filter Employee */}
-            <div className="relative w-full sm:w-auto sm:min-w-[240px]">
-              <select
-                value={selectedEmployee}
-                onChange={(e) => setSelectedEmployee(e.target.value)}
-                className="w-full pl-3 pr-8 py-2 text-xs font-semibold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer transition h-full"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 0.75rem center',
-                  backgroundSize: '1rem'
-                }}
-              >
-                <option value="all">All Team Members ({teamMembers.length})</option>
-                {teamMembers.map((member) => (
-                  <option key={member.email} value={member.email}>
-                    {member.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* Employee Dropdown Filter */}
+          <div className="relative w-full sm:w-[200px]">
+            <select
+              value={selectedEmployee}
+              onChange={(e) => setSelectedEmployee(e.target.value)}
+              className="w-full pl-3.5 pr-8 py-1.5 text-[13px] font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm cursor-pointer transition"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 0.75rem center',
+                backgroundSize: '1rem'
+              }}
+            >
+              <option value="all">All Employees</option>
+              {teamMembers.map((member) => (
+                <option key={member.email} value={member.email}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
         {/* Main List Table */}
         <div className="overflow-x-auto w-full">
           <table className="w-full text-sm text-left text-gray-600">
-            <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
+            <thead className="text-xs text-gray-500 uppercase bg-gray-50/50 border-b border-gray-100">
               <tr>
-                <th className="px-4 py-3">Category</th>
-                <th className="px-4 py-3">Employee</th>
-                <th className="px-4 py-3">Request / Action</th>
-                <th className="px-4 py-3">{activeCategoryTab === 'attendance' ? 'Attendance Date' : 'Leave Period'}</th>
-                <th className="px-4 py-3 text-center">Status</th>
-                <th className="px-4 py-3 text-center">Action</th>
+                <th className="px-5 py-3.5 font-semibold">Employee</th>
+                <th className="px-5 py-3.5 font-semibold">Request Type</th>
+                <th className="px-5 py-3.5 font-semibold">{activeCategoryTab === 'attendance' ? 'Attendance Date' : 'Leave Period'}</th>
+                <th className="px-5 py-3.5 font-semibold text-center">Status</th>
+                <th className="px-5 py-3.5 font-semibold text-center">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-50">
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="px-5 py-12 text-center text-gray-400">
+                  <td colSpan="5" className="px-5 py-12 text-center text-gray-400">
                     <div className="flex flex-col items-center justify-center">
                       <svg className="w-8 h-8 animate-spin text-blue-500 mb-2" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -1432,12 +1391,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 </tr>
               ) : displayList.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-5 py-12 text-center text-gray-400">
+                  <td colSpan="5" className="px-5 py-12 text-center text-gray-400">
                     <div className="flex flex-col items-center justify-center">
-                      <svg className="w-10 h-10 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-10 h-10 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      <p className="font-semibold text-gray-600 text-sm">No {activeCategoryTab === 'attendance' ? 'Attendance' : 'Leave'} requests found.</p>
+                      <p className="font-semibold text-gray-600 text-sm">No {activeCategoryTab} requests found</p>
                       <p className="text-xs text-gray-400 mt-1">
                         There are no {statusTab !== 'all' ? statusTab : ''} records matching your current filter.
                       </p>
@@ -1455,7 +1414,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                   const reqType = getPropCaseInsensitive(
                     item, 
                     ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype', 'Action', 'action', 'Status Type', 'Attendance Type', 'attendance_type', 'Request Type', 'request_type', 'keterangan'], 
-                    item._category === 'Attendance' ? 'Attendance Regularization' : 'Leave'
+                    item._category === 'Attendance' ? 'Attendance' : 'Leave'
                   );
                   const status = getRowStatus(item) || 'Approved';
                   
@@ -1467,32 +1426,27 @@ export default function Approval({ currentUser: propCurrentUser }) {
                     <tr
                       key={idx}
                       onClick={() => openDetailModal(item)}
-                      className="hover:bg-blue-50/40 transition cursor-pointer text-xs sm:text-sm border-b border-gray-100"
+                      className="hover:bg-gray-50/80 transition cursor-pointer text-xs sm:text-sm"
                     >
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`px-2 py-1 rounded-md text-[11px] font-bold border ${item._category === 'Attendance' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                          {item._category}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-gray-900">{employeeName}</div>
-                        <div className="text-[11px] text-gray-400 truncate max-w-[150px]">{employeeEmail}</div>
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-gray-900">{employeeName}</div>
+                        <div className="text-[11px] text-gray-400 truncate max-w-[180px]">{employeeEmail}</div>
                       </td>
 
-                      <td className="px-4 py-3 font-medium text-gray-800">
+                      <td className="px-5 py-4 font-medium text-gray-800">
                         <span className="font-semibold text-gray-800">{reqType}</span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-700">
+                      <td className="px-5 py-4 whitespace-nowrap font-medium text-gray-600">
                         {dateInfo}
                       </td>
 
-                      <td className="px-4 py-3 text-center whitespace-nowrap">
+                      <td className="px-5 py-4 text-center whitespace-nowrap">
                         {(() => {
-                          let badgeClass = 'bg-yellow-100 text-yellow-800 border-yellow-200';
+                          let badgeClass = 'bg-yellow-100/80 text-yellow-700 border-yellow-200/60';
                           if (isApprovedStatus(status)) {
-                            badgeClass = 'bg-green-100 text-green-700 border-green-200';
+                            badgeClass = 'bg-green-100/80 text-green-700 border-green-200/60';
                           } else if (status.toLowerCase().includes('reject') || status.toLowerCase().includes('cancel')) {
-                            badgeClass = 'bg-red-100 text-red-700 border-red-200';
+                            badgeClass = 'bg-red-100/80 text-red-700 border-red-200/60';
                           }
                           return (
                             <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${badgeClass}`}>
@@ -1502,7 +1456,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                         })()}
                       </td>
 
-                      <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-5 py-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         {(() => {
                           const s = getRowStatus(item);
                           if (isRejectedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'cancelled') {
@@ -1513,7 +1467,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                               <button
                                 disabled={isProcessing}
                                 onClick={() => handleCancelApproved(item)}
-                                className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 active:scale-95 text-red-600 border border-red-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer mx-auto"
+                                className="px-2.5 py-1.5 bg-white hover:bg-red-50 active:scale-95 text-red-600 border border-gray-200 hover:border-red-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer mx-auto shadow-sm"
                                 title="Cancel Approval"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1523,11 +1477,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
                           }
                           if (s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel') {
                             return (
-                              <div className="flex items-center justify-center space-x-1.5">
+                              <div className="flex items-center justify-center space-x-2">
                                 <button
                                   disabled={isProcessing}
                                   onClick={() => handleCancelApproved(item)}
-                                  className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 active:scale-95 text-purple-700 border border-purple-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
+                                  className="px-2.5 py-1.5 bg-white hover:bg-purple-50 active:scale-95 text-purple-700 border border-gray-200 hover:border-purple-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shadow-sm"
                                   title="Approve Cancellation"
                                 >
                                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
@@ -1536,7 +1490,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                                 <button
                                   disabled={isProcessing}
                                   onClick={(e) => openRejectDialog(item, e)}
-                                  className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 active:scale-95 text-gray-700 border border-gray-300 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
+                                  className="px-2.5 py-1.5 bg-white hover:bg-gray-50 active:scale-95 text-gray-700 border border-gray-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shadow-sm"
                                   title="Reject Cancel Request"
                                 >
                                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1546,7 +1500,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                             );
                           }
                           return (
-                            <div className="flex items-center justify-center space-x-1.5">
+                            <div className="flex items-center justify-center space-x-2">
                               <button
                                 disabled={isProcessing}
                                 onClick={() => {
@@ -1554,7 +1508,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                                     handleUpdateStatus(item, 'Approved');
                                   }
                                 }}
-                                className="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1 cursor-pointer"
+                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1 cursor-pointer"
                                 title="Approve"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
@@ -1563,7 +1517,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                               <button
                                 disabled={isProcessing}
                                 onClick={(e) => openRejectDialog(item, e)}
-                                className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 active:scale-95 text-red-600 border border-red-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
+                                className="px-3 py-1.5 bg-white hover:bg-red-50 active:scale-95 text-red-600 border border-gray-200 hover:border-red-200 text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1 cursor-pointer"
                                 title="Reject"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1883,7 +1837,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                           handleUpdateStatus(selectedRequest, 'Approved');
                         }
                       }}
-                      className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl shadow-sm transition cursor-pointer"
+                      className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition cursor-pointer"
                     >
                       {isProcessing ? 'Saving...' : 'Approve'}
                     </button>
