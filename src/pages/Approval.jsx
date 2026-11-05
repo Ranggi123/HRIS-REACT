@@ -204,6 +204,26 @@ const isRejectedStatus = (status) => {
 };
 
 // Robust Row Status Resolver: Prioritizes recognizable approval statuses and skips "-" or nulls
+const getReqTypeColor = (reqType, category) => {
+  if (!reqType) return 'text-gray-800';
+  const typeLower = String(reqType).toLowerCase();
+  
+  if (category === 'Leave') {
+    if (typeLower.includes('day off') || typeLower.includes('extra off') || typeLower.includes('annual leave')) {
+      return 'text-orange-600';
+    } else if (typeLower.includes('sick') || typeLower.includes('maternity') || typeLower.includes('compassionate')) {
+      return 'text-purple-600';
+    }
+  } else if (category === 'Attendance') {
+    if (typeLower.includes('in')) {
+      return 'text-green-600';
+    } else if (typeLower.includes('out')) {
+      return 'text-orange-600';
+    }
+  }
+  return 'text-blue-700'; // default for others
+};
+
 const getRowStatus = (row) => {
   if (!row) return '';
   const candidateKeys = [
@@ -1520,7 +1540,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                       </td>
 
                       <td className="px-5 py-4 font-medium text-gray-800">
-                        <span className="font-semibold text-gray-800">{reqType}</span>
+                        <span className={`font-bold ${getReqTypeColor(reqType, item._category)}`}>{reqType}</span>
                       </td>
                       <td className="px-5 py-4 whitespace-nowrap font-medium text-gray-600">
                         {dateInfo}
@@ -1787,11 +1807,16 @@ export default function Approval({ currentUser: propCurrentUser }) {
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block">Request / Action</span>
-                  <span className="text-xs sm:text-sm font-bold text-blue-700">
-                    {selectedRequest._category === 'Attendance' 
+                  {(() => {
+                    const modalReqType = selectedRequest._category === 'Attendance' 
                       ? (getPropCaseInsensitive(selectedRequest, ['Are you checking out or Checking in?', 'Are you checking out or Checking in', 'Check In/Out', 'Check Type']) || 'Attendance') 
-                      : getPropCaseInsensitive(selectedRequest, ['Leave Type', 'leave_type', 'Type', 'type', 'Action', 'action', 'Status Type', 'Attendance Type'], '-')}
-                  </span>
+                      : getPropCaseInsensitive(selectedRequest, ['Leave Type', 'leave_type', 'Type', 'type', 'Action', 'action', 'Status Type', 'Attendance Type'], '-');
+                    return (
+                      <span className={`text-xs sm:text-sm font-bold ${getReqTypeColor(modalReqType, selectedRequest._category)}`}>
+                        {modalReqType}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block">Current Status</span>
