@@ -134,7 +134,7 @@ const getRowStatus = (row) => {
   return getPropCaseInsensitive(row, ['Status', 'status'], '');
 };
 
-// Helper pencocokan Line Manager strictly dengan userWorkEmail atau nama
+// Helper pencocokan Line Manager strictly
 const matchesLineManager = (record, targetEmail, targetName = '') => {
   if (!record || (!targetEmail && !targetName)) return false;
   const tEmail = (targetEmail || '').trim().toLowerCase();
@@ -142,23 +142,12 @@ const matchesLineManager = (record, targetEmail, targetName = '') => {
   const tUser = tEmail.includes('@') ? tEmail.split('@')[0] : '';
 
   const mgrVal = getPropCaseInsensitive(record, [
-    'Line Manager work email',
-    'line_manager_work_email',
-    'Line Manager Email',
-    'line_manager_email',
-    'Line Manager',
-    'line_manager',
-    'manager_email',
-    'Manager Email',
-    'Approver Email',
-    'approver_email',
-    'Approver',
-    'approver',
-    'Atasan Email',
-    'atasan_email'
+    'Line Manager work email', 'line_manager_work_email', 'Line Manager Email',
+    'line_manager_email', 'Line Manager', 'line_manager', 'manager_email',
+    'Manager Email', 'Approver Email', 'approver_email', 'Approver', 'approver',
+    'Atasan Email', 'atasan_email'
   ], '').trim().toLowerCase();
 
-  // STRICT: Jika kolom tidak ada, kosong, atau '-', LANGSUNG TOLAK. (No fallback)
   if (!mgrVal || mgrVal === '-' || mgrVal === 'null' || mgrVal === 'undefined') {
     return false;
   }
@@ -166,6 +155,26 @@ const matchesLineManager = (record, targetEmail, targetName = '') => {
   if (tEmail && (mgrVal === tEmail || mgrVal.includes(tEmail) || tEmail.includes(mgrVal))) return true;
   if (tUser && tUser.length > 2 && (mgrVal === tUser || mgrVal.includes(tUser) || tUser.includes(mgrVal))) return true;
   if (tName && tName.length > 2 && (mgrVal === tName || mgrVal.includes(tName) || tName.includes(mgrVal))) return true;
+
+  return false;
+};
+
+// Fungsi pengecekan hybrid untuk attendance dan leave
+const isRecordForMyTeam = (record, targetEmail, targetName, subordinateEmails, category) => {
+  const isLineManagerMatched = matchesLineManager(record, targetEmail, targetName);
+  
+  if (isLineManagerMatched) return true;
+
+  // Jika tidak match, tapi ini tabel attendance, kita gunakan FALLBACK bawahan
+  // Karena seringkali tabel attendance tidak memiliki kolom Line Manager yang valid saat awal mula insert
+  if (category === 'Attendance') {
+    const empEmail = (getPropCaseInsensitive(record, [
+      'Employee work email', 'employee_work_email', 'work_email', 'work email',
+      'Work Email', 'Employee', 'employee', 'email', 'Email', 'user_uid'
+    ]) || '').trim().toLowerCase();
+    
+    return Boolean(empEmail && subordinateEmails.includes(empEmail));
+  }
 
   return false;
 };
@@ -382,7 +391,7 @@ export default function Approval() {
             .filter(row => {
               const status = getRowStatus(row);
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
-              const isMyLineManager = matchesLineManager(row, realWorkEmail, realName);
+              const isMyLineManager = isRecordForMyTeam(row, realWorkEmail, realName, subordinateEmails, row._category);
 
               return isRelevant && isMyLineManager;
             })
@@ -412,7 +421,7 @@ export default function Approval() {
               const status = getRowStatus(row);
               // Untuk attendance tidak perlu yang approved, hanya yang pending atau blank yg butuh approve
               const isRelevant = isPendingApprovalStatus(status) || !status;
-              const isMyLineManager = matchesLineManager(row, realWorkEmail, realName);
+              const isMyLineManager = isRecordForMyTeam(row, realWorkEmail, realName, subordinateEmails, row._category);
 
               return isRelevant && isMyLineManager;
             })
