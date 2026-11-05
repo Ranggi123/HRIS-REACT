@@ -160,8 +160,8 @@ const matchesLineManager = (record, targetEmail) => {
   return mgrVal === tEmail || mgrVal.includes(tEmail);
 };
 
-// Verifikasi apakah pengajuan milik Line Manager yang sedang login
-const isRecordForLineManager = (record, targetEmail, subordinateEmails = []) => {
+// Verifikasi apakah pengajuan milik Line Manager yang sedang login (STRICT MATCH)
+const isRecordForLineManager = (record, targetEmail) => {
   if (!record || !targetEmail) return false;
   const tEmail = targetEmail.trim().toLowerCase();
 
@@ -182,24 +182,13 @@ const isRecordForLineManager = (record, targetEmail, subordinateEmails = []) => 
     'atasan_email'
   ], '').trim().toLowerCase();
 
-  if (mgrVal) {
-    return mgrVal === tEmail || mgrVal.includes(tEmail);
+  // Jika kolom Line Manager kosong, bernilai '-', atau tidak ada, LANGSUNG TOLAK.
+  // Tidak ada lagi pengecekan fallback ke data bawahan.
+  if (!mgrVal || mgrVal === '-' || mgrVal === 'null' || mgrVal === 'undefined') {
+    return false;
   }
 
-  const empEmail = (getPropCaseInsensitive(record, [
-    'Employee work email',
-    'employee_work_email',
-    'work_email',
-    'work email',
-    'Work Email',
-    'Employee',
-    'employee',
-    'email',
-    'Email',
-    'user_uid'
-  ]) || '').trim().toLowerCase();
-
-  return Boolean(empEmail && subordinateEmails.includes(empEmail));
+  return mgrVal === tEmail || mgrVal.includes(tEmail);
 };
 
 // Calendar Date Matcher
