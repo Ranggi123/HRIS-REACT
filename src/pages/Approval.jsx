@@ -519,11 +519,6 @@ export default function Approval() {
               const isPending = isPendingApprovalStatus(status);
               if (!isPending) return false;
 
-              // 1. Cek kolom Line Manager di baris presensi jika ada
-              const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
-              // 2. Cek apakah pembuatnya bawahan (via Employee, email, dsb)
-              const isSub = checkIsSubordinate(row);
-
               // Jangan tampilkan pengajuan cuti yang diajukan oleh user yang sedang login
               const empVal = (getPropCaseInsensitive(row, [
                 'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
@@ -532,7 +527,8 @@ export default function Approval() {
               const empPrefix = empVal.includes('@') ? empVal.split('@')[0] : empVal;
               const isSelf = userPrefix && (empVal === cleanUserWorkEmail || empPrefix === userPrefix);
 
-              return (hasDirectMgr || isSub) && !isSelf;
+              // Tampilkan semua presensi yang berstatus pending (mengabaikan filter Line Manager)
+              return !isSelf;
             })
             .map(row => {
               const creatorEmail = (getPropCaseInsensitive(row, [
