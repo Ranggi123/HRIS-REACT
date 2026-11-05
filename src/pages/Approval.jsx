@@ -53,6 +53,67 @@ const formatTimeDisplay = (timeVal) => {
   return m ? `${m[1].padStart(2, '0')}:${m[2]}` : str;
 };
 
+const getAttendanceLocation = (req) => {
+  if (!req) return null;
+
+  const latVal = getPropCaseInsensitive(req, [
+    'latitude', 'lat', 'Latitude', 'Lat', 'clock_in_latitude', 'clock_out_latitude', 'lat_in', 'lat_out'
+  ]);
+  const lngVal = getPropCaseInsensitive(req, [
+    'longitude', 'long', 'lng', 'Longitude', 'Long', 'Lng', 'clock_in_longitude', 'clock_out_longitude', 'long_in', 'long_out', 'lng_in', 'lng_out'
+  ]);
+
+  if (latVal && lngVal && !isNaN(parseFloat(latVal)) && !isNaN(parseFloat(lngVal))) {
+    const lat = parseFloat(latVal);
+    const lng = parseFloat(lngVal);
+    return {
+      lat,
+      lng,
+      query: `${lat}, ${lng}`,
+      embedUrl: `https://maps.google.com/maps?q=${lat},${lng}&hl=id&z=15&output=embed`,
+      directUrl: `https://www.google.com/maps?q=${lat},${lng}`
+    };
+  }
+
+  const locStr = getPropCaseInsensitive(req, [
+    'Location', 'location', 'lokasi', 'Lokasi',
+    'Coordinates', 'coordinates', 'koordinat', 'Koordinat',
+    'maps', 'Maps', 'maps_url', 'Maps URL', 'google_maps', 'Google Maps',
+    'map', 'Map', 'gps', 'GPS'
+  ]);
+
+  if (locStr && locStr !== '-' && locStr !== 'null' && locStr !== 'undefined') {
+    const coordMatch = locStr.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if (coordMatch) {
+      const lat = parseFloat(coordMatch[1]);
+      const lng = parseFloat(coordMatch[2]);
+      return {
+        lat,
+        lng,
+        query: `${lat}, ${lng}`,
+        embedUrl: `https://maps.google.com/maps?q=${lat},${lng}&hl=id&z=15&output=embed`,
+        directUrl: `https://www.google.com/maps?q=${lat},${lng}`
+      };
+    }
+
+    if (locStr.startsWith('http://') || locStr.startsWith('https://')) {
+      return {
+        query: locStr,
+        embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(locStr)}&hl=id&z=15&output=embed`,
+        directUrl: locStr
+      };
+    }
+
+    return {
+      query: locStr,
+      embedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(locStr)}&hl=id&z=15&output=embed`,
+      directUrl: `https://www.google.com/maps?q=${encodeURIComponent(locStr)}`
+    };
+  }
+
+  return null;
+};
+
 const getPropCaseInsensitive = (obj, candidateKeys, fallback = '') => {
   if (!obj) return fallback;
   const keys = Object.keys(obj);
@@ -1762,6 +1823,65 @@ export default function Approval({ currentUser: propCurrentUser }) {
                   {getPropCaseInsensitive(selectedRequest, ['Reason', 'reason', 'Description', 'description', 'notes', 'Notes', 'keterangan'], 'No additional notes provided.')}
                 </p>
               </div>
+
+              {/* Attendance Location Map */}
+              {selectedRequest._category === 'Attendance' && (() => {
+                const locData = getAttendanceLocation(selectedRequest);
+                return (
+                  <div className="p-3 bg-white border border-gray-200 rounded-xl">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] text-gray-400 font-semibold flex items-center gap-1">
+                        <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Attendance Location / Map
+                      </span>
+                      {locData && (
+                        <a
+                          href={locData.directUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:text-blue-700 hover:underline font-bold flex items-center gap-1"
+                        >
+                          <span>Open in Google Maps</span>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                        </a>
+                      )}
+                    </div>
+                    {locData ? (
+                      <>
+                        <div className="w-full h-48 rounded-lg overflow-hidden border border-gray-200 bg-gray-100">
+                          <iframe
+                            title="Attendance Location Map"
+                            src={locData.embedUrl}
+                            width="100%"
+                            height="100%"
+                            className="border-0 w-full h-full"
+                            loading="lazy"
+                            allowFullScreen
+                          />
+                        </div>
+                        {locData.query && (
+                          <div className="text-[11px] text-gray-500 font-medium mt-1.5 flex items-center justify-between">
+                            <span className="truncate">Coordinates / Location: <span className="font-semibold text-gray-700">{locData.query}</span></span>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="py-6 text-center text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                        <svg className="w-8 h-8 mx-auto text-gray-300 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span className="text-xs">No location coordinates recorded for this attendance</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Attachment Preview with Link priority */}
               {getPropCaseInsensitive(selectedRequest, ['Link', 'link', 'Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo']) && (
