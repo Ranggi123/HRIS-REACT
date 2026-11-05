@@ -160,8 +160,8 @@ const matchesLineManager = (record, targetEmail) => {
   return mgrVal === tEmail || mgrVal.includes(tEmail);
 };
 
-// Verifikasi apakah pengajuan milik Line Manager yang sedang login (STRICT MATCH)
-const isRecordForLineManager = (record, targetEmail) => {
+// Verifikasi apakah pengajuan milik Line Manager yang sedang login (STRICT MATCH + SUBORDINATE FALLBACK)
+const isRecordForLineManager = (record, targetEmail, subordinateEmails = []) => {
   if (!record || !targetEmail) return false;
   const tEmail = targetEmail.trim().toLowerCase();
 
@@ -182,13 +182,28 @@ const isRecordForLineManager = (record, targetEmail) => {
     'atasan_email'
   ], '').trim().toLowerCase();
 
-  // Jika kolom Line Manager kosong, bernilai '-', atau tidak ada, LANGSUNG TOLAK.
-  // Tidak ada lagi pengecekan fallback ke data bawahan.
-  if (!mgrVal || mgrVal === '-' || mgrVal === 'null' || mgrVal === 'undefined') {
-    return false;
+  // 1. Jika tabel memiliki kolom Line Manager dan isinya ada, cocokkan STRICT
+  if (mgrVal && mgrVal !== '-' && mgrVal !== 'null' && mgrVal !== 'undefined') {
+    return mgrVal === tEmail || mgrVal.includes(tEmail);
   }
 
-  return mgrVal === tEmail || mgrVal.includes(tEmail);
+  // 2. Jika tabel TIDAK memiliki kolom Line Manager (seperti tabel attendance pada umumnya),
+  // kita cek apakah email karyawan di record ini ada di dalam daftar subordinateEmails.
+  // subordinateEmails sudah di-filter strictly (Line Manager = userWorkEmail) dari employee_directory.
+  const empEmail = (getPropCaseInsensitive(record, [
+    'Employee work email',
+    'employee_work_email',
+    'work_email',
+    'work email',
+    'Work Email',
+    'Employee',
+    'employee',
+    'email',
+    'Email',
+    'user_uid'
+  ]) || '').trim().toLowerCase();
+
+  return Boolean(empEmail && subordinateEmails.includes(empEmail));
 };
 
 // Calendar Date Matcher
@@ -265,36 +280,82 @@ export default function Approval() {
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
 
-  // Line Manager Work Email of current logged in user
-  const userWorkEmail = useMemo(() => {
+  // Line Manager login identifier (from session)
+  const sessionIdentifier = useMemo(() => {
     return (
       getPropCaseInsensitive(currentUser, [
+        'email',
+        'Email',
+        'user_uid',
+        'USER_UID',
         'Employee work email',
         'employee_work_email',
         'work_email',
         'work email',
-        'Work Email',
-        'email',
-        'Email',
-        'user_uid',
-        'USER_UID'
+        'Work Email'
       ]) || ''
     ).trim().toLowerCase();
   }, [currentUser]);
 
-  const userName = useMemo(() => {
-    return getPropCaseInsensitive(currentUser, ['Name', 'name', 'nama', 'fullname', 'full_name'], userWorkEmail.split('@')[0] || 'Manager');
-  }, [currentUser, userWorkEmail]);
+  const sessionName = useMemo(() => {
+    return getPropCaseInsensitive(currentUser, ['Name', 'name', 'nama', 'fullname', 'full_name'], sessionIdentifier.split('@')[0] || 'Manager');
+  }, [currentUser, sessionIdentifier]);
+
+  // State untuk menyimpan data riil user yang sedang login dari directory
+  const [actualUserWorkEmail, setActualUserWorkEmail] = useState('');
+  const [actualUserName, setActualUserName] = useState('');
 
   // Fetch Requests, Directory, and Schedule for this Line Manager
   const refreshAllData = useCallback(async () => {
-    if (!userWorkEmail) return;
+    if (!sessionIdentifier) return;
     setLoading(true);
 
     try {
       let subordinateEmails = [];
       const subordinateIdentifiers = new Set();
-      
+      let realWorkEmail = sessionIdentifier;
+      let realName = sessionName;
+
+      // 0. Ambil data riil user yang sedang login dari employee_directory terlebih dahulu
+      // Ini berguna jika email login (session) berbeda dengan work email di sistem HRIS
+      try {
+        const { data: myDirData } = await supabase
+          .from('employee_directory')
+          .select('*');
+          
+        if (myDirData && myDirData.length > 0) {
+          // Cari record diri sendiri (berdasarkan login email/uid atau nama)
+          const myRecord = myDirData.find(emp => {
+            const empEmail = (getPropCaseInsensitive(emp, ['Email', 'email', 'user_uid']) || '').trim().toLowerCase();
+            const empWorkEmail = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email']) || '').trim().toLowerCase();
+            return empEmail === sessionIdentifier || empWorkEmail === sessionIdentifier;
+          });
+
+          if (myRecord) {
+            // Gunakan Employee work email riil dari database
+            const foundWorkEmail = getPropCaseInsensitive(myRecord, [
+              'Employee work email',
+              'employee_work_email',
+              'work_email',
+              'work email',
+              'Work Email',
+              'email',
+              'Email'
+            ]).trim().toLowerCase();
+            
+            if (foundWorkEmail) realWorkEmail = foundWorkEmail;
+            
+            const foundName = getPropCaseInsensitive(myRecord, ['Name', 'name', 'nama', 'fullname', 'full_name']);
+            if (foundName) realName = foundName;
+          }
+        }
+      } catch (err) {
+        console.warn("[Approval] Error fetching real user data:", err);
+      }
+
+      setActualUserWorkEmail(realWorkEmail);
+      setActualUserName(realName);
+
       // 1. Fetch Subordinate Employees from employee_directory
       try {
         const { data: dirData, error: dirErr } = await supabase
@@ -305,7 +366,18 @@ export default function Approval() {
         if (dirErr) {
           console.warn("[Approval] Error fetching employee_directory:", dirErr.message);
         } else if (dirData) {
-          const subordinates = dirData.filter(row => matchesLineManager(row, userWorkEmail));
+          // Gunakan realWorkEmail yang sudah divalidasi dari database
+          const subordinates = dirData.filter(row => matchesLineManager(row, realWorkEmail));
+      try {
+        const { data: dirData, error: dirErr } = await supabase
+          .from('employee_directory')
+          .select('*')
+          .limit(2000);
+
+        if (dirErr) {
+          console.warn("[Approval] Error fetching employee_directory:", dirErr.message);
+        } else if (dirData) {
+          const subordinates = dirData.filter(row => matchesLineManager(row, realWorkEmail));
           
           const uniqueMap = new Map();
           subordinates.forEach(emp => {
@@ -355,7 +427,7 @@ export default function Approval() {
             .filter(row => {
               const status = getRowStatus(row);
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
-              const isMyLineManager = isRecordForLineManager(row, userWorkEmail, subordinateEmails);
+              const isMyLineManager = isRecordForLineManager(row, actualUserWorkEmail, subordinateEmails);
 
               return isRelevant && isMyLineManager;
             })
@@ -385,7 +457,7 @@ export default function Approval() {
               const status = getRowStatus(row);
               // Untuk attendance tidak perlu yang approved, hanya yang pending atau blank yg butuh approve
               const isRelevant = isPendingApprovalStatus(status) || !status;
-              const isMyLineManager = isRecordForLineManager(row, userWorkEmail, subordinateEmails);
+              const isMyLineManager = isRecordForLineManager(row, actualUserWorkEmail, subordinateEmails);
 
               return isRelevant && isMyLineManager;
             })
@@ -426,7 +498,7 @@ export default function Approval() {
       console.error('[Approval] Error fetching approval records:', err);
     }
     setLoading(false);
-  }, [userWorkEmail]);
+  }, [sessionIdentifier]);
 
   useEffect(() => {
     refreshAllData();
@@ -513,11 +585,11 @@ export default function Approval() {
       <div style="font-family: Arial, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
         <h2 style="color: ${statusColor}; margin-top: 0; font-size: 18px;">Request ${newStatus}</h2>
         <p style="font-size: 14px;">Hello <strong>${empName}</strong>,</p>
-        <p style="font-size: 14px;">Your <strong>${reqType} (${item._category})</strong> request status has been updated to <strong>${newStatus}</strong> by your Line Manager (<strong>${userName}</strong>).</p>
+        <p style="font-size: 14px;">Your <strong>${reqType} (${item._category})</strong> request status has been updated to <strong>${newStatus}</strong> by your Line Manager (<strong>${actualUserName}</strong>).</p>
         ${reason ? `<p style="font-size: 14px; background: #fef2f2; border-left: 4px solid #ef4444; padding: 10px; margin: 15px 0;"><strong>Notes:</strong> ${reason}</p>` : ''}
         <div style="margin-top: 20px; padding: 12px; background: #f8fafc; border-radius: 8px; font-size: 13px;">
           <p style="margin: 4px 0;"><strong>Status:</strong> <span style="color: ${statusColor}; font-weight: bold;">${newStatus}</span></p>
-          <p style="margin: 4px 0;"><strong>Line Manager:</strong> ${userWorkEmail}</p>
+          <p style="margin: 4px 0;"><strong>Line Manager:</strong> ${actualUserWorkEmail}</p>
         </div>
       </div>
     `;
@@ -532,7 +604,7 @@ export default function Approval() {
           subject: `[${newStatus}] ${item._category} Request - ${empName}`,
           body: emailHtml,
           htmlBody: emailHtml,
-          fromEmail: userWorkEmail
+          fromEmail: actualUserWorkEmail
         })
       });
     } catch (e) {
@@ -568,7 +640,7 @@ export default function Approval() {
       };
 
       const approverCol = resolveTableColumn(cols, ['approved_by', 'Approved By', 'action_by', 'Action By', 'lasteditby', 'last_edit_by']);
-      if (approverCol) payload[approverCol] = userWorkEmail;
+      if (approverCol) payload[approverCol] = actualUserWorkEmail;
 
       const dateCol = resolveTableColumn(cols, ['approved_date', 'Approved Date', 'approved_at', 'lasteditdate', 'last_editdate', 'last_edit_date']);
       if (dateCol) payload[dateCol] = nowIso;
@@ -806,7 +878,7 @@ export default function Approval() {
       };
 
       const approverCol = resolveTableColumn(cols, ['approved_by', 'Approved By', 'action_by', 'Action By', 'lasteditby', 'last_edit_by']);
-      if (approverCol) payload[approverCol] = userWorkEmail;
+      if (approverCol) payload[approverCol] = actualUserWorkEmail;
 
       const dateCol = resolveTableColumn(cols, ['approved_date', 'Approved Date', 'approved_at', 'lasteditdate', 'last_editdate', 'last_edit_date']);
       if (dateCol) payload[dateCol] = nowIso;
@@ -1085,7 +1157,7 @@ export default function Approval() {
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
               <div className="hidden md:flex bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs">
                 <span className="text-gray-400 mr-1.5 font-medium">Line Manager:</span>
-                <span className="font-semibold text-gray-700">{userWorkEmail || 'Not Logged In'}</span>
+                <span className="font-semibold text-gray-700">{actualUserWorkEmail || sessionIdentifier || 'Not Logged In'}</span>
               </div>
 
               <button
