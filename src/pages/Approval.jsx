@@ -262,7 +262,7 @@ export default function Approval() {
   const [teamScheduleModalData, setTeamScheduleModalData] = useState(null);
 
   // Filter States: 'all' | 'pending' | 'approved'
-  const [statusTab, setStatusTab] = useState('all');
+  const [statusTab, setStatusTab] = useState('pending'); // Default to pending
   const [activeTab, setActiveTab] = useState('leave'); // 'leave' | 'attendance'
   const [selectedEmployee, setSelectedEmployee] = useState('all');
 
@@ -394,7 +394,8 @@ export default function Approval() {
           myAttendance = attData
             .filter(row => {
               const status = getRowStatus(row);
-              const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || !status;
+              // Untuk attendance tidak perlu yang approved, hanya yang pending atau blank yg butuh approve
+              const isRelevant = isPendingApprovalStatus(status) || !status;
               const isMyLineManager = isRecordForLineManager(row, userWorkEmail, subordinateEmails);
 
               return isRelevant && isMyLineManager;
@@ -1029,32 +1030,25 @@ export default function Approval() {
     return attendanceRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   }, [attendanceRequests]);
 
-  const approvedAttCount = useMemo(() => {
-    return attendanceRequests.filter(r => isApprovedStatus(getRowStatus(r))).length;
-  }, [attendanceRequests]);
-
-  // Handler pergantian tab kategori agar tidak stuck di filter kosong
+  // Handler pergantian tab kategori
   const handleSelectTab = (tab) => {
     setActiveTab(tab);
-    if (tab === 'attendance') {
-      if (statusTab === 'pending' && pendingAttCount === 0 && approvedAttCount > 0) {
-        setStatusTab('all');
-      }
-    } else if (tab === 'leave') {
-      if (statusTab === 'pending' && pendingLeavesCount === 0 && approvedLeavesCount > 0) {
-        setStatusTab('all');
-      }
-    }
+    // Because attendance does not have status dropdown, we don't need to check and switch
   };
 
   // Filtered List based on status tab, category tab, and selected employee
   const combinedList = useMemo(() => {
     let list = activeTab === 'leave' ? [...leaveRequests] : [...attendanceRequests];
 
-    if (statusTab === 'pending') {
-      list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
-    } else if (statusTab === 'approved') {
-      list = list.filter(item => isApprovedStatus(getRowStatus(item)));
+    if (activeTab === 'leave') {
+      if (statusTab === 'pending') {
+        list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
+      } else if (statusTab === 'approved') {
+        list = list.filter(item => isApprovedStatus(getRowStatus(item)));
+      }
+    } else {
+      // For attendance, it always behaves like 'pending' (no approved ones shown)
+      // Since it's already filtered in refreshAllData, we just use the list.
     }
 
     if (selectedEmployee && selectedEmployee !== 'all') {
@@ -1141,30 +1135,32 @@ export default function Approval() {
                 </button>
               </div>
 
-              {/* Status Dropdown Filter: All, Pending, Approved */}
-              <div className="relative flex-1 sm:flex-none sm:min-w-[170px]">
-                <select
-                  value={statusTab}
-                  onChange={(e) => setStatusTab(e.target.value)}
-                  className="w-full pl-3 pr-8 py-2 text-xs font-bold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer transition h-full"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 0.75rem center',
-                    backgroundSize: '1rem'
-                  }}
-                >
-                  <option value="all">
-                    All Status ({activeTab === 'leave' ? leaveRequests.length : attendanceRequests.length})
-                  </option>
-                  <option value="pending">
-                    Pending ({activeTab === 'leave' ? pendingLeavesCount : pendingAttCount})
-                  </option>
-                  <option value="approved">
-                    Approved ({activeTab === 'leave' ? approvedLeavesCount : approvedAttCount})
-                  </option>
-                </select>
-              </div>
+              {/* Status Dropdown Filter: Show ONLY if activeTab is leave */}
+              {activeTab === 'leave' && (
+                <div className="relative flex-1 sm:flex-none sm:min-w-[170px]">
+                  <select
+                    value={statusTab}
+                    onChange={(e) => setStatusTab(e.target.value)}
+                    className="w-full pl-3 pr-8 py-2 text-xs font-bold text-gray-800 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer transition h-full"
+                    style={{
+                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                      backgroundRepeat: 'no-repeat',
+                      backgroundPosition: 'right 0.75rem center',
+                      backgroundSize: '1rem'
+                    }}
+                  >
+                    <option value="pending">
+                      Pending ({pendingLeavesCount})
+                    </option>
+                    <option value="approved">
+                      Approved ({approvedLeavesCount})
+                    </option>
+                    <option value="all">
+                      All Status ({leaveRequests.length})
+                    </option>
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* Dropdown filter Employee */}
@@ -1226,7 +1222,7 @@ export default function Approval() {
                       </svg>
                       <p className="font-semibold text-gray-600 text-sm">No requests found.</p>
                       <p className="text-xs text-gray-400 mt-1">
-                        There are no {statusTab !== 'all' ? statusTab : ''} records matching your current filter.
+                        There are no records matching your current filter.
                       </p>
                     </div>
                   </td>
