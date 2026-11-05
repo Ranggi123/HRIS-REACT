@@ -111,6 +111,25 @@ const isApprovedStatus = (status) => {
   );
 };
 
+const isRejectedStatus = (status) => {
+  if (!status) return false;
+  const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
+  return (
+    s === 'rejected' ||
+    s === 'reject' ||
+    s === 'tolak' ||
+    s === 'ditolak' ||
+    s === 'cancelled' ||
+    s === 'cancel' ||
+    s === 'batal' ||
+    s === 'dibatalkan' ||
+    s.includes('reject') ||
+    s.includes('cancel') ||
+    s.includes('tolak') ||
+    s.includes('batal')
+  );
+};
+
 const getRowStatus = (row) => {
   if (!row) return '';
   const explicitApproval = getPropCaseInsensitive(
@@ -134,51 +153,54 @@ const getRowStatus = (row) => {
   return getPropCaseInsensitive(row, ['Status', 'status'], '');
 };
 
-// Helper pencocokan Line Manager strictly
-const matchesLineManager = (record, targetEmail, targetName = '') => {
-  if (!record || (!targetEmail && !targetName)) return false;
-  const tEmail = (targetEmail || '').trim().toLowerCase();
-  const tName = (targetName || '').trim().toLowerCase();
-  const tUser = tEmail.includes('@') ? tEmail.split('@')[0] : '';
-
+const matchesLineManager = (record, targetEmail, targetName = '', extraKeys = []) => {
+  if (!record) return false;
   const mgrVal = getPropCaseInsensitive(record, [
-    'Line Manager work email', 'line_manager_work_email', 'Line Manager Email',
-    'line_manager_email', 'Line Manager', 'line_manager', 'manager_email',
-    'Manager Email', 'Approver Email', 'approver_email', 'Approver', 'approver',
-    'Atasan Email', 'atasan_email'
+    'Line Manager work email',
+    'line_manager_work_email',
+    'Line Manager Email',
+    'line_manager_email',
+    'Line Manager',
+    'line_manager',
+    'Line_Manager',
+    'linemanager',
+    'manager_email',
+    'Manager Email',
+    'Manager',
+    'manager',
+    'Approver Email',
+    'approver_email',
+    'Approver',
+    'approver',
+    'Atasan Email',
+    'atasan_email',
+    'Atasan',
+    'atasan',
+    'approval_line_manager'
   ], '').trim().toLowerCase();
 
+  // STRICT: Jika kolom tidak ada, kosong, '-', 'null', atau 'undefined', LANGSUNG TOLAK
   if (!mgrVal || mgrVal === '-' || mgrVal === 'null' || mgrVal === 'undefined') {
     return false;
   }
 
-  if (tEmail && (mgrVal === tEmail || mgrVal.includes(tEmail) || tEmail.includes(mgrVal))) return true;
-  if (tUser && tUser.length > 2 && (mgrVal === tUser || mgrVal.includes(tUser) || tUser.includes(mgrVal))) return true;
-  if (tName && tName.length > 2 && (mgrVal === tName || mgrVal.includes(tName) || tName.includes(mgrVal))) return true;
+  const allKeys = new Set([
+    (targetEmail || '').trim().toLowerCase(),
+    (targetName || '').trim().toLowerCase(),
+    (targetEmail || '').includes('@') ? (targetEmail || '').split('@')[0].trim().toLowerCase() : '',
+    ...extraKeys.map(k => (k || '').trim().toLowerCase())
+  ]);
 
-  return false;
-};
-
-// Fungsi pengecekan hybrid untuk attendance dan leave
-const isRecordForMyTeam = (record, targetEmail, targetName, subordinateEmails, category) => {
-  const isLineManagerMatched = matchesLineManager(record, targetEmail, targetName);
-  
-  if (isLineManagerMatched) return true;
-
-  // Jika tidak match, tapi ini tabel attendance, kita gunakan FALLBACK bawahan
-  // Karena seringkali tabel attendance tidak memiliki kolom Line Manager yang valid saat awal mula insert
-  if (category === 'Attendance') {
-    const empEmail = (getPropCaseInsensitive(record, [
-      'Employee work email', 'employee_work_email', 'work_email', 'work email',
-      'Work Email', 'Employee', 'employee', 'email', 'Email', 'user_uid'
-    ]) || '').trim().toLowerCase();
-    
-    return Boolean(empEmail && subordinateEmails.includes(empEmail));
+  for (const key of allKeys) {
+    if (key && key.length >= 2) {
+      if (mgrVal === key || mgrVal.includes(key) || key.includes(mgrVal)) {
+        return true;
+      }
+    }
   }
 
   return false;
 };
-
 
 // Calendar Date Matcher
 const checkDateMatch = (rawDbDate, targetYear, targetMonth, targetDay) => {
@@ -239,8 +261,8 @@ export default function Approval() {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [teamScheduleModalData, setTeamScheduleModalData] = useState(null);
 
-  // Filter States: 'all' | 'pending' | 'approved'
-  const [statusTab, setStatusTab] = useState('pending'); // Default to pending
+  // Filter States: 'all' | 'pending' | 'approved' | 'rejected'
+  const [statusTab, setStatusTab] = useState('pending'); // Default: Pending
   const [activeTab, setActiveTab] = useState('leave'); // 'leave' | 'attendance'
   const [selectedEmployee, setSelectedEmployee] = useState('all');
 
@@ -254,94 +276,96 @@ export default function Approval() {
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
 
-  // Line Manager login identifier (from session)
-  const sessionIdentifier = useMemo(() => {
+  // Line Manager Work Email of current logged in user
+  const userWorkEmail = useMemo(() => {
     return (
       getPropCaseInsensitive(currentUser, [
-        'email',
-        'Email',
-        'user_uid',
-        'USER_UID',
         'Employee work email',
         'employee_work_email',
         'work_email',
         'work email',
-        'Work Email'
+        'Work Email',
+        'email',
+        'Email',
+        'user_uid',
+        'USER_UID'
       ]) || ''
     ).trim().toLowerCase();
   }, [currentUser]);
 
-  const sessionName = useMemo(() => {
-    return getPropCaseInsensitive(currentUser, ['Name', 'name', 'nama', 'fullname', 'full_name'], sessionIdentifier.split('@')[0] || 'Manager');
-  }, [currentUser, sessionIdentifier]);
+  const userName = useMemo(() => {
+    return getPropCaseInsensitive(currentUser, ['Name', 'name', 'nama', 'fullname', 'full_name'], userWorkEmail.split('@')[0] || 'Manager');
+  }, [currentUser, userWorkEmail]);
 
-  // State untuk menyimpan data riil user yang sedang login dari directory
   const [actualUserWorkEmail, setActualUserWorkEmail] = useState('');
   const [actualUserName, setActualUserName] = useState('');
 
   // Fetch Requests, Directory, and Schedule for this Line Manager
+  // Fetch Requests, Directory, and Schedule for this Line Manager
   const refreshAllData = useCallback(async () => {
-    if (!sessionIdentifier) return;
+    if (!userWorkEmail && !userName) return;
     setLoading(true);
 
     try {
       let subordinateEmails = [];
       const subordinateIdentifiers = new Set();
-      let realWorkEmail = sessionIdentifier;
-      let realName = sessionName;
-
-      // 0. Ambil data riil user yang sedang login dari employee_directory terlebih dahulu
-      // Ini berguna jika email login (session) berbeda dengan work email di sistem HRIS
-      try {
-        const { data: myDirData } = await supabase
-          .from('employee_directory')
-          .select('*');
-          
-        if (myDirData && myDirData.length > 0) {
-          // Cari record diri sendiri (berdasarkan login email/uid atau nama)
-          const myRecord = myDirData.find(emp => {
-            const empEmail = (getPropCaseInsensitive(emp, ['Email', 'email', 'user_uid']) || '').trim().toLowerCase();
-            const empWorkEmail = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email']) || '').trim().toLowerCase();
-            return empEmail === sessionIdentifier || empWorkEmail === sessionIdentifier;
-          });
-
-          if (myRecord) {
-            // Gunakan Employee work email riil dari database
-            const foundWorkEmail = getPropCaseInsensitive(myRecord, [
-              'Employee work email',
-              'employee_work_email',
-              'work_email',
-              'work email',
-              'Work Email',
-              'email',
-              'Email'
-            ]).trim().toLowerCase();
-            
-            if (foundWorkEmail) realWorkEmail = foundWorkEmail;
-            
-            const foundName = getPropCaseInsensitive(myRecord, ['Name', 'name', 'nama', 'fullname', 'full_name']);
-            if (foundName) realName = foundName;
-          }
-        }
-      } catch (err) {
-        console.warn("[Approval] Error fetching real user data:", err);
-      }
-
-      setActualUserWorkEmail(realWorkEmail);
-      setActualUserName(realName);
+      const employeeDirectoryMap = new Map();
+      let realWorkEmail = userWorkEmail;
+      let realName = userName;
 
       // 1. Fetch Subordinate Employees from employee_directory
       try {
         const { data: dirData, error: dirErr } = await supabase
           .from('employee_directory')
           .select('*')
-          .limit(2000);
+          .limit(2500);
 
         if (dirErr) {
           console.warn("[Approval] Error fetching employee_directory:", dirErr.message);
         } else if (dirData) {
-          // Gunakan realWorkEmail yang sudah divalidasi dari database
-          const subordinates = dirData.filter(row => matchesLineManager(row, realWorkEmail, realName));
+          // Cari profil manajer sendiri di database untuk mendapatkan Work Email resmi
+          const myProfile = dirData.find(emp => {
+            const empEmail = (getPropCaseInsensitive(emp, ['Email', 'email', 'user_uid']) || '').trim().toLowerCase();
+            const empWorkEmail = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
+            const empName = (getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name']) || '').trim().toLowerCase();
+            const empJob = (getPropCaseInsensitive(emp, ['Job Title', 'job_title']) || '').trim().toLowerCase();
+
+            if (userWorkEmail && (empEmail === userWorkEmail || empWorkEmail === userWorkEmail)) return true;
+            if (userName && empName === userName.toLowerCase()) return true;
+            if (empJob.includes('business applications manager')) return true;
+            return false;
+          });
+
+          if (myProfile) {
+            const foundWorkEmail = getPropCaseInsensitive(myProfile, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']).trim().toLowerCase();
+            if (foundWorkEmail) realWorkEmail = foundWorkEmail;
+
+            const foundName = getPropCaseInsensitive(myProfile, ['Name', 'name', 'nama', 'fullname', 'full_name']);
+            if (foundName) realName = foundName;
+          }
+
+          setActualUserWorkEmail(realWorkEmail);
+          setActualUserName(realName);
+
+          // Kumpulan kunci manajer (work email, login email, nama, username)
+          const managerKeys = Array.from(new Set([
+            userWorkEmail,
+            realWorkEmail,
+            userName.toLowerCase(),
+            realName.toLowerCase(),
+            userWorkEmail.includes('@') ? userWorkEmail.split('@')[0] : '',
+            realWorkEmail.includes('@') ? realWorkEmail.split('@')[0] : ''
+          ])).filter(Boolean);
+
+          // Simpan mapping nama karyawan untuk lookup nama di presensi
+          dirData.forEach(emp => {
+            const email = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Email', 'email']) || '').trim().toLowerCase();
+            const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
+            if (email) employeeDirectoryMap.set(email, name);
+          });
+
+          // Subordinates: Line Manager di directory harus cocok dengan manajer
+          const subordinates = dirData.filter(row => matchesLineManager(row, realWorkEmail, realName, managerKeys));
           
           const uniqueMap = new Map();
           subordinates.forEach(emp => {
@@ -371,18 +395,55 @@ export default function Approval() {
 
           subordinateEmails = Array.from(uniqueMap.keys());
           setTeamMembers(Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
+          console.log("[Approval Debug] Subordinate emails found:", subordinateEmails);
         }
       } catch (err) {
         console.warn("[Approval] Could not query employee_directory:", err);
       }
 
-      // 2. Fetch Leave Requests (Pending and Approved)
+      const allManagerKeys = Array.from(new Set([
+        userWorkEmail,
+        realWorkEmail,
+        userName.toLowerCase(),
+        realName.toLowerCase(),
+        userWorkEmail.includes('@') ? userWorkEmail.split('@')[0] : '',
+        realWorkEmail.includes('@') ? realWorkEmail.split('@')[0] : ''
+      ])).filter(Boolean);
+
+      // Helper pencocokan data karyawan bawahan (murni mengacu pada kolom Employee/Email)
+      const checkIsSubordinate = (row) => {
+        if (!row) return false;
+        const empEmail = (getPropCaseInsensitive(row, [
+          'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
+          'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
+        ]) || '').trim().toLowerCase();
+
+        const empName = (getPropCaseInsensitive(row, [
+          'Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'
+        ]) || '').trim().toLowerCase();
+
+        const empId = (getPropCaseInsensitive(row, [
+          'Employee ID', 'employee_id', 'employeeid', 'id', 'Barcode', 'barcode',
+          'nik', 'nip', 'user_id', 'uid'
+        ]) || '').trim().toLowerCase();
+
+        if (empEmail && (subordinateEmails.includes(empEmail) || subordinateIdentifiers.has(empEmail))) return true;
+        if (empName && subordinateIdentifiers.has(empName)) return true;
+        if (empId && subordinateIdentifiers.has(empId)) return true;
+
+        if (empEmail && subordinateEmails.some(sub => empEmail.includes(sub) || sub.includes(empEmail))) return true;
+        if (empName && Array.from(subordinateIdentifiers).some(id => id && (empName.includes(id) || id.includes(empName)))) return true;
+
+        return false;
+      };
+
+      // 2. Fetch Leave Requests: STRICT MATCH (Hanya jika Line Manager cocok; jika kosong/'-' otomatis ditolak)
       let myLeaves = [];
       try {
         const { data: lvData, error: lvError } = await supabase
           .from('leave_requests')
           .select('*')
-          .limit(2000);
+          .limit(3000);
 
         if (lvError) {
           console.warn("[Approval] Error fetching leave_requests:", lvError.message);
@@ -390,10 +451,12 @@ export default function Approval() {
           myLeaves = lvData
             .filter(row => {
               const status = getRowStatus(row);
-              const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
-              const isMyLineManager = isRecordForMyTeam(row, realWorkEmail, realName, subordinateEmails, row._category);
+              // Loloskan jika status Pending, Approved, atau Cancelled/Rejected
+              const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
+              // STRICT: Pengajuan cuti WAJIB memiliki Line Manager yang cocok. Tidak ada fallback!
+              const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
 
-              return isRelevant && isMyLineManager;
+              return isRelevant && hasDirectMgr;
             })
             .map(row => ({
               ...row,
@@ -405,31 +468,48 @@ export default function Approval() {
         console.warn("[Approval] Failed fetching leave_requests:", e);
       }
 
-      // 3. Fetch Attendance Requests
+      // 3. Fetch Attendance Requests langsung dari tabel 'attendance'
       let myAttendance = [];
       try {
         const { data: attData, error: attErr } = await supabase
           .from('attendance')
           .select('*')
-          .limit(3000);
+          .limit(10000);
 
         if (attErr) {
           console.error("[Approval] Error query table attendance:", attErr.message);
         } else if (attData) {
+          console.log("[Approval Debug] Total raw attendance rows in Supabase:", attData.length);
           myAttendance = attData
             .filter(row => {
               const status = getRowStatus(row);
-              // Untuk attendance tidak perlu yang approved, hanya yang pending atau blank yg butuh approve
-              const isRelevant = isPendingApprovalStatus(status) || !status;
-              const isMyLineManager = isRecordForMyTeam(row, realWorkEmail, realName, subordinateEmails, row._category);
+              // Hanya tampilkan status Pending / menunggu persetujuan (Approved tidak ditampilkan)
+              const isPending = isPendingApprovalStatus(status) || !status;
+              if (!isPending) return false;
 
-              return isRelevant && isMyLineManager;
+              // 1. Cek kolom Line Manager di baris presensi jika ada
+              const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
+              // 2. Cek apakah pembuatnya bawahan (via Employee, email, dsb)
+              const isSub = checkIsSubordinate(row);
+
+              return hasDirectMgr || isSub;
             })
-            .map(row => ({
-              ...row,
-              _category: 'Attendance',
-              _sourceTable: 'attendance'
-            }));
+            .map(row => {
+              const creatorEmail = (getPropCaseInsensitive(row, [
+                'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'user_uid'
+              ]) || '').trim().toLowerCase();
+              const autoName = employeeDirectoryMap.get(creatorEmail) || '';
+
+              return {
+                ...row,
+                Name: row.Name || row.name || autoName || creatorEmail || 'Employee',
+                Employee: row.Employee || row.employee || creatorEmail,
+                _category: 'Attendance',
+                _sourceTable: 'attendance'
+              };
+            });
+
+          console.log("[Approval Debug] Data presensi bawahan siap tampil:", myAttendance.length);
         }
       } catch (e) {
         console.error("[Approval] Exception saat query attendance:", e);
@@ -446,7 +526,7 @@ export default function Approval() {
         if (!schedErr && schedData) {
           teamSched = schedData.filter(row => {
             const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email']) || '').trim().toLowerCase();
-            return subordinateEmails.includes(empEmail);
+            return subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => empEmail.includes(sub));
           });
         }
       } catch (e) {
@@ -460,7 +540,7 @@ export default function Approval() {
       console.error('[Approval] Error fetching approval records:', err);
     }
     setLoading(false);
-  }, [sessionIdentifier, sessionName]);
+  }, [userWorkEmail, userName]);
 
   useEffect(() => {
     refreshAllData();
@@ -547,11 +627,11 @@ export default function Approval() {
       <div style="font-family: Arial, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
         <h2 style="color: ${statusColor}; margin-top: 0; font-size: 18px;">Request ${newStatus}</h2>
         <p style="font-size: 14px;">Hello <strong>${empName}</strong>,</p>
-        <p style="font-size: 14px;">Your <strong>${reqType} (${item._category})</strong> request status has been updated to <strong>${newStatus}</strong> by your Line Manager (<strong>${actualUserName}</strong>).</p>
+        <p style="font-size: 14px;">Your <strong>${reqType} (${item._category})</strong> request status has been updated to <strong>${newStatus}</strong> by your Line Manager (<strong>${userName}</strong>).</p>
         ${reason ? `<p style="font-size: 14px; background: #fef2f2; border-left: 4px solid #ef4444; padding: 10px; margin: 15px 0;"><strong>Notes:</strong> ${reason}</p>` : ''}
         <div style="margin-top: 20px; padding: 12px; background: #f8fafc; border-radius: 8px; font-size: 13px;">
           <p style="margin: 4px 0;"><strong>Status:</strong> <span style="color: ${statusColor}; font-weight: bold;">${newStatus}</span></p>
-          <p style="margin: 4px 0;"><strong>Line Manager:</strong> ${actualUserWorkEmail}</p>
+          <p style="margin: 4px 0;"><strong>Line Manager:</strong> ${userWorkEmail}</p>
         </div>
       </div>
     `;
@@ -566,7 +646,7 @@ export default function Approval() {
           subject: `[${newStatus}] ${item._category} Request - ${empName}`,
           body: emailHtml,
           htmlBody: emailHtml,
-          fromEmail: actualUserWorkEmail
+          fromEmail: userWorkEmail
         })
       });
     } catch (e) {
@@ -602,7 +682,7 @@ export default function Approval() {
       };
 
       const approverCol = resolveTableColumn(cols, ['approved_by', 'Approved By', 'action_by', 'Action By', 'lasteditby', 'last_edit_by']);
-      if (approverCol) payload[approverCol] = actualUserWorkEmail;
+      if (approverCol) payload[approverCol] = userWorkEmail;
 
       const dateCol = resolveTableColumn(cols, ['approved_date', 'Approved Date', 'approved_at', 'lasteditdate', 'last_editdate', 'last_edit_date']);
       if (dateCol) payload[dateCol] = nowIso;
@@ -840,7 +920,7 @@ export default function Approval() {
       };
 
       const approverCol = resolveTableColumn(cols, ['approved_by', 'Approved By', 'action_by', 'Action By', 'lasteditby', 'last_edit_by']);
-      if (approverCol) payload[approverCol] = actualUserWorkEmail;
+      if (approverCol) payload[approverCol] = userWorkEmail;
 
       const dateCol = resolveTableColumn(cols, ['approved_date', 'Approved Date', 'approved_at', 'lasteditdate', 'last_editdate', 'last_edit_date']);
       if (dateCol) payload[dateCol] = nowIso;
@@ -908,7 +988,7 @@ export default function Approval() {
             const isTypeMatch = leaveType.toLowerCase().includes('extra')
               ? (t.includes('extra off') || t.includes('extra'))
               : (t.includes('day off') || t.includes('dayoff'));
-              if (!isTypeMatch) return false;
+            if (!isTypeMatch) return false;
 
             const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
             return validKeys.some(k => empVal === k || empVal.includes(k) || k.includes(empVal));
@@ -1049,14 +1129,30 @@ export default function Approval() {
     return leaveRequests.filter(r => isApprovedStatus(getRowStatus(r))).length;
   }, [leaveRequests]);
 
+  const rejectedLeavesCount = useMemo(() => {
+    return leaveRequests.filter(r => isRejectedStatus(getRowStatus(r))).length;
+  }, [leaveRequests]);
+
   const pendingAttCount = useMemo(() => {
     return attendanceRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   }, [attendanceRequests]);
 
-  // Handler pergantian tab kategori
+  const approvedAttCount = useMemo(() => {
+    return attendanceRequests.filter(r => isApprovedStatus(getRowStatus(r))).length;
+  }, [attendanceRequests]);
+
+  // Handler pergantian tab kategori agar tidak stuck di filter kosong
   const handleSelectTab = (tab) => {
     setActiveTab(tab);
-    // Because attendance does not have status dropdown, we don't need to check and switch
+    if (tab === 'attendance') {
+      if (statusTab === 'pending' && pendingAttCount === 0 && approvedAttCount > 0) {
+        setStatusTab('all');
+      }
+    } else if (tab === 'leave') {
+      if (statusTab === 'pending' && pendingLeavesCount === 0 && approvedLeavesCount > 0) {
+        setStatusTab('all');
+      }
+    }
   };
 
   // Filtered List based on status tab, category tab, and selected employee
@@ -1068,10 +1164,9 @@ export default function Approval() {
         list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
       } else if (statusTab === 'approved') {
         list = list.filter(item => isApprovedStatus(getRowStatus(item)));
+      } else if (statusTab === 'rejected') {
+        list = list.filter(item => isRejectedStatus(getRowStatus(item)));
       }
-    } else {
-      // For attendance, it always behaves like 'pending' (no approved ones shown)
-      // Since it's already filtered in refreshAllData, we just use the list.
     }
 
     if (selectedEmployee && selectedEmployee !== 'all') {
@@ -1119,7 +1214,7 @@ export default function Approval() {
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
               <div className="hidden md:flex bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs">
                 <span className="text-gray-400 mr-1.5 font-medium">Line Manager:</span>
-                <span className="font-semibold text-gray-700">{actualUserWorkEmail || sessionIdentifier || 'Not Logged In'}</span>
+                <span className="font-semibold text-gray-700">{actualUserWorkEmail || userWorkEmail || 'Not Logged In'}</span>
               </div>
 
               <button
@@ -1148,17 +1243,17 @@ export default function Approval() {
                   onClick={() => handleSelectTab('leave')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'leave' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
-                  Leave ({leaveRequests.length})
+                  Leave ({pendingLeavesCount})
                 </button>
                 <button
                   onClick={() => handleSelectTab('attendance')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${activeTab === 'attendance' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
-                  Attendance ({attendanceRequests.length})
+                  Attendance ({pendingAttCount})
                 </button>
               </div>
 
-              {/* Status Dropdown Filter: Show ONLY if activeTab is leave */}
+              {/* Status Dropdown Filter: Hanya tampil saat tab Leave */}
               {activeTab === 'leave' && (
                 <div className="relative flex-1 sm:flex-none sm:min-w-[170px]">
                   <select
@@ -1177,6 +1272,9 @@ export default function Approval() {
                     </option>
                     <option value="approved">
                       Approved ({approvedLeavesCount})
+                    </option>
+                    <option value="rejected">
+                      Cancel / Reject ({rejectedLeavesCount})
                     </option>
                     <option value="all">
                       All Status ({leaveRequests.length})
@@ -1245,7 +1343,7 @@ export default function Approval() {
                       </svg>
                       <p className="font-semibold text-gray-600 text-sm">No requests found.</p>
                       <p className="text-xs text-gray-400 mt-1">
-                        There are no records matching your current filter.
+                        There are no {statusTab !== 'all' ? statusTab : ''} records matching your current filter.
                       </p>
                     </div>
                   </td>
@@ -1539,7 +1637,7 @@ export default function Approval() {
                 Email: {getPropCaseInsensitive(selectedRequest, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email'], '-')}
               </div>
               <div className="text-xs text-gray-500">
-                Line Manager: {getPropCaseInsensitive(selectedRequest, ['Line Manager', 'line_manager', 'Line Manager Email', 'line_manager_email', 'Line Manager work email', 'manager_email', 'Approver'], '-')}
+                Line Manager: {getPropCaseInsensitive(selectedRequest, ['Line Manager', 'line_manager', 'Line Manager Email', 'manager_email', 'Approver'], '-')}
               </div>
             </div>
 
