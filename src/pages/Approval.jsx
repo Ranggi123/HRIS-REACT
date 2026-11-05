@@ -519,7 +519,10 @@ export default function Approval() {
               const isPending = isPendingApprovalStatus(status);
               if (!isPending) return false;
 
-              // Jangan tampilkan pengajuan cuti yang diajukan oleh user yang sedang login
+              // 1. Cek kolom Line Manager di baris presensi (Wajib cocok dengan user yang login)
+              const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
+
+              // 2. Jangan tampilkan pengajuan yang diajukan oleh user yang sedang login
               const empVal = (getPropCaseInsensitive(row, [
                 'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
                 'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
@@ -527,8 +530,7 @@ export default function Approval() {
               const empPrefix = empVal.includes('@') ? empVal.split('@')[0] : empVal;
               const isSelf = userPrefix && (empVal === cleanUserWorkEmail || empPrefix === userPrefix);
 
-              // Tampilkan semua presensi yang berstatus pending (mengabaikan filter Line Manager)
-              return !isSelf;
+              return hasDirectMgr && !isSelf;
             })
             .map(row => {
               const creatorEmail = (getPropCaseInsensitive(row, [
@@ -652,7 +654,7 @@ export default function Approval() {
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'employee_name'], 'Employee');
     const reqType = item._category === 'Leave'
       ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type'], 'Leave')
-      : (getPropCaseInsensitive(item, ['Action', 'action', 'Type', 'type', 'Attendance Type'], 'Attendance'));
+      : (getPropCaseInsensitive(item, ['Are you checking out or Checking in?', 'are you checking out or checking in?', 'Are you checking out or checking in', 'Action', 'action', 'Type', 'type', 'Attendance Type'], 'Attendance'));
 
     if (!empEmail || !empEmail.includes('@')) return;
 
@@ -1392,7 +1394,7 @@ export default function Approval() {
                   
                   const reqType = isLeave
                     ? getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], 'Leave')
-                    : getPropCaseInsensitive(item, ['Action', 'action', 'Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Attendance');
+                    : getPropCaseInsensitive(item, ['Are you checking out or Checking in?', 'are you checking out or checking in?', 'Are you checking out or checking in', 'Action', 'action', 'Type', 'type', 'Attendance Type', 'attendance_type', 'Request Type'], 'Attendance');
 
                   const status = getRowStatus(item) || (item._category === 'Leave' ? 'Approved' : 'Pending');
                   let dateInfo = '-';
@@ -1649,8 +1651,14 @@ export default function Approval() {
 
       {/* Detail Request Modal */}
       {isDetailModalOpen && selectedRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-4 sm:p-6 border border-gray-100 max-h-[90vh] overflow-y-auto">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setIsDetailModalOpen(false)}
+        >
+          <div 
+            className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-4 sm:p-6 border border-gray-100 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             
             <div className="flex justify-between items-center pb-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
@@ -1742,10 +1750,26 @@ export default function Approval() {
 
                   {getPropCaseInsensitive(selectedRequest, ['Location', 'location']) && (
                     <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                      <span className="text-[10px] text-gray-400 font-semibold block">GPS Location</span>
-                      <span className="text-xs font-semibold text-blue-600">
-                        {getPropCaseInsensitive(selectedRequest, ['Location', 'location'])}
-                      </span>
+                      <span className="text-[10px] text-gray-400 font-semibold block mb-2">GPS Location</span>
+                      <div className="w-full h-32 sm:h-40 rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                        <iframe 
+                          width="100%" 
+                          height="100%" 
+                          style={{ border: 0 }} 
+                          loading="lazy" 
+                          allowFullScreen 
+                          referrerPolicy="no-referrer-when-downgrade" 
+                          src={`https://maps.google.com/maps?q=${encodeURIComponent(getPropCaseInsensitive(selectedRequest, ['Location', 'location']))}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
+                        ></iframe>
+                      </div>
+                      <a 
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(getPropCaseInsensitive(selectedRequest, ['Location', 'location']))}`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-[10px] text-blue-600 hover:underline mt-1.5 inline-block font-semibold"
+                      >
+                        Buka di aplikasi Google Maps &rarr;
+                      </a>
                     </div>
                   )}
                 </>
