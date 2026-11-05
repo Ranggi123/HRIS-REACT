@@ -30,6 +30,18 @@ const parseFlexibleDate = (dateVal) => {
   return null;
 };
 
+const formatDateTimeDisplay = (dateVal, lang = 'en') => {
+  const parsed = parseFlexibleDate(dateVal);
+  if (!parsed) return (dateVal && dateVal !== '-') ? String(dateVal) : '-';
+  const locale = lang === 'id' ? 'id-ID' : 'en-US';
+  const d = String(parsed.getDate()).padStart(2, '0');
+  const m = parsed.toLocaleDateString(locale, { month: 'short' });
+  const y = parsed.getFullYear();
+  const hh = String(parsed.getHours()).padStart(2, '0');
+  const mm = String(parsed.getMinutes()).padStart(2, '0');
+  return `${d} ${m} ${y} ${hh}:${mm}`;
+};
+
 const formatDateDisplay = (dateVal, lang = 'en') => {
   const parsed = parseFlexibleDate(dateVal);
   if (!parsed) return (dateVal && dateVal !== '-') ? String(dateVal) : '-';
@@ -1433,7 +1445,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
               <tr>
                 <th className="px-5 py-3.5 font-semibold">Employee</th>
                 <th className="px-5 py-3.5 font-semibold">Request Type</th>
-                <th className="px-5 py-3.5 font-semibold">{activeCategoryTab === 'attendance' ? 'Attendance Date' : 'Leave Period'}</th>
+                <th className="px-5 py-3.5 font-semibold">{activeCategoryTab === 'attendance' ? 'Attendance Time' : 'Leave Period'}</th>
                 <th className="px-5 py-3.5 font-semibold text-center">Status</th>
                 <th className="px-5 py-3.5 font-semibold text-center">Action</th>
               </tr>
@@ -1487,9 +1499,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
                   }
                   const status = getRowStatus(item) || 'Approved';
                   
-                  const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date', 'created_at', 'CreatedDate']), lang);
+                  const rawDate = getPropCaseInsensitive(item, ['Time', 'time', 'created_at', 'CreatedDate', 'From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date']);
+                  const fromDate = formatDateDisplay(rawDate, lang);
                   const toDateRaw = getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']);
-                  const dateInfo = toDateRaw ? `${fromDate} - ${formatDateDisplay(toDateRaw, lang)}` : fromDate;
+                  
+                  let dateInfo = toDateRaw ? `${fromDate} - ${formatDateDisplay(toDateRaw, lang)}` : fromDate;
+                  if (item._category === 'Attendance') {
+                     dateInfo = formatDateTimeDisplay(rawDate, lang);
+                  }
 
                   return (
                     <tr
@@ -1786,9 +1803,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                  <span className="text-[10px] text-gray-400 font-semibold block">{selectedRequest._category === 'Attendance' ? 'Date' : 'From Date'}</span>
+                  <span className="text-[10px] text-gray-400 font-semibold block">{selectedRequest._category === 'Attendance' ? 'Attendance Time' : 'From Date'}</span>
                   <span className="text-xs sm:text-sm font-semibold text-gray-800">
-                    {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date', 'created_at', 'CreatedDate']), lang)}
+                    {selectedRequest._category === 'Attendance'
+                       ? formatDateTimeDisplay(getPropCaseInsensitive(selectedRequest, ['Time', 'time', 'created_at', 'CreatedDate', 'From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date']), lang)
+                       : formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date', 'created_at', 'CreatedDate']), lang)}
                   </span>
                 </div>
                 
