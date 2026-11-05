@@ -134,39 +134,72 @@ const getRowStatus = (row) => {
   return getPropCaseInsensitive(row, ['Status', 'status'], '');
 };
 
-const matchesLineManager = (record, targetEmail, targetName = '') => {
-  if (!record || (!targetEmail && !targetName)) return false;
+// Helper pencocokan Line Manager strictly dengan userWorkEmail
+const matchesLineManager = (record, targetEmail) => {
+  if (!record || !targetEmail) return false;
   const mgrVal = getPropCaseInsensitive(record, [
-    'Line Manager',
-    'line_manager',
-    'Line Manager Email',
-    'line_manager_email',
     'Line Manager work email',
     'line_manager_work_email',
+    'Line Manager Email',
+    'line_manager_email',
+    'Line Manager',
+    'line_manager',
     'manager_email',
     'Manager Email',
-    'Approver',
-    'approver',
     'Approver Email',
     'approver_email',
-    'Manager',
-    'manager',
+    'Approver',
+    'approver',
     'Atasan Email',
-    'atasan_email',
-    'Atasan',
-    'atasan'
+    'atasan_email'
   ], '').trim().toLowerCase();
 
   if (!mgrVal) return false;
-  const tEmail = (targetEmail || '').trim().toLowerCase();
-  const tName = (targetName || '').trim().toLowerCase();
-  const tUser = tEmail.includes('@') ? tEmail.split('@')[0] : '';
+  const tEmail = targetEmail.trim().toLowerCase();
 
-  if (tEmail && (mgrVal === tEmail || mgrVal.includes(tEmail) || tEmail.includes(mgrVal))) return true;
-  if (tUser && tUser.length > 2 && (mgrVal === tUser || mgrVal.includes(tUser) || tUser.includes(mgrVal))) return true;
-  if (tName && (mgrVal === tName || mgrVal.includes(tName) || tName.includes(mgrVal))) return true;
+  return mgrVal === tEmail || mgrVal.includes(tEmail);
+};
 
-  return false;
+// Verifikasi apakah pengajuan milik Line Manager yang sedang login
+const isRecordForLineManager = (record, targetEmail, subordinateEmails = []) => {
+  if (!record || !targetEmail) return false;
+  const tEmail = targetEmail.trim().toLowerCase();
+
+  const mgrVal = getPropCaseInsensitive(record, [
+    'Line Manager work email',
+    'line_manager_work_email',
+    'Line Manager Email',
+    'line_manager_email',
+    'Line Manager',
+    'line_manager',
+    'manager_email',
+    'Manager Email',
+    'Approver Email',
+    'approver_email',
+    'Approver',
+    'approver',
+    'Atasan Email',
+    'atasan_email'
+  ], '').trim().toLowerCase();
+
+  if (mgrVal) {
+    return mgrVal === tEmail || mgrVal.includes(tEmail);
+  }
+
+  const empEmail = (getPropCaseInsensitive(record, [
+    'Employee work email',
+    'employee_work_email',
+    'work_email',
+    'work email',
+    'Work Email',
+    'Employee',
+    'employee',
+    'email',
+    'Email',
+    'user_uid'
+  ]) || '').trim().toLowerCase();
+
+  return Boolean(empEmail && subordinateEmails.includes(empEmail));
 };
 
 // Calendar Date Matcher
@@ -266,7 +299,7 @@ export default function Approval() {
 
   // Fetch Requests, Directory, and Schedule for this Line Manager
   const refreshAllData = useCallback(async () => {
-    if (!userWorkEmail && !userName) return;
+    if (!userWorkEmail) return;
     setLoading(true);
 
     try {
@@ -283,7 +316,7 @@ export default function Approval() {
         if (dirErr) {
           console.warn("[Approval] Error fetching employee_directory:", dirErr.message);
         } else if (dirData) {
-          const subordinates = dirData.filter(row => matchesLineManager(row, userWorkEmail, userName));
+          const subordinates = dirData.filter(row => matchesLineManager(row, userWorkEmail));
           
           const uniqueMap = new Map();
           subordinates.forEach(emp => {
@@ -318,33 +351,6 @@ export default function Approval() {
         console.warn("[Approval] Could not query employee_directory:", err);
       }
 
-      // Helper pencocokan data karyawan bawahan
-      const checkIsSubordinate = (row) => {
-        if (!row) return false;
-        const empEmail = (getPropCaseInsensitive(row, [
-          'Employee', 'employee', 'email', 'Email', 'user_uid', 'employee_email',
-          'work_email', 'work email', 'Employee work email', 'user_email'
-        ]) || '').trim().toLowerCase();
-
-        const empName = (getPropCaseInsensitive(row, [
-          'Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'
-        ]) || '').trim().toLowerCase();
-
-        const empId = (getPropCaseInsensitive(row, [
-          'Employee ID', 'employee_id', 'employeeid', 'id', 'Barcode', 'barcode',
-          'nik', 'nip', 'user_id', 'uid'
-        ]) || '').trim().toLowerCase();
-
-        if (empEmail && (subordinateEmails.includes(empEmail) || subordinateIdentifiers.has(empEmail))) return true;
-        if (empName && subordinateIdentifiers.has(empName)) return true;
-        if (empId && subordinateIdentifiers.has(empId)) return true;
-
-        if (empEmail && subordinateEmails.some(sub => empEmail.includes(sub) || sub.includes(empEmail))) return true;
-        if (empName && Array.from(subordinateIdentifiers).some(id => id && (empName.includes(id) || id.includes(empName)))) return true;
-
-        return false;
-      };
-
       // 2. Fetch Leave Requests (Pending and Approved)
       let myLeaves = [];
       try {
@@ -360,21 +366,9 @@ export default function Approval() {
             .filter(row => {
               const status = getRowStatus(row);
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status);
-              const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
-              const isSub = checkIsSubordinate(row);
+              const isMyLineManager = isRecordForLineManager(row, userWorkEmail, subordinateEmails);
 
-              const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']) || '').trim().toLowerCase();
-              const empName = (getPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name']) || '').trim().toLowerCase();
-
-              if (hasDirectMgr) {
-                if (empEmail) {
-                  subordinateIdentifiers.add(empEmail);
-                  if (!subordinateEmails.includes(empEmail)) subordinateEmails.push(empEmail);
-                }
-                if (empName) subordinateIdentifiers.add(empName);
-              }
-
-              return isRelevant && (hasDirectMgr || isSub);
+              return isRelevant && isMyLineManager;
             })
             .map(row => ({
               ...row,
@@ -400,12 +394,10 @@ export default function Approval() {
           myAttendance = attData
             .filter(row => {
               const status = getRowStatus(row);
-              // Loloskan jika status relevan (Pending/Approved) atau jika tidak ada status spesifik tetapi milik bawahan
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || !status;
-              const hasDirectMgr = matchesLineManager(row, userWorkEmail, userName);
-              const isSub = checkIsSubordinate(row);
+              const isMyLineManager = isRecordForLineManager(row, userWorkEmail, subordinateEmails);
 
-              return isRelevant && (hasDirectMgr || isSub);
+              return isRelevant && isMyLineManager;
             })
             .map(row => ({
               ...row,
@@ -430,7 +422,7 @@ export default function Approval() {
         if (!schedErr && schedData) {
           teamSched = schedData.filter(row => {
             const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email']) || '').trim().toLowerCase();
-            return subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => empEmail.includes(sub));
+            return subordinateEmails.includes(empEmail);
           });
         }
       } catch (e) {
@@ -444,7 +436,7 @@ export default function Approval() {
       console.error('[Approval] Error fetching approval records:', err);
     }
     setLoading(false);
-  }, [userWorkEmail, userName]);
+  }, [userWorkEmail]);
 
   useEffect(() => {
     refreshAllData();
@@ -892,7 +884,7 @@ export default function Approval() {
             const isTypeMatch = leaveType.toLowerCase().includes('extra')
               ? (t.includes('extra off') || t.includes('extra'))
               : (t.includes('day off') || t.includes('dayoff'));
-            if (!isTypeMatch) return false;
+              if (!isTypeMatch) return false;
 
             const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
             return validKeys.some(k => empVal === k || empVal.includes(k) || k.includes(empVal));
@@ -1528,7 +1520,7 @@ export default function Approval() {
                 Email: {getPropCaseInsensitive(selectedRequest, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email'], '-')}
               </div>
               <div className="text-xs text-gray-500">
-                Line Manager: {getPropCaseInsensitive(selectedRequest, ['Line Manager', 'line_manager', 'Line Manager Email', 'manager_email', 'Approver'], '-')}
+                Line Manager: {getPropCaseInsensitive(selectedRequest, ['Line Manager', 'line_manager', 'Line Manager Email', 'line_manager_email', 'Line Manager work email', 'manager_email', 'Approver'], '-')}
               </div>
             </div>
 
