@@ -324,15 +324,23 @@ export default function Approval() {
           console.warn("[Approval] Error fetching employee_directory:", dirErr.message);
         } else if (dirData) {
           // Cari profil manajer sendiri di database untuk mendapatkan Work Email resmi
+          const cleanUserWorkEmail = (userWorkEmail || '').trim().toLowerCase();
+          const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
+
+          // Cari profil diri sendiri secara presisi TANPA bypass hardcode
           const myProfile = dirData.find(emp => {
             const empEmail = (getPropCaseInsensitive(emp, ['Email', 'email', 'user_uid']) || '').trim().toLowerCase();
             const empWorkEmail = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
             const empName = (getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name']) || '').trim().toLowerCase();
-            const empJob = (getPropCaseInsensitive(emp, ['Job Title', 'job_title']) || '').trim().toLowerCase();
 
-            if (userWorkEmail && (empEmail === userWorkEmail || empWorkEmail === userWorkEmail)) return true;
+            const empEmailPrefix = empEmail.includes('@') ? empEmail.split('@')[0] : empEmail;
+            const empWorkPrefix = empWorkEmail.includes('@') ? empWorkEmail.split('@')[0] : empWorkEmail;
+
+            if (cleanUserWorkEmail) {
+              if (empEmail === cleanUserWorkEmail || empWorkEmail === cleanUserWorkEmail) return true;
+              if (userPrefix && (empEmailPrefix === userPrefix || empWorkPrefix === userPrefix)) return true;
+            }
             if (userName && empName === userName.toLowerCase()) return true;
-            if (empJob.includes('business applications manager')) return true;
             return false;
           });
 
@@ -348,14 +356,17 @@ export default function Approval() {
           setActualUserName(realName);
 
           // Kumpulan kunci manajer (work email, login email, nama, username)
+          const cleanRealWorkEmail = (realWorkEmail || '').trim().toLowerCase();
+          const realPrefix = cleanRealWorkEmail.includes('@') ? cleanRealWorkEmail.split('@')[0] : cleanRealWorkEmail;
+
           const managerKeys = Array.from(new Set([
             userWorkEmail,
             realWorkEmail,
+            userPrefix,
+            realPrefix,
             userName.toLowerCase(),
-            realName.toLowerCase(),
-            userWorkEmail.includes('@') ? userWorkEmail.split('@')[0] : '',
-            realWorkEmail.includes('@') ? realWorkEmail.split('@')[0] : ''
-          ])).filter(Boolean);
+            realName.toLowerCase()
+          ])).filter(k => k && k.length >= 2);
 
           // Simpan mapping nama karyawan untuk lookup nama di presensi
           dirData.forEach(emp => {
@@ -401,14 +412,19 @@ export default function Approval() {
         console.warn("[Approval] Could not query employee_directory:", err);
       }
 
+      const cleanRealWorkEmail = (realWorkEmail || '').trim().toLowerCase();
+      const realPrefix = cleanRealWorkEmail.includes('@') ? cleanRealWorkEmail.split('@')[0] : cleanRealWorkEmail;
+      const cleanUserWorkEmail = (userWorkEmail || '').trim().toLowerCase();
+      const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
+
       const allManagerKeys = Array.from(new Set([
         userWorkEmail,
         realWorkEmail,
+        userPrefix,
+        realPrefix,
         userName.toLowerCase(),
-        realName.toLowerCase(),
-        userWorkEmail.includes('@') ? userWorkEmail.split('@')[0] : '',
-        realWorkEmail.includes('@') ? realWorkEmail.split('@')[0] : ''
-      ])).filter(Boolean);
+        realName.toLowerCase()
+      ])).filter(k => k && k.length >= 2);
 
       // Helper pencocokan data karyawan bawahan (murni mengacu pada kolom Employee/Email)
       const checkIsSubordinate = (row) => {
@@ -452,15 +468,24 @@ export default function Approval() {
         if (lvError) {
           console.warn("[Approval] Error fetching leave_requests:", lvError.message);
         } else if (lvData) {
+          const cleanUserWorkEmail = (userWorkEmail || '').trim().toLowerCase();
+          const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
+
           myLeaves = lvData
             .filter(row => {
               const status = getRowStatus(row);
-              // Loloskan jika status Pending, Approved, atau Cancelled/Rejected
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
-              // STRICT: Pengajuan cuti WAJIB memiliki Line Manager yang cocok. Tidak ada fallback!
               const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
 
-              return isRelevant && hasDirectMgr;
+              // Jangan tampilkan pengajuan cuti yang diajukan oleh user yang sedang login
+              const empVal = (getPropCaseInsensitive(row, [
+                'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
+                'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
+              ]) || '').trim().toLowerCase();
+              const empPrefix = empVal.includes('@') ? empVal.split('@')[0] : empVal;
+              const isSelf = userPrefix && (empVal === cleanUserWorkEmail || empPrefix === userPrefix);
+
+              return isRelevant && hasDirectMgr && !isSelf;
             })
             .map(row => ({
               ...row,
@@ -484,6 +509,9 @@ export default function Approval() {
           console.error("[Approval] Error query table attendance:", attErr.message);
         } else if (attData) {
           console.log("[Approval Debug] Total raw attendance rows in Supabase:", attData.length);
+          const cleanUserWorkEmail = (userWorkEmail || '').trim().toLowerCase();
+          const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
+
           myAttendance = attData
             .filter(row => {
               const status = getRowStatus(row);
@@ -496,7 +524,15 @@ export default function Approval() {
               // 2. Cek apakah pembuatnya bawahan (via Employee, email, dsb)
               const isSub = checkIsSubordinate(row);
 
-              return hasDirectMgr || isSub;
+              // Jangan tampilkan pengajuan cuti yang diajukan oleh user yang sedang login
+              const empVal = (getPropCaseInsensitive(row, [
+                'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
+                'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
+              ]) || '').trim().toLowerCase();
+              const empPrefix = empVal.includes('@') ? empVal.split('@')[0] : empVal;
+              const isSelf = userPrefix && (empVal === cleanUserWorkEmail || empPrefix === userPrefix);
+
+              return (hasDirectMgr || isSub) && !isSelf;
             })
             .map(row => {
               const creatorEmail = (getPropCaseInsensitive(row, [
