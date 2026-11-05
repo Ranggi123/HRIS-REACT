@@ -419,7 +419,7 @@ export default function Approval() {
         ]) || '').trim().toLowerCase();
 
         const empName = (getPropCaseInsensitive(row, [
-          'Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'
+          'Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan', 'Employee', 'employee'
         ]) || '').trim().toLowerCase();
 
         const empId = (getPropCaseInsensitive(row, [
@@ -430,6 +430,10 @@ export default function Approval() {
         if (empEmail && (subordinateEmails.includes(empEmail) || subordinateIdentifiers.has(empEmail))) return true;
         if (empName && subordinateIdentifiers.has(empName)) return true;
         if (empId && subordinateIdentifiers.has(empId)) return true;
+        
+        // Cek parsial nama jika Employee berisi nama yang tidak lengkap
+        if (empName && Array.from(subordinateIdentifiers).some(sub => sub.length > 3 && (empName.includes(sub) || sub.includes(empName)))) return true;
+        if (empEmail && Array.from(subordinateIdentifiers).some(sub => sub.length > 3 && (empEmail.includes(sub) || sub.includes(empEmail)))) return true;
 
         if (empEmail && subordinateEmails.some(sub => empEmail.includes(sub) || sub.includes(empEmail))) return true;
         if (empName && Array.from(subordinateIdentifiers).some(id => id && (empName.includes(id) || id.includes(empName)))) return true;
@@ -1412,6 +1416,9 @@ export default function Approval() {
                       <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         {(() => {
                           const s = getRowStatus(item);
+                          if (isRejectedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'cancelled') {
+                            return <span className="text-[11px] text-gray-400 italic font-semibold px-2 py-1 bg-gray-50 rounded-md">No Action</span>;
+                          }
                           if (isApprovedStatus(s)) {
                             return (
                               <button
