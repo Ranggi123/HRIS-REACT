@@ -301,7 +301,6 @@ export default function Approval() {
   const [actualUserName, setActualUserName] = useState('');
 
   // Fetch Requests, Directory, and Schedule for this Line Manager
-  // Fetch Requests, Directory, and Schedule for this Line Manager
   const refreshAllData = useCallback(async () => {
     if (!userWorkEmail && !userName) return;
     setLoading(true);
@@ -497,7 +496,7 @@ export default function Approval() {
         console.warn("[Approval] Failed fetching leave_requests:", e);
       }
 
-      // 3. Fetch Attendance Requests langsung dari tabel 'attendance'
+      // NEW: Fetch Attendance Requests STRICTLY by Status="Pending Approval" and Line Manager=User Work Email
       let myAttendance = [];
       try {
         const { data: attData, error: attErr } = await supabase
@@ -510,27 +509,37 @@ export default function Approval() {
         } else if (attData) {
           console.log("[Approval Debug] Total raw attendance rows in Supabase:", attData.length);
           const cleanUserWorkEmail = (userWorkEmail || '').trim().toLowerCase();
-          const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
 
           myAttendance = attData
             .filter(row => {
+              // 1. Check Status = Pending Approval
               const status = getRowStatus(row);
-              // Hanya tampilkan status Pending / menunggu persetujuan (presensi reguler tanpa status diabaikan)
               const isPending = isPendingApprovalStatus(status);
-              if (!isPending) return false;
+              
+              // Tampilkan yang relevant (pending, approved, rejected)
+              const isRelevant = isPending || isApprovedStatus(status) || isRejectedStatus(status);
+              if (!isRelevant) return false;
 
-              // 1. Cek kolom Line Manager di baris presensi (Wajib cocok dengan user yang login)
-              const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
+              // 2. Check Line Manager = User Work Email precisely
+              const lineManager = getPropCaseInsensitive(row, [
+                'Line Manager work email', 'line_manager_work_email', 'Line Manager Email',
+                'line_manager_email', 'Line Manager', 'line_manager', 'manager_email',
+                'Approver Email', 'Atasan Email', 'approval_line_manager'
+              ], '').trim().toLowerCase();
 
-              // 2. Jangan tampilkan pengajuan yang diajukan oleh user yang sedang login
+              if (!lineManager || lineManager === '-' || lineManager === 'null' || lineManager === 'undefined') {
+                return false;
+              }
+
+              // Jangan tampilkan pengajuan yang diajukan oleh user login sendiri
               const empVal = (getPropCaseInsensitive(row, [
                 'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
                 'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
               ]) || '').trim().toLowerCase();
-              const empPrefix = empVal.includes('@') ? empVal.split('@')[0] : empVal;
-              const isSelf = userPrefix && (empVal === cleanUserWorkEmail || empPrefix === userPrefix);
+              
+              const isSelf = (empVal === cleanUserWorkEmail);
 
-              return hasDirectMgr && !isSelf;
+              return (lineManager === cleanUserWorkEmail) && !isSelf;
             })
             .map(row => {
               const creatorEmail = (getPropCaseInsensitive(row, [
