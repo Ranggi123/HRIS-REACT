@@ -1222,12 +1222,16 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const displayList = useMemo(() => {
     let list = [...activeCategoryList];
 
-    if (statusTab === 'pending') {
+    if (activeCategoryTab === 'attendance') {
       list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
-    } else if (statusTab === 'approved') {
-      list = list.filter(item => isApprovedStatus(getRowStatus(item)));
-    } else if (statusTab === 'rejected') {
-      list = list.filter(item => isRejectedStatus(getRowStatus(item)));
+    } else {
+      if (statusTab === 'pending') {
+        list = list.filter(item => isPendingApprovalStatus(getRowStatus(item)));
+      } else if (statusTab === 'approved') {
+        list = list.filter(item => isApprovedStatus(getRowStatus(item)));
+      } else if (statusTab === 'rejected') {
+        list = list.filter(item => isRejectedStatus(getRowStatus(item)));
+      }
     }
 
     if (selectedEmployee && selectedEmployee !== 'all') {
@@ -1251,7 +1255,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'Time', 'time', 'created_at'])) || new Date(0);
       return dtB.getTime() - dtA.getTime();
     });
-  }, [activeCategoryList, statusTab, selectedEmployee]);
+  }, [activeCategoryList, activeCategoryTab, statusTab, selectedEmployee]);
 
   // Dropdown counts (dynamically changes based on active category)
   const pendingStatusCount = activeCategoryList.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
@@ -1322,24 +1326,26 @@ export default function Approval({ currentUser: propCurrentUser }) {
           </div>
 
           {/* Status Filter matching image design */}
-          <div className="relative ml-0 sm:ml-2 w-full sm:w-[180px]">
-            <select
-              value={statusTab}
-              onChange={(e) => setStatusTab(e.target.value)}
-              className="w-full pl-3.5 pr-8 py-1.5 text-[13px] font-bold text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm cursor-pointer transition"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'right 0.75rem center',
-                backgroundSize: '1rem'
-              }}
-            >
-              <option value="pending">Pending ({pendingStatusCount})</option>
-              <option value="approved">Approved ({approvedStatusCount})</option>
-              <option value="rejected">Rejected ({rejectedStatusCount})</option>
-              <option value="all">All Status</option>
-            </select>
-          </div>
+          {activeCategoryTab !== 'attendance' && (
+            <div className="relative ml-0 sm:ml-2 w-full sm:w-[180px]">
+              <select
+                value={statusTab}
+                onChange={(e) => setStatusTab(e.target.value)}
+                className="w-full pl-3.5 pr-8 py-1.5 text-[13px] font-bold text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm cursor-pointer transition"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 0.75rem center',
+                  backgroundSize: '1rem'
+                }}
+              >
+                <option value="pending">Pending ({pendingStatusCount})</option>
+                <option value="approved">Approved ({approvedStatusCount})</option>
+                <option value="rejected">Rejected ({rejectedStatusCount})</option>
+                <option value="all">All Status</option>
+              </select>
+            </div>
+          )}
 
           {/* Employee Dropdown Filter */}
           <div className="relative w-full sm:w-[200px]">
