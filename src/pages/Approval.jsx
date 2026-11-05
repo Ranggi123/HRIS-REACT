@@ -32,7 +32,7 @@ const parseFlexibleDate = (dateVal) => {
 
 const formatDateDisplay = (dateVal, lang = 'en') => {
   const parsed = parseFlexibleDate(dateVal);
-  if (!parsed) return dateVal || '-';
+  if (!parsed) return (dateVal && dateVal !== '-') ? String(dateVal) : '-';
   const locale = lang === 'id' ? 'id-ID' : 'en-US';
   const d = String(parsed.getDate()).padStart(2, '0');
   const m = parsed.toLocaleDateString(locale, { month: 'short' });
@@ -41,7 +41,7 @@ const formatDateDisplay = (dateVal, lang = 'en') => {
 };
 
 const formatTimeDisplay = (timeVal) => {
-  if (!timeVal) return '';
+  if (!timeVal || timeVal === '-') return '';
   const parsed = parseFlexibleDate(timeVal);
   if (parsed) {
     const hh = String(parsed.getHours()).padStart(2, '0');
@@ -78,7 +78,7 @@ const resolveTableColumn = (knownCols, candidates) => {
 
 // Approval Status Checkers (Bilingual: ID & EN)
 const isPendingApprovalStatus = (status) => {
-  if (!status) return false;
+  if (!status || status === '-' || status === 'null') return false;
   const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
   return (
     s === 'pendingapproval' ||
@@ -97,7 +97,7 @@ const isPendingApprovalStatus = (status) => {
 };
 
 const isApprovedStatus = (status) => {
-  if (!status) return false;
+  if (!status || status === '-' || status === 'null') return false;
   const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
   return (
     s === 'approved' ||
@@ -112,7 +112,7 @@ const isApprovedStatus = (status) => {
 };
 
 const isRejectedStatus = (status) => {
-  if (!status) return false;
+  if (!status || status === '-' || status === 'null') return false;
   const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
   return (
     s === 'rejected' ||
@@ -130,29 +130,48 @@ const isRejectedStatus = (status) => {
   );
 };
 
+// Robust Row Status Resolver: Prioritizes recognizable approval statuses and skips "-" or nulls
 const getRowStatus = (row) => {
   if (!row) return '';
-  const explicitApproval = getPropCaseInsensitive(
-    row,
-    [
-      'Approval Status',
-      'approval_status',
-      'Status Approval',
-      'status_approval',
-      'Approval',
-      'approval',
-      'Request Status',
-      'request_status',
-      'Status Pengajuan',
-      'status_pengajuan'
-    ],
-    ''
-  );
-  if (explicitApproval) return explicitApproval;
+  const candidateKeys = [
+    'Status',
+    'status',
+    'Approval Status',
+    'approval_status',
+    'Status Approval',
+    'status_approval',
+    'Approval',
+    'approval',
+    'Request Status',
+    'request_status',
+    'Status Pengajuan',
+    'status_pengajuan',
+    'attendance_status',
+    'Attendance Status'
+  ];
 
-  return getPropCaseInsensitive(row, ['Status', 'status'], '');
+  // 1. First pass: find any column that has a recognized approval status keyword
+  for (const k of candidateKeys) {
+    const val = getPropCaseInsensitive(row, [k], '');
+    if (val && val !== '-' && val !== 'null' && val !== 'undefined') {
+      if (isPendingApprovalStatus(val) || isApprovedStatus(val) || isRejectedStatus(val)) {
+        return val;
+      }
+    }
+  }
+
+  // 2. Second pass: fallback to the first non-empty, non-dash value among candidates
+  for (const k of candidateKeys) {
+    const val = getPropCaseInsensitive(row, [k], '');
+    if (val && val !== '-' && val !== 'null' && val !== 'undefined') {
+      return val;
+    }
+  }
+
+  return '';
 };
 
+// Flexible Line Manager Matcher
 const matchesLineManager = (record, targetEmail, targetName = '', extraKeys = []) => {
   if (!record) return false;
   const mgrVal = getPropCaseInsensitive(record, [
@@ -176,6 +195,8 @@ const matchesLineManager = (record, targetEmail, targetName = '', extraKeys = []
     'atasan_email',
     'Atasan',
     'atasan',
+    'atasan_langsung',
+    'Atasan Langsung',
     'approval_line_manager'
   ], '').trim().toLowerCase();
 
@@ -183,6 +204,8 @@ const matchesLineManager = (record, targetEmail, targetName = '', extraKeys = []
   if (!mgrVal || mgrVal === '-' || mgrVal === 'null' || mgrVal === 'undefined') {
     return false;
   }
+
+  const cleanMgrVal = mgrVal.replace(/<|>|\(|\)/g, ' ').trim();
 
   const allKeys = new Set([
     (targetEmail || '').trim().toLowerCase(),
@@ -193,7 +216,12 @@ const matchesLineManager = (record, targetEmail, targetName = '', extraKeys = []
 
   for (const key of allKeys) {
     if (key && key.length >= 2) {
-      if (mgrVal === key) { // BUG FIX: Menggunakan strict equal untuk mencegah false positive
+      if (
+        cleanMgrVal === key ||
+        mgrVal === key ||
+        (key.includes('@') && cleanMgrVal.includes(key)) ||
+        (cleanMgrVal.includes('@') && key.includes(cleanMgrVal))
+      ) {
         return true;
       }
     }
@@ -238,15 +266,23 @@ const monthNames = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-export default function Approval() {
-  const [currentUser] = useState(() => {
-    const saved = localStorage.getItem('hris_session_data');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { return null; }
+export default function Approval({ currentUser: propCurrentUser }) {
+  // Support both props from parent and localStorage session fallback
+  const [sessionUser] = useState(() => {
+    const possibleKeys = ['hris_session_data', 'currentUser', 'user', 'hris_user'];
+    for (const k of possibleKeys) {
+      const saved = localStorage.getItem(k);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') return parsed;
+        } catch (e) {}
+      }
     }
     return null;
   });
 
+  const currentUser = propCurrentUser || sessionUser;
   const lang = localStorage.getItem('hris_lang') || 'en';
 
   // Data States
@@ -255,7 +291,7 @@ export default function Approval() {
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [attendanceRequests, setAttendanceRequests] = useState([]);
 
-  // Active Category Tab: 'attendance' | 'leave'
+  // Active Category Tab: 'attendance' | 'leave' (Default to Attendance as requested)
   const [activeCategoryTab, setActiveCategoryTab] = useState('attendance');
 
   // Team Calendar & Directory States
@@ -278,7 +314,7 @@ export default function Approval() {
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
 
-  // Line Manager Work Email of current logged in user
+  // User Work Email exactly as seen in TopNav
   const userWorkEmail = useMemo(() => {
     return (
       getPropCaseInsensitive(currentUser, [
@@ -295,6 +331,19 @@ export default function Approval() {
     ).trim().toLowerCase();
   }, [currentUser]);
 
+  // TopNav direct email (TopNav line 89 uses: currentUser?.email || currentUser?.Email || currentUser?.USER_UID)
+  const topNavEmail = useMemo(() => {
+    return (
+      currentUser?.email ||
+      currentUser?.Email ||
+      currentUser?.USER_UID ||
+      currentUser?.['Employee work email'] ||
+      currentUser?.employee_work_email ||
+      userWorkEmail ||
+      ''
+    ).trim().toLowerCase();
+  }, [currentUser, userWorkEmail]);
+
   const userName = useMemo(() => {
     return getPropCaseInsensitive(currentUser, ['Name', 'name', 'nama', 'fullname', 'full_name'], userWorkEmail.split('@')[0] || 'Manager');
   }, [currentUser, userWorkEmail]);
@@ -304,14 +353,14 @@ export default function Approval() {
 
   // Fetch Requests, Directory, and Schedule for this Line Manager
   const refreshAllData = useCallback(async () => {
-    if (!userWorkEmail && !userName) return;
+    if (!userWorkEmail && !topNavEmail && !userName) return;
     setLoading(true);
 
     try {
       let subordinateEmails = [];
       const subordinateIdentifiers = new Set();
       const employeeDirectoryMap = new Map();
-      let realWorkEmail = userWorkEmail;
+      let realWorkEmail = userWorkEmail || topNavEmail;
       let realName = userName;
 
       // 1. Fetch Subordinate Employees from employee_directory
@@ -324,7 +373,7 @@ export default function Approval() {
         if (dirErr) {
           console.warn("[Approval] Error fetching employee_directory:", dirErr.message);
         } else if (dirData) {
-          const cleanUserWorkEmail = (userWorkEmail || '').trim().toLowerCase();
+          const cleanUserWorkEmail = (userWorkEmail || topNavEmail || '').trim().toLowerCase();
           const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
 
           const myProfile = dirData.find(emp => {
@@ -359,6 +408,7 @@ export default function Approval() {
 
           const managerKeys = Array.from(new Set([
             userWorkEmail,
+            topNavEmail,
             realWorkEmail,
             userPrefix,
             realPrefix,
@@ -409,11 +459,12 @@ export default function Approval() {
 
       const cleanRealWorkEmail = (realWorkEmail || '').trim().toLowerCase();
       const realPrefix = cleanRealWorkEmail.includes('@') ? cleanRealWorkEmail.split('@')[0] : cleanRealWorkEmail;
-      const cleanUserWorkEmail = (userWorkEmail || '').trim().toLowerCase();
+      const cleanUserWorkEmail = (userWorkEmail || topNavEmail || '').trim().toLowerCase();
       const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
 
       const allManagerKeys = Array.from(new Set([
         userWorkEmail,
+        topNavEmail,
         realWorkEmail,
         userPrefix,
         realPrefix,
@@ -442,8 +493,7 @@ export default function Approval() {
                 'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
                 'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
               ]) || '').trim().toLowerCase();
-              const empPrefix = empVal.includes('@') ? empVal.split('@')[0] : empVal;
-              const isSelf = userPrefix && (empVal === cleanUserWorkEmail || empPrefix === userPrefix);
+              const isSelf = cleanUserWorkEmail && (empVal === cleanUserWorkEmail);
 
               return isRelevant && hasDirectMgr && !isSelf;
             })
@@ -457,37 +507,78 @@ export default function Approval() {
         console.warn("[Approval] Failed fetching leave_requests:", e);
       }
 
-      // 3. Fetch Attendance Requests: Kondisi Line Manager = User Work Email
+      // 3. Fetch Attendance Requests: Kondisi Line Manager = User Work Email di TopNav
       let myAttendance = [];
       try {
-        const { data: attData, error: attError } = await supabase
-          .from('attendance')
-          .select('*')
-          .limit(3000);
+        let attData = [];
 
-        if (attError) {
-          console.warn("[Approval] Error fetching attendance:", attError.message);
-        } else if (attData) {
+        // Attempt 1: Fetch recent records (try id desc if supported)
+        try {
+          const { data: recentAtt, error: orderErr } = await supabase
+            .from('attendance')
+            .select('*')
+            .order('id', { ascending: false })
+            .limit(3000);
+
+          if (!orderErr && recentAtt) {
+            attData = recentAtt;
+          } else {
+            const { data: defAtt } = await supabase.from('attendance').select('*').limit(3000);
+            if (defAtt) attData = defAtt;
+          }
+        } catch (e) {
+          const { data: defAtt } = await supabase.from('attendance').select('*').limit(3000);
+          if (defAtt) attData = defAtt;
+        }
+
+        // Attempt 2: Explicitly query pending approval records to guarantee no pending records are missed
+        try {
+          const { data: pendingAttRows } = await supabase
+            .from('attendance')
+            .select('*')
+            .ilike('Status', '%Pending%')
+            .limit(1000);
+
+          if (pendingAttRows && pendingAttRows.length > 0) {
+            const existingIds = new Set(attData.map(r => r.id ?? `${r.Employee}_${r.Date}_${r.Status}`));
+            pendingAttRows.forEach(r => {
+              const rowKey = r.id ?? `${r.Employee}_${r.Date}_${r.Status}`;
+              if (!existingIds.has(rowKey)) {
+                attData.unshift(r);
+                existingIds.add(rowKey);
+              }
+            });
+          }
+        } catch (e) {}
+
+        console.log(`[Approval] Total raw attendance records fetched: ${attData.length}`);
+
+        if (attData && attData.length > 0) {
           myAttendance = attData
             .filter(row => {
               const status = getRowStatus(row);
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
-              const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
 
-              const empVal = (getPropCaseInsensitive(row, [
+              // Match Line Manager by direct column OR by subordinate team member
+              const empEmail = (getPropCaseInsensitive(row, [
                 'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
                 'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
               ]) || '').trim().toLowerCase();
-              const empPrefix = empVal.includes('@') ? empVal.split('@')[0] : empVal;
-              const isSelf = userPrefix && (empVal === cleanUserWorkEmail || empPrefix === userPrefix);
 
-              return isRelevant && hasDirectMgr && !isSelf;
+              const hasDirectMgr = 
+                matchesLineManager(row, realWorkEmail, realName, allManagerKeys) ||
+                (empEmail && subordinateEmails.includes(empEmail)) ||
+                (empEmail && subordinateEmails.some(sub => sub && (sub === empEmail || empEmail.includes(sub) || sub.includes(empEmail))));
+
+              return isRelevant && hasDirectMgr;
             })
             .map(row => ({
               ...row,
               _category: 'Attendance',
               _sourceTable: 'attendance'
             }));
+
+          console.log(`[Approval] Filtered attendance records for line manager (${cleanRealWorkEmail || topNavEmail}): ${myAttendance.length}`);
         }
       } catch (e) {
         console.warn("[Approval] Failed fetching attendance:", e);
@@ -518,7 +609,7 @@ export default function Approval() {
       console.error('[Approval] Error fetching approval records:', err);
     }
     setLoading(false);
-  }, [userWorkEmail, userName]);
+  }, [userWorkEmail, topNavEmail, userName]);
 
   useEffect(() => {
     refreshAllData();
@@ -592,7 +683,7 @@ export default function Approval() {
   const sendNotificationEmail = async (item, newStatus, reason = '') => {
     const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']);
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'employee_name'], 'Employee');
-    const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'Action', 'action'], item._category || 'Leave');
+    const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'Action', 'action', 'Status Type', 'Attendance Type'], item._category || 'Request');
 
     if (!empEmail || !empEmail.includes('@')) return;
 
@@ -607,7 +698,7 @@ export default function Approval() {
         ${reason ? `<p style="font-size: 14px; background: #fef2f2; border-left: 4px solid #ef4444; padding: 10px; margin: 15px 0;"><strong>Notes:</strong> ${reason}</p>` : ''}
         <div style="margin-top: 20px; padding: 12px; background: #f8fafc; border-radius: 8px; font-size: 13px;">
           <p style="margin: 4px 0;"><strong>Status:</strong> <span style="color: ${statusColor}; font-weight: bold;">${newStatus}</span></p>
-          <p style="margin: 4px 0;"><strong>Line Manager:</strong> ${userWorkEmail}</p>
+          <p style="margin: 4px 0;"><strong>Line Manager:</strong> ${actualUserWorkEmail || topNavEmail || userWorkEmail}</p>
         </div>
       </div>
     `;
@@ -622,7 +713,7 @@ export default function Approval() {
           subject: `[${newStatus}] ${item._category} Request - ${empName}`,
           body: emailHtml,
           htmlBody: emailHtml,
-          fromEmail: userWorkEmail
+          fromEmail: actualUserWorkEmail || topNavEmail || userWorkEmail
         })
       });
     } catch (e) {
@@ -642,12 +733,12 @@ export default function Approval() {
         'approval_status',
         'Status Approval',
         'status_approval',
+        'Status',
+        'status',
         'Approval',
         'approval',
         'Request Status',
-        'request_status',
-        'Status',
-        'status'
+        'request_status'
       ]) || 'Status';
 
       const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'no', '_id']);
@@ -657,8 +748,17 @@ export default function Approval() {
         [statusCol]: newStatus
       };
 
+      // Ensure both 'Status' and 'Approval Status' stay synchronized if both exist
+      if (statusCol.toLowerCase() !== 'status') {
+        const altStatusCol = resolveTableColumn(cols, ['Status', 'status']);
+        if (altStatusCol) payload[altStatusCol] = newStatus;
+      } else {
+        const altApprovalCol = resolveTableColumn(cols, ['Approval Status', 'approval_status', 'Status Approval', 'status_approval', 'Approval']);
+        if (altApprovalCol) payload[altApprovalCol] = newStatus;
+      }
+
       const approverCol = resolveTableColumn(cols, ['approved_by', 'Approved By', 'action_by', 'Action By', 'lasteditby', 'last_edit_by']);
-      if (approverCol) payload[approverCol] = userWorkEmail;
+      if (approverCol) payload[approverCol] = actualUserWorkEmail || topNavEmail || userWorkEmail;
 
       const dateCol = resolveTableColumn(cols, ['approved_date', 'Approved Date', 'approved_at', 'lasteditdate', 'last_editdate', 'last_edit_date']);
       if (dateCol) payload[dateCol] = nowIso;
@@ -681,7 +781,7 @@ export default function Approval() {
       const { error } = await query;
       if (error) throw error;
 
-      // LEAVE APPROVAL POST-LOGIC (Hanya jika category Leave)
+      // LEAVE APPROVAL POST-LOGIC (Only for Leave requests)
       if (newStatus === 'Approved' && item._category === 'Leave') {
         const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'user_uid', 'email']);
         const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name']);
@@ -864,7 +964,7 @@ export default function Approval() {
   const handleCancelApproved = async (item) => {
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Employee');
     const reqCategory = item._category || 'Leave';
-    const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Action', 'action', 'Type', 'type'], reqCategory);
+    const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Action', 'action', 'Type', 'type', 'Attendance Type'], reqCategory);
 
     if (!window.confirm(`Batalkan persetujuan ${reqType} untuk ${empName}?`)) {
       return;
@@ -880,12 +980,12 @@ export default function Approval() {
         'approval_status',
         'Status Approval',
         'status_approval',
+        'Status',
+        'status',
         'Approval',
         'approval',
         'Request Status',
-        'request_status',
-        'Status',
-        'status'
+        'request_status'
       ]) || 'Status';
 
       const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'no', '_id']);
@@ -895,8 +995,16 @@ export default function Approval() {
         [statusCol]: 'Cancelled'
       };
 
+      if (statusCol.toLowerCase() !== 'status') {
+        const altStatusCol = resolveTableColumn(cols, ['Status', 'status']);
+        if (altStatusCol) payload[altStatusCol] = 'Cancelled';
+      } else {
+        const altApprovalCol = resolveTableColumn(cols, ['Approval Status', 'approval_status', 'Status Approval', 'status_approval', 'Approval']);
+        if (altApprovalCol) payload[altApprovalCol] = 'Cancelled';
+      }
+
       const approverCol = resolveTableColumn(cols, ['approved_by', 'Approved By', 'action_by', 'Action By', 'lasteditby', 'last_edit_by']);
-      if (approverCol) payload[approverCol] = userWorkEmail;
+      if (approverCol) payload[approverCol] = actualUserWorkEmail || topNavEmail || userWorkEmail;
 
       const dateCol = resolveTableColumn(cols, ['approved_date', 'Approved Date', 'approved_at', 'lasteditdate', 'last_editdate', 'last_edit_date']);
       if (dateCol) payload[dateCol] = nowIso;
@@ -1183,7 +1291,7 @@ export default function Approval() {
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
               <div className="hidden md:flex bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs">
                 <span className="text-gray-400 mr-1.5 font-medium">Line Manager:</span>
-                <span className="font-semibold text-gray-700">{actualUserWorkEmail || userWorkEmail || 'Not Logged In'}</span>
+                <span className="font-semibold text-gray-700">{actualUserWorkEmail || topNavEmail || userWorkEmail || 'Not Logged In'}</span>
               </div>
 
               <button
@@ -1201,7 +1309,7 @@ export default function Approval() {
           </div>
         </div>
 
-        {/* --- TOMBOL PEMISAH TAB BARU: ATTENDANCE & LEAVE --- */}
+        {/* --- TOMBOL PEMISAH TAB: ATTENDANCE & LEAVE --- */}
         <div className="flex items-center gap-2 px-4 sm:px-6 pt-3 bg-gray-50/70 border-b border-gray-200">
           <button
             type="button"
@@ -1338,12 +1446,20 @@ export default function Approval() {
                 </tr>
               ) : (
                 displayList.map((item, idx) => {
-                  const employeeName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'], 'No Name');
                   const employeeEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email'], '-');
-                  const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype', 'Action', 'action', 'Status Type', 'Attendance Type'], item._category);
+                  const employeeName = getPropCaseInsensitive(
+                    item, 
+                    ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'], 
+                    teamMembers.find(m => m.email.toLowerCase() === employeeEmail.toLowerCase())?.name || employeeEmail
+                  );
+                  const reqType = getPropCaseInsensitive(
+                    item, 
+                    ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype', 'Action', 'action', 'Status Type', 'Attendance Type', 'attendance_type', 'Request Type', 'request_type', 'keterangan'], 
+                    item._category === 'Attendance' ? 'Attendance Regularization' : 'Leave'
+                  );
                   const status = getRowStatus(item) || 'Approved';
                   
-                  const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal']), lang);
+                  const fromDate = formatDateDisplay(getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date', 'created_at', 'CreatedDate']), lang);
                   const toDateRaw = getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']);
                   const dateInfo = toDateRaw ? `${fromDate} - ${formatDateDisplay(toDateRaw, lang)}` : fromDate;
 
@@ -1647,7 +1763,7 @@ export default function Approval() {
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block">{selectedRequest._category === 'Attendance' ? 'Date' : 'From Date'}</span>
                   <span className="text-xs sm:text-sm font-semibold text-gray-800">
-                    {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal']), lang)}
+                    {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date', 'created_at', 'CreatedDate']), lang)}
                   </span>
                 </div>
                 
