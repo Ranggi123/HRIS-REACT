@@ -744,6 +744,22 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const today = new Date();
 
   // Filtered schedules according to selected employee dropdown
+  const employeeSummary = useMemo(() => {
+    let targetEmail = null;
+    if (selectedEmployee && selectedEmployee !== 'all') {
+      targetEmail = selectedEmployee.toLowerCase();
+    } else {
+      // Default to actual user or first team member if 'all' is selected
+      targetEmail = (actualUserWorkEmail || topNavEmail || userWorkEmail).toLowerCase();
+    }
+    const profile = teamMembers.find(m => m.email.toLowerCase() === targetEmail) || {};
+    return {
+       annual: getPropCaseInsensitive(profile, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave'], '0'),
+       dayOff: getPropCaseInsensitive(profile, ['Day Off Payment Balance', 'day_off_payment_balance', 'Day Off Payment', 'dayoffbalance'], '0'),
+       extraOff: getPropCaseInsensitive(profile, ['Extra Off Balance', 'extra_off_balance', 'Extra Off', 'extraoffbalance'], '0')
+    };
+  }, [selectedEmployee, teamMembers, actualUserWorkEmail, topNavEmail, userWorkEmail]);
+
   const filteredScheduleRecords = useMemo(() => {
     if (!selectedEmployee || selectedEmployee === 'all') {
       return teamScheduleRecords;
@@ -1511,10 +1527,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
         </div>
 
         {/* --- TAB AND STATUS ROW AS REQUESTED IN IMAGE --- */}
-        <div className="p-4 sm:px-5 sm:py-4 bg-white flex flex-wrap items-center gap-2 border-b border-gray-100">
+        <div className="p-4 sm:px-5 sm:py-4 bg-white flex flex-wrap items-center justify-between gap-2 border-b border-gray-100">
           
-          {/* Custom Pill Tabs container */}
-          <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+          <div className="flex items-center flex-wrap gap-2 w-full sm:w-auto">
+            {/* Custom Pill Tabs container */}
+            <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
             <button
               onClick={() => setActiveCategoryTab('leave')}
               className={`px-4 py-1.5 rounded-lg text-[13px] font-bold transition-colors ${
@@ -1537,9 +1554,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
             </button>
           </div>
 
-          {/* Status Filter matching image design */}
-          {activeCategoryTab !== 'attendance' && (
-            <div className="relative ml-0 sm:ml-2 w-full sm:w-[180px]">
+          </div>
+            
+            {/* Status Filter matching image design (Pindah ke sebelah tab di mobile) */}
+            {activeCategoryTab !== 'attendance' && (
+              <div className="relative ml-auto sm:ml-2 w-auto sm:w-[180px]">
               <select
                 value={statusTab}
                 onChange={(e) => setStatusTab(e.target.value)}
@@ -1560,7 +1579,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
           )}
 
           {/* Employee Dropdown Filter */}
-          <div className="relative w-full sm:w-[200px]">
+          <div className="relative w-full sm:w-[200px] mt-2 sm:mt-0">
             <select
               value={selectedEmployee}
               onChange={(e) => setSelectedEmployee(e.target.value)}
@@ -1766,7 +1785,25 @@ export default function Approval({ currentUser: propCurrentUser }) {
         </div>
       </div>
 
+      
+      {/* 1.5 Summary Balance Cards */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 flex flex-col justify-center items-center">
+           <span className="text-[10px] sm:text-xs text-gray-500 font-semibold uppercase tracking-wider text-center">Annual Leave</span>
+           <span className="text-lg sm:text-2xl font-black text-gray-800 mt-1">{employeeSummary.annual}</span>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 flex flex-col justify-center items-center">
+           <span className="text-[10px] sm:text-xs text-gray-500 font-semibold uppercase tracking-wider text-center">Day Off Payment</span>
+           <span className="text-lg sm:text-2xl font-black text-gray-800 mt-1">{employeeSummary.dayOff}</span>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 flex flex-col justify-center items-center">
+           <span className="text-[10px] sm:text-xs text-gray-500 font-semibold uppercase tracking-wider text-center">Extra Off</span>
+           <span className="text-lg sm:text-2xl font-black text-gray-800 mt-1">{employeeSummary.extraOff}</span>
+        </div>
+      </div>
+
       {/* 2. Team Working Calendar Card */}
+
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 w-full">
         <div className="flex flex-row justify-between items-start sm:items-center pb-4 mb-4 border-b border-gray-100 gap-2 sm:gap-3">
           <div className="flex-1 pr-2 sm:pr-3">
