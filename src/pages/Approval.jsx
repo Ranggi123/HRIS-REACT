@@ -1527,59 +1527,59 @@ export default function Approval({ currentUser: propCurrentUser }) {
         </div>
 
         {/* --- TAB AND STATUS ROW AS REQUESTED IN IMAGE --- */}
-        <div className="p-4 sm:px-5 sm:py-4 bg-white flex flex-wrap items-center justify-between gap-2 border-b border-gray-100">
+        <div className="p-4 sm:px-5 sm:py-4 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100">
           
-          <div className="flex items-center flex-wrap gap-2 w-full sm:w-auto">
+          {/* Sejajar di mobile dan desktop: Tab & Status Filter */}
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-nowrap overflow-x-auto">
             {/* Custom Pill Tabs container */}
-            <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
-            <button
-              onClick={() => setActiveCategoryTab('leave')}
-              className={`px-4 py-1.5 rounded-lg text-[13px] font-bold transition-colors ${
-                activeCategoryTab === 'leave'
-                  ? 'bg-white text-blue-700 shadow-sm border border-gray-200/50'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-              }`}
-            >
-              Leave ({pendingLeavesCount})
-            </button>
-            <button
-              onClick={() => setActiveCategoryTab('attendance')}
-              className={`px-4 py-1.5 rounded-lg text-[13px] font-bold transition-colors ${
-                activeCategoryTab === 'attendance'
-                  ? 'bg-white text-blue-700 shadow-sm border border-gray-200/50'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-              }`}
-            >
-              Attendance ({pendingAttendanceCount})
-            </button>
-          </div>
-
-          </div>
-            
-            {/* Status Filter matching image design (Pindah ke sebelah tab di mobile) */}
-            {activeCategoryTab !== 'attendance' && (
-              <div className="relative ml-auto sm:ml-2 w-auto sm:w-[180px]">
-              <select
-                value={statusTab}
-                onChange={(e) => setStatusTab(e.target.value)}
-                className="w-full pl-3.5 pr-8 py-1.5 text-[13px] font-bold text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm cursor-pointer transition"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 0.75rem center',
-                  backgroundSize: '1rem'
-                }}
+            <div className="flex bg-gray-100 rounded-xl p-1 gap-1 shrink-0">
+              <button
+                onClick={() => setActiveCategoryTab('leave')}
+                className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-[13px] font-bold transition-colors whitespace-nowrap ${
+                  activeCategoryTab === 'leave'
+                    ? 'bg-white text-blue-700 shadow-sm border border-gray-200/50'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+                }`}
               >
-                <option value="pending">Pending ({pendingStatusCount})</option>
-                <option value="approved">Approved ({approvedStatusCount})</option>
-                <option value="rejected">Rejected ({rejectedStatusCount})</option>
-                <option value="all">All Status</option>
-              </select>
+                Leave ({pendingLeavesCount})
+              </button>
+              <button
+                onClick={() => setActiveCategoryTab('attendance')}
+                className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-[13px] font-bold transition-colors whitespace-nowrap ${
+                  activeCategoryTab === 'attendance'
+                    ? 'bg-white text-blue-700 shadow-sm border border-gray-200/50'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+                }`}
+              >
+                Attendance ({pendingAttendanceCount})
+              </button>
             </div>
-          )}
+
+            {/* Status Filter sejajar langsung di sebelah kanan tab Attendance */}
+            {activeCategoryTab !== 'attendance' && (
+              <div className="relative shrink-0 flex-1 sm:flex-initial sm:w-[170px]">
+                <select
+                  value={statusTab}
+                  onChange={(e) => setStatusTab(e.target.value)}
+                  className="w-full pl-3 pr-7 sm:pl-3.5 sm:pr-8 py-1.5 text-xs sm:text-[13px] font-bold text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm cursor-pointer transition whitespace-nowrap"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 0.6rem center',
+                    backgroundSize: '0.85rem'
+                  }}
+                >
+                  <option value="pending">Pending ({pendingStatusCount})</option>
+                  <option value="approved">Approved ({approvedStatusCount})</option>
+                  <option value="rejected">Rejected ({rejectedStatusCount})</option>
+                  <option value="all">All Status</option>
+                </select>
+              </div>
+            )}
+          </div>
 
           {/* Employee Dropdown Filter */}
-          <div className="relative w-full sm:w-[200px] mt-2 sm:mt-0">
+          <div className="relative w-full sm:w-[200px] shrink-0">
             <select
               value={selectedEmployee}
               onChange={(e) => setSelectedEmployee(e.target.value)}
