@@ -1786,19 +1786,21 @@ export default function Approval({ currentUser: propCurrentUser }) {
       </div>
 
       
-      {/* 1.5 Summary Balance Cards */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 flex flex-col justify-center items-center">
-           <span className="text-[10px] sm:text-xs text-gray-500 font-semibold uppercase tracking-wider text-center">Annual Leave</span>
-           <span className="text-lg sm:text-2xl font-black text-gray-800 mt-1">{employeeSummary.annual}</span>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 flex flex-col justify-center items-center">
-           <span className="text-[10px] sm:text-xs text-gray-500 font-semibold uppercase tracking-wider text-center">Day Off Payment</span>
-           <span className="text-lg sm:text-2xl font-black text-gray-800 mt-1">{employeeSummary.dayOff}</span>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 flex flex-col justify-center items-center">
-           <span className="text-[10px] sm:text-xs text-gray-500 font-semibold uppercase tracking-wider text-center">Extra Off</span>
-           <span className="text-lg sm:text-2xl font-black text-gray-800 mt-1">{employeeSummary.extraOff}</span>
+      {/* 1.5 Summary Balance Cards (Tab Style) */}
+      <div className="mb-6 flex overflow-x-auto">
+        <div className="flex bg-gray-100 rounded-xl p-1 gap-1 shrink-0">
+          <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg bg-white shadow-sm border border-gray-200/50">
+             <span className="text-xs sm:text-[13px] font-bold text-gray-500">Annual Leave :</span>
+             <span className="text-xs sm:text-[13px] font-black text-blue-700">{employeeSummary.annual}</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg bg-white shadow-sm border border-gray-200/50">
+             <span className="text-xs sm:text-[13px] font-bold text-gray-500">Day Off Payment :</span>
+             <span className="text-xs sm:text-[13px] font-black text-blue-700">{employeeSummary.dayOff}</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg bg-white shadow-sm border border-gray-200/50">
+             <span className="text-xs sm:text-[13px] font-bold text-gray-500">Extra Off :</span>
+             <span className="text-xs sm:text-[13px] font-black text-blue-700">{employeeSummary.extraOff}</span>
+          </div>
         </div>
       </div>
 
