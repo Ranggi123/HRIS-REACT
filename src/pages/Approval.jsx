@@ -406,6 +406,39 @@ export default function Approval({ currentUser: propCurrentUser }) {
   
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  
+  // Bulk Edit Schedule States
+  const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
+  const [bulkEditEmployee, setBulkEditEmployee] = useState(null);
+  const [bulkEditData, setBulkEditData] = useState([]);
+  const [isSavingBulk, setIsSavingBulk] = useState(false);
+
+  const SHIFT_OPTIONS = [
+    { label: "M1", value: "M1", start: "01:00" },
+    { label: "M2", value: "M2", start: "02:00" },
+    { label: "M3", value: "M3", start: "03:00" },
+    { label: "M4", value: "M4", start: "04:00" },
+    { label: "M5", value: "M5", start: "05:00" },
+    { label: "M6", value: "M6", start: "06:00" },
+    { label: "M7", value: "M7", start: "07:00" },
+    { label: "M8", value: "M8", start: "08:00" },
+    { label: "M9", value: "M9", start: "09:00" },
+    { label: "M10", value: "M10", start: "10:00" },
+    { label: "M11", value: "M11", start: "11:00" },
+    { label: "A12", value: "A12", start: "12:00" },
+    { label: "A13", value: "A13", start: "13:00" },
+    { label: "A14", value: "A14", start: "14:00" },
+    { label: "A15", value: "A15", start: "15:00" },
+    { label: "A16", value: "A16", start: "16:00" },
+    { label: "A17", value: "A17", start: "17:00" },
+    { label: "E18", value: "E18", start: "18:00" },
+    { label: "E19", value: "E19", start: "19:00" },
+    { label: "E20", value: "E20", start: "20:00" },
+    { label: "E21", value: "E21", start: "21:00" },
+    { label: "E22", value: "E22", start: "22:00" },
+    { label: "E23", value: "E23", start: "23:00" }
+  ];
+
 
   // User Work Email exactly as seen in TopNav
   const userWorkEmail = useMemo(() => {
@@ -763,7 +796,98 @@ export default function Approval({ currentUser: propCurrentUser }) {
     return { calendarDays: days };
   }, [year, month, totalDays, filteredScheduleRecords, today]);
 
-  // Send email notification upon Approve / Reject / Cancel
+  
+  const openBulkEditModal = () => {
+    if (!selectedEmployee || selectedEmployee === 'all') {
+      alert("Please select a specific employee from the filter first to edit their schedule.");
+      return;
+    }
+    
+    const empData = teamMembers.find(m => m.email.toLowerCase() === selectedEmployee.toLowerCase());
+    if (!empData) return;
+    setBulkEditEmployee(empData);
+
+    const newBulkData = calendarDays.map(d => {
+      // Find existing schedule for this day
+      const existing = d.teamData.find(r => {
+         const rEmail = (getPropCaseInsensitive(r, ['Employee', 'employee', 'email', 'user_uid', 'employee_email']) || '').toLowerCase();
+         return rEmail === selectedEmployee.toLowerCase();
+      });
+      
+      const defaultShift = existing ? getPropCaseInsensitive(existing, ['shift', 'jam kerja'], 'M9') : 'M9';
+      const defaultType = existing ? getPropCaseInsensitive(existing, ['type', 'Type', 'status'], 'Working Day') : 'Working Day';
+      const existingId = existing ? getPropCaseInsensitive(existing, ['id', 'ID', 'uid']) : null;
+      
+      return {
+        id: existingId, // null if no existing record
+        date: d.dateToPass,
+        dateDisplay: `${d.day} ${monthNames[month]} ${year}`,
+        type: defaultType,
+        shift: defaultShift,
+        dbRecord: existing || null
+      };
+    });
+    
+    setBulkEditData(newBulkData);
+    setIsBulkEditModalOpen(true);
+  };
+
+  const handleBulkChange = (index, field, value) => {
+    const updated = [...bulkEditData];
+    updated[index][field] = value;
+    setBulkEditData(updated);
+  };
+
+  const saveBulkEdit = async () => {
+    if (!bulkEditEmployee) return;
+    setIsSavingBulk(true);
+    
+    try {
+      const workingHours = bulkEditEmployee.standart_working_day?.toUpperCase().includes('OPERATIONAL') ? 8 : 9;
+      
+      for (const row of bulkEditData) {
+        // Calculate Times based on Shift and standard working hours
+        let startTime = "";
+        let endTime = "";
+        
+        if (row.type === 'Working Day') {
+            const shiftInfo = SHIFT_OPTIONS.find(s => s.value === row.shift);
+            if (shiftInfo) {
+              startTime = shiftInfo.start;
+              const startHour = parseInt(startTime.split(':')[0], 10);
+              const endHour = (startHour + workingHours) % 24;
+              endTime = `${String(endHour).padStart(2, '0')}:00`;
+            }
+        }
+        
+        const payload = {
+          Employee: bulkEditEmployee.email, // Adjust based on your schedule table
+          Date: row.date,
+          Type: row.type,
+          Shift: row.type === 'Working Day' ? row.shift : '-',
+          'Start Time': row.type === 'Working Day' ? startTime : '-',
+          'End Time': row.type === 'Working Day' ? endTime : '-'
+        };
+
+        if (row.id) {
+           // Update existing
+           await supabase.from('schedule').update(payload).eq('id', row.id);
+        } else {
+           // Insert new record if not exists but user explicitly defined it
+           // In most systems, default records are pre-populated, but just in case:
+           await supabase.from('schedule').insert([payload]);
+        }
+      }
+      alert('Schedule updated successfully!');
+      setIsBulkEditModalOpen(false);
+      refreshAllData(); // reload
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save schedule: ' + err.message);
+    }
+    setIsSavingBulk(false);
+  };
+// Send email notification upon Approve / Reject / Cancel
   const sendNotificationEmail = async (item, newStatus, reason = '') => {
     const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']);
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'employee_name'], 'Employee');
@@ -1716,10 +1840,105 @@ export default function Approval({ currentUser: propCurrentUser }) {
               </div>
             </div>
           ))}
+        
+        </div>
+        
+        <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
+           <button 
+             onClick={openBulkEditModal}
+             className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl shadow-sm transition border border-indigo-200 flex items-center gap-2"
+           >
+             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+             Bulk Edit Schedule (1 Month)
+           </button>
         </div>
       </div>
 
+
       {/* --- MODALS --- */}
+
+      {/* Bulk Edit Modal */}
+      {isBulkEditModalOpen && bulkEditEmployee && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={() => !isSavingBulk && setIsBulkEditModalOpen(false)}>
+          <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl p-0 border border-gray-100 flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-2xl">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Bulk Edit Schedule</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Employee: <strong className="text-gray-800">{bulkEditEmployee.name}</strong> | Barcode: <strong className="text-gray-800">{bulkEditEmployee.barcode || '-'}</strong>
+                </p>
+                <p className="text-xs text-gray-500">Month: {monthNames[month]} {year}</p>
+              </div>
+              <button disabled={isSavingBulk} onClick={() => setIsBulkEditModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-2 bg-white rounded-xl shadow-sm border border-gray-200">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-5 bg-gray-50/50">
+               <div className="space-y-3">
+                  {bulkEditData.map((row, idx) => (
+                     <div key={idx} className="flex flex-col sm:flex-row items-center gap-3 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                        <div className="w-full sm:w-1/4 font-semibold text-gray-700 text-sm flex items-center gap-2">
+                           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                           {row.dateDisplay}
+                        </div>
+                        <div className="w-full sm:w-1/4">
+                           <select
+                              value={row.type}
+                              onChange={(e) => handleBulkChange(idx, 'type', e.target.value)}
+                              className="w-full p-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                           >
+                              <option value="Working Day">Working Day</option>
+                              <option value="Day Off">Day Off</option>
+                           </select>
+                        </div>
+                        <div className="w-full sm:w-1/2 flex items-center gap-2">
+                           <select
+                              value={row.shift}
+                              disabled={row.type !== 'Working Day'}
+                              onChange={(e) => handleBulkChange(idx, 'shift', e.target.value)}
+                              className="w-full sm:w-40 p-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                           >
+                              {SHIFT_OPTIONS.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label} (Start {opt.start})</option>
+                              ))}
+                           </select>
+                           
+                           {row.type === 'Working Day' && (
+                             <span className="text-[10px] text-gray-400 italic">
+                               End time will auto-calculate based on {bulkEditEmployee.standart_working_day?.toUpperCase().includes('OPERATIONAL') ? '8 hours' : '9 hours'} standard limit.
+                             </span>
+                           )}
+                        </div>
+                     </div>
+                  ))}
+               </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-100 bg-white flex justify-end gap-3 rounded-b-2xl">
+              <button
+                disabled={isSavingBulk}
+                onClick={() => setIsBulkEditModalOpen(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isSavingBulk}
+                onClick={saveBulkEdit}
+                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm transition cursor-pointer flex items-center gap-2"
+              >
+                {isSavingBulk ? (
+                  <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Saving...</>
+                ) : (
+                  'Save Schedule'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       
       {/* Team Schedule Date Detail Modal */}
       {teamScheduleModalData && (
