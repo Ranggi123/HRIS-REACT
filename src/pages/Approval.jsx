@@ -413,6 +413,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const [bulkEditData, setBulkEditData] = useState([]);
   const [isSavingBulk, setIsSavingBulk] = useState(false);
 
+  // Single Schedule Edit States (ketika diklik salah satu tanggal)
+  const [singleScheduleEdit, setSingleScheduleEdit] = useState(null);
+  const [isSavingSingleSchedule, setIsSavingSingleSchedule] = useState(false);
+
   const SHIFT_OPTIONS = [
     { label: "M1", value: "M1", start: "01:00" },
     { label: "M2", value: "M2", start: "02:00" },
@@ -809,6 +813,115 @@ export default function Approval({ currentUser: propCurrentUser }) {
   }, [year, month, totalDays, filteredScheduleRecords, today]);
 
   
+  const getShiftTimes = (shiftVal, stdWorkingDay = 'BACKOFFICE52') => {
+    const shiftInfo = SHIFT_OPTIONS.find(s => s.value === shiftVal) || SHIFT_OPTIONS[8]; // default M9
+    const startTime = shiftInfo.start;
+    const startHour = parseInt(startTime.split(':')[0], 10);
+    const workingHours = stdWorkingDay?.toUpperCase().includes('OPERATIONAL') ? 8 : 9;
+    const endHour = (startHour + workingHours) % 24;
+    const endTime = `${String(endHour).padStart(2, '0')}:00`;
+    return { startTime, endTime, workingHours };
+  };
+
+  const openSingleScheduleEdit = (emp, dateStr) => {
+    const empEmail = (getPropCaseInsensitive(emp, ['Employee', 'employee', 'email', 'user_uid', 'employee_email']) || '').trim().toLowerCase();
+    const memberProfile = teamMembers.find(m => m.email.toLowerCase() === empEmail) || {};
+    
+    const empName = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'employee_name'], memberProfile.name || empEmail);
+    const barcode = memberProfile.barcode || getPropCaseInsensitive(emp, ['barcode', 'Barcode', 'nik', 'nip', 'id', 'employee_id']) || '-';
+    const stdWorkingDay = memberProfile.standart_working_day || 'BACKOFFICE52';
+    
+    const currentTypeRaw = getPropCaseInsensitive(emp, ['type', 'Type', 'status'], 'Working Day');
+    const isOff = currentTypeRaw.toLowerCase().includes('off') || currentTypeRaw.toLowerCase().includes('libur');
+    const initialType = isOff ? 'Day Off' : 'Working Day';
+    const initialShift = getPropCaseInsensitive(emp, ['shift', 'Shift', 'jam kerja'], 'M9');
+    
+    setSingleScheduleEdit({
+      id: emp.id || getPropCaseInsensitive(emp, ['id', 'ID', 'uid', '_id']),
+      date: dateStr,
+      email: empEmail,
+      name: empName,
+      barcode: barcode,
+      standart_working_day: stdWorkingDay,
+      type: initialType,
+      shift: initialShift,
+      rawRecord: emp
+    });
+  };
+
+  const saveSingleScheduleEdit = async () => {
+    if (!singleScheduleEdit) return;
+    setIsSavingSingleSchedule(true);
+    try {
+      const { startTime, endTime } = getShiftTimes(singleScheduleEdit.shift, singleScheduleEdit.standart_working_day);
+      
+      const payload = {
+        Employee: singleScheduleEdit.email,
+        Date: singleScheduleEdit.date,
+        Type: singleScheduleEdit.type,
+        Shift: singleScheduleEdit.type === 'Working Day' ? singleScheduleEdit.shift : '-',
+        'Start Time': singleScheduleEdit.type === 'Working Day' ? startTime : '-',
+        'End Time': singleScheduleEdit.type === 'Working Day' ? endTime : '-'
+      };
+      
+      const rawKeys = Object.keys(singleScheduleEdit.rawRecord || {});
+      const schedTypeCol = resolveTableColumn(rawKeys, ['Type', 'type', 'schedule_type']) || 'Type';
+      const schedShiftCol = resolveTableColumn(rawKeys, ['Shift', 'shift', 'jam kerja']) || 'Shift';
+      const schedStartCol = resolveTableColumn(rawKeys, ['Start Time', 'start_time', 'starttime']) || 'Start Time';
+      const schedEndCol = resolveTableColumn(rawKeys, ['End Time', 'end_time', 'endtime']) || 'End Time';
+      
+      const dbPayload = {
+        [schedTypeCol]: payload.Type,
+        [schedShiftCol]: payload.Shift,
+        [schedStartCol]: payload['Start Time'],
+        [schedEndCol]: payload['End Time']
+      };
+
+      if (singleScheduleEdit.id) {
+        const { error: saveErr } = await supabase.from('schedule').update(dbPayload).eq('id', singleScheduleEdit.id);
+        if (saveErr) throw saveErr;
+      } else {
+        const schedEmpCol = resolveTableColumn(rawKeys, ['Employee', 'employee', 'email']) || 'Employee';
+        const schedDateCol = resolveTableColumn(rawKeys, ['Date', 'date', 'Tanggal', 'scheduledate', 'schedule_date']) || 'Date';
+        
+        const { data: existingCheck } = await supabase.from('schedule')
+          .select('*')
+          .ilike(schedEmpCol, singleScheduleEdit.email)
+          .eq(schedDateCol, singleScheduleEdit.date)
+          .limit(1);
+          
+        if (existingCheck && existingCheck.length > 0) {
+          const rowId = existingCheck[0].id;
+          if (rowId) {
+            const { error: saveErr } = await supabase.from('schedule').update(dbPayload).eq('id', rowId);
+            if (saveErr) throw saveErr;
+          } else {
+            const { error: saveErr } = await supabase.from('schedule').update(dbPayload)
+              .ilike(schedEmpCol, singleScheduleEdit.email)
+              .eq(schedDateCol, singleScheduleEdit.date);
+            if (saveErr) throw saveErr;
+          }
+        } else {
+          const { error: saveErr } = await supabase.from('schedule').insert([{
+            [schedEmpCol]: singleScheduleEdit.email,
+            [schedDateCol]: singleScheduleEdit.date,
+            ...dbPayload
+          }]);
+          if (saveErr) throw saveErr;
+        }
+      }
+
+      alert('Jadwal berhasil diperbarui!');
+      setSingleScheduleEdit(null);
+      setTeamScheduleModalData(null);
+      refreshAllData();
+    } catch (err) {
+      console.error(err);
+      alert('Gagal memperbarui jadwal: ' + err.message);
+    }
+    setIsSavingSingleSchedule(false);
+  };
+
   const openBulkEditModal = () => {
     if (!selectedEmployee || selectedEmployee === 'all') {
       alert("Please select a specific employee from the filter first to edit their schedule.");
@@ -1855,9 +1968,19 @@ export default function Approval({ currentUser: propCurrentUser }) {
               onClick={() => {
                 if (d.teamData.length > 0) {
                   setTeamScheduleModalData({ date: d.dateToPass, records: d.teamData });
+                } else if (selectedEmployee && selectedEmployee !== 'all') {
+                  const empData = teamMembers.find(m => m.email.toLowerCase() === selectedEmployee.toLowerCase());
+                  if (empData) {
+                    openSingleScheduleEdit({
+                      Employee: empData.email,
+                      Name: empData.name,
+                      type: 'Working Day',
+                      shift: 'M9'
+                    }, d.dateToPass);
+                  }
                 }
               }}
-              className={`relative h-20 sm:h-24 p-1 sm:p-2 rounded-xl border transition flex flex-col overflow-hidden bg-white ${d.teamData.length > 0 ? 'cursor-pointer hover:shadow-md hover:border-blue-300' : ''} ${d.isToday ? 'ring-2 ring-blue-500 ring-offset-1 border-blue-300' : 'border-gray-200'}`}
+              className={`relative h-20 sm:h-24 p-1 sm:p-2 rounded-xl border transition flex flex-col overflow-hidden bg-white ${d.teamData.length > 0 || (selectedEmployee && selectedEmployee !== 'all') ? 'cursor-pointer hover:shadow-md hover:border-blue-300' : ''} ${d.isToday ? 'ring-2 ring-blue-500 ring-offset-1 border-blue-300' : 'border-gray-200'}`}
             >
               <div className="flex justify-between items-start w-full">
                 <span className={`text-xs sm:text-sm font-extrabold leading-none ${d.isToday ? 'text-blue-600' : d.isSunday ? 'text-red-500' : 'text-gray-800'}`}>
@@ -2010,23 +2133,231 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 
                 let badgeClass = 'bg-gray-100 text-gray-700 border-gray-200';
                 const tLower = t.toLowerCase();
-                if (tLower.includes('working') || tLower === 'work' || tLower.includes('kerja')) badgeClass = 'bg-green-50 text-green-700 border-green-200';
+                const isWorking = tLower.includes('working') || tLower === 'work' || tLower.includes('kerja');
+                const isOff = tLower.includes('off') || tLower.includes('libur');
+                const isEditable = isWorking || isOff;
+
+                if (isWorking) badgeClass = 'bg-green-50 text-green-700 border-green-200';
                 else if (tLower.includes('sick') || tLower.includes('sakit')) badgeClass = 'bg-pink-50 text-pink-700 border-pink-200';
-                else if (tLower.includes('off') || tLower.includes('libur')) badgeClass = 'bg-red-50 text-red-700 border-red-200';
+                else if (isOff) badgeClass = 'bg-red-50 text-red-700 border-red-200';
                 else if (tLower.includes('leave') || tLower.includes('cuti')) badgeClass = 'bg-orange-50 text-orange-700 border-orange-200';
 
                 return (
-                  <div key={idx} className="flex justify-between items-center p-3 border border-gray-100 rounded-xl bg-white shadow-xs">
+                  <div 
+                    key={idx} 
+                    className={`flex justify-between items-center p-3 border rounded-xl bg-white shadow-xs transition ${isEditable ? 'border-gray-200 hover:border-blue-300 hover:shadow-sm' : 'border-gray-100 bg-gray-50/50'}`}
+                  >
                     <div>
-                      <div className="font-bold text-sm text-gray-800">{empName}</div>
-                      <div className="text-[11px] text-gray-500 font-medium mt-0.5">Shift: {shift}</div>
+                      <div className="font-bold text-sm text-gray-800 flex items-center gap-2">
+                        <span>{empName}</span>
+                        {isEditable && (
+                          <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded font-medium border border-blue-100">
+                            Editable
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 font-medium mt-0.5">
+                        Shift: {shift !== '-' ? shift : (isOff ? 'Day Off' : '-')}
+                      </div>
                     </div>
-                    <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold border ${badgeClass}`}>
-                      {t}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold border ${badgeClass}`}>
+                        {t}
+                      </span>
+                      {isEditable && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openSingleScheduleEdit(emp, teamScheduleModalData.date);
+                          }}
+                          className="px-2.5 py-1 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                          title="Edit Jadwal"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                          <span>Edit</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Single Schedule Edit Modal (Form Menumpuk Diatasnya) */}
+      {singleScheduleEdit && (
+        <div 
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => !isSavingSingleSchedule && setSingleScheduleEdit(null)}
+        >
+          <div 
+            className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-0 border border-gray-100 flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-blue-50/50 to-indigo-50/30">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">Edit Jadwal Tanggal</h3>
+                  <p className="text-xs text-gray-500">Perbarui shift atau tipe kerja karyawan</p>
+                </div>
+              </div>
+              <button 
+                disabled={isSavingSingleSchedule}
+                onClick={() => setSingleScheduleEdit(null)}
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-white transition"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-5 space-y-3.5">
+              {/* 1. Date (Tidak dapat dirubah) */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                  1. Tanggal (Read-Only)
+                </label>
+                <input 
+                  type="text"
+                  readOnly
+                  value={singleScheduleEdit.date}
+                  className="w-full px-3 py-2 text-xs font-bold text-gray-700 bg-gray-100 border border-gray-200 rounded-xl cursor-not-allowed select-none"
+                />
+              </div>
+
+              {/* 2 & 3. Barcode Karyawan & Nama Karyawan (Tidak bisa dirubah) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                    2. Barcode Karyawan
+                  </label>
+                  <input 
+                    type="text"
+                    readOnly
+                    value={singleScheduleEdit.barcode || '-'}
+                    className="w-full px-3 py-2 text-xs font-bold text-gray-700 bg-gray-100 border border-gray-200 rounded-xl cursor-not-allowed select-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                    3. Nama Karyawan
+                  </label>
+                  <input 
+                    type="text"
+                    readOnly
+                    value={singleScheduleEdit.name}
+                    className="w-full px-3 py-2 text-xs font-bold text-gray-700 bg-gray-100 border border-gray-200 rounded-xl cursor-not-allowed select-none truncate"
+                  />
+                </div>
+              </div>
+
+              {/* 4. Type (Bisa dirubah Working Day atau Day Off) */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  4. Tipe Hari (Working Day / Day Off)
+                </label>
+                <select
+                  value={singleScheduleEdit.type}
+                  onChange={(e) => setSingleScheduleEdit({ ...singleScheduleEdit, type: e.target.value })}
+                  className="w-full px-3 py-2 text-xs font-bold text-gray-800 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:outline-none cursor-pointer"
+                >
+                  <option value="Working Day">Working Day</option>
+                  <option value="Day Off">Day Off</option>
+                </select>
+              </div>
+
+              {/* 5. Shift (Bisa dirubah dengan dropdown pilihan M1...E23) */}
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider">
+                    5. Shift Kerja
+                  </label>
+                  <span className="text-[10px] text-gray-400 italic">
+                    Angka belakang menunjukkan jam mulai
+                  </span>
+                </div>
+                <select
+                  value={singleScheduleEdit.shift}
+                  disabled={singleScheduleEdit.type !== 'Working Day'}
+                  onChange={(e) => setSingleScheduleEdit({ ...singleScheduleEdit, shift: e.target.value })}
+                  className={`w-full px-3 py-2 text-xs font-bold text-gray-800 border rounded-xl focus:outline-none ${singleScheduleEdit.type === 'Working Day' ? 'bg-white border-gray-300 focus:ring-2 focus:ring-blue-500/20 cursor-pointer' : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'}`}
+                >
+                  {SHIFT_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label} — Mulai jam {opt.start}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  Keterangan: Kode awalan <strong>M</strong> (Morning), <strong>A</strong> (Afternoon), <strong>E</strong> (Evening). Angka menunjukkan jam (Contoh: M9 = 09:00).
+                </p>
+              </div>
+
+              {/* 6 & 7. Kalkulasi Otomatis Start Time & End Time */}
+              {singleScheduleEdit.type === 'Working Day' ? (() => {
+                const times = getShiftTimes(singleScheduleEdit.shift, singleScheduleEdit.standart_working_day);
+                return (
+                  <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-xl">
+                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block mb-1.5">
+                      6 & 7. Kalkulasi Jam Kerja Otomatis
+                    </span>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="bg-white p-2 rounded-lg border border-blue-100">
+                        <span className="text-[10px] text-gray-500 block">6. Start Time:</span>
+                        <span className="font-extrabold text-blue-700 text-sm">{times.startTime}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-blue-100">
+                        <span className="text-[10px] text-gray-500 block">7. End Time:</span>
+                        <span className="font-extrabold text-blue-700 text-sm">{times.endTime}</span>
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-blue-600 mt-2 font-medium">
+                      Aturan Durasi: <strong>{times.workingHours} Jam</strong> (Standart Working Day: <strong>{singleScheduleEdit.standart_working_day}</strong>)
+                    </div>
+                  </div>
+                );
+              })() : (
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-center text-xs text-gray-500 italic">
+                  Status <strong>Day Off</strong> tidak memerlukan jam kerja (Start & End Time diisi '-').
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={isSavingSingleSchedule}
+                onClick={() => setSingleScheduleEdit(null)}
+                className="px-4 py-2 bg-white hover:bg-gray-100 border border-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isSavingSingleSchedule}
+                onClick={saveSingleScheduleEdit}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition cursor-pointer flex items-center gap-1.5"
+              >
+                {isSavingSingleSchedule ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                    <span>Menyimpan...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                    <span>Simpan Jadwal</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
