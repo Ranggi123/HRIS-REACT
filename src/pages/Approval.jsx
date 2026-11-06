@@ -745,20 +745,16 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
   // Filtered schedules according to selected employee dropdown
   const employeeSummary = useMemo(() => {
-    let targetEmail = null;
-    if (selectedEmployee && selectedEmployee !== 'all') {
-      targetEmail = selectedEmployee.toLowerCase();
-    } else {
-      // Default to actual user or first team member if 'all' is selected
-      targetEmail = (actualUserWorkEmail || topNavEmail || userWorkEmail).toLowerCase();
+    if (!selectedEmployee || selectedEmployee === 'all') {
+      return { annual: '-', dayOff: '-', extraOff: '-' };
     }
-    const profile = teamMembers.find(m => m.email.toLowerCase() === targetEmail) || {};
+    const profile = teamMembers.find(m => m.email.toLowerCase() === selectedEmployee.toLowerCase()) || {};
     return {
-       annual: getPropCaseInsensitive(profile, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave'], '0'),
-       dayOff: getPropCaseInsensitive(profile, ['Day Off Payment Balance', 'day_off_payment_balance', 'Day Off Payment', 'dayoffbalance'], '0'),
-       extraOff: getPropCaseInsensitive(profile, ['Extra Off Balance', 'extra_off_balance', 'Extra Off', 'extraoffbalance'], '0')
+       annual: profile.annual_leave_balance || '0',
+       dayOff: profile.day_off_payment_balance || '0',
+       extraOff: profile.extra_off_balance || '0'
     };
-  }, [selectedEmployee, teamMembers, actualUserWorkEmail, topNavEmail, userWorkEmail]);
+  }, [selectedEmployee, teamMembers]);
 
   const filteredScheduleRecords = useMemo(() => {
     if (!selectedEmployee || selectedEmployee === 'all') {
@@ -1916,40 +1912,59 @@ export default function Approval({ currentUser: propCurrentUser }) {
             <div className="flex-1 overflow-y-auto p-5 bg-gray-50/50">
                <div className="space-y-3">
                   {bulkEditData.map((row, idx) => (
-                     <div key={idx} className="flex flex-col sm:flex-row items-center gap-3 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
-                        <div className="w-full sm:w-1/4 font-semibold text-gray-700 text-sm flex items-center gap-2">
-                           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                           {row.dateDisplay}
-                        </div>
-                        <div className="w-full sm:w-1/4">
-                           <select
-                              value={row.type}
-                              onChange={(e) => handleBulkChange(idx, 'type', e.target.value)}
-                              className="w-full p-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                           >
-                              <option value="Working Day">Working Day</option>
-                              <option value="Day Off">Day Off</option>
-                           </select>
-                        </div>
-                        <div className="w-full sm:w-1/2 flex items-center gap-2">
-                           <select
-                              value={row.shift}
-                              disabled={row.type !== 'Working Day'}
-                              onChange={(e) => handleBulkChange(idx, 'shift', e.target.value)}
-                              className="w-full sm:w-40 p-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
-                           >
-                              {SHIFT_OPTIONS.map(opt => (
-                                <option key={opt.value} value={opt.value}>{opt.label} (Start {opt.start})</option>
-                              ))}
-                           </select>
-                           
-                           {row.type === 'Working Day' && (
-                             <span className="text-[10px] text-gray-400 italic">
-                               End time will auto-calculate based on {bulkEditEmployee.standart_working_day?.toUpperCase().includes('OPERATIONAL') ? '8 hours' : '9 hours'} standard limit.
-                             </span>
-                           )}
-                        </div>
-                     </div>
+                     {(() => {
+                        // Check if type is something other than 'Working Day' or 'Day Off'
+                        // (e.g. Annual Leave, Sick Leave, Maternity, etc)
+                        const isLockedType = row.type !== 'Working Day' && row.type !== 'Day Off';
+                        
+                        return (
+                          <div key={idx} className={`flex flex-col sm:flex-row items-center gap-3 p-3 rounded-xl border shadow-sm ${isLockedType ? 'bg-gray-100 border-gray-200 opacity-80' : 'bg-white border-gray-200'}`}>
+                             <div className={`w-full sm:w-1/4 font-semibold text-sm flex items-center gap-2 ${isLockedType ? 'text-gray-500' : 'text-gray-700'}`}>
+                                <svg className={`w-4 h-4 ${isLockedType ? 'text-gray-400' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                {row.dateDisplay}
+                             </div>
+                             <div className="w-full sm:w-1/4">
+                                {isLockedType ? (
+                                  <div className="w-full p-2 text-xs font-bold text-gray-600 border border-gray-300 rounded-lg bg-gray-200">
+                                    {row.type} (Locked)
+                                  </div>
+                                ) : (
+                                  <select
+                                     value={row.type}
+                                     onChange={(e) => handleBulkChange(idx, 'type', e.target.value)}
+                                     className="w-full p-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
+                                  >
+                                     <option value="Working Day">Working Day</option>
+                                     <option value="Day Off">Day Off</option>
+                                  </select>
+                                )}
+                             </div>
+                             <div className="w-full sm:w-1/2 flex items-center gap-2">
+                                <select
+                                   value={row.shift}
+                                   disabled={row.type !== 'Working Day' || isLockedType}
+                                   onChange={(e) => handleBulkChange(idx, 'shift', e.target.value)}
+                                   className={`w-full sm:w-40 p-2 text-xs border border-gray-300 rounded-lg focus:outline-none disabled:text-gray-400 ${row.type === 'Working Day' && !isLockedType ? 'focus:ring-2 focus:ring-blue-500 bg-white' : 'bg-gray-200'}`}
+                                >
+                                   {SHIFT_OPTIONS.map(opt => (
+                                     <option key={opt.value} value={opt.value}>{opt.label} (Start {opt.start})</option>
+                                   ))}
+                                </select>
+                                
+                                {row.type === 'Working Day' && !isLockedType && (
+                                  <span className="text-[10px] text-gray-400 italic">
+                                    End time will auto-calculate based on {bulkEditEmployee.standart_working_day?.toUpperCase().includes('OPERATIONAL') ? '8 hours' : '9 hours'} standard limit.
+                                  </span>
+                                )}
+                                {isLockedType && (
+                                  <span className="text-[10px] text-gray-400 font-medium italic">
+                                    Cannot edit scheduled leave.
+                                  </span>
+                                )}
+                             </div>
+                          </div>
+                        );
+                     })()}
                   ))}
                </div>
             </div>
