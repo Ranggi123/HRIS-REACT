@@ -2134,8 +2134,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 let badgeClass = 'bg-gray-100 text-gray-700 border-gray-200';
                 const tLower = t.toLowerCase();
                 const isWorking = tLower.includes('working') || tLower === 'work' || tLower.includes('kerja');
-                const isOff = tLower.includes('off') || tLower.includes('libur');
-                const isEditable = isWorking || isOff;
+                const isOff = tLower.includes('day off') || tLower === 'off' || tLower.includes('libur');
+                
+                // Cuti (Leave) tidak bisa diedit.
+                // Jika mengandung 'leave', 'sakit', 'sick', 'cuti', 'maternity', maka isEditable = false
+                const isLeave = tLower.includes('leave') || tLower.includes('cuti') || tLower.includes('sick') || tLower.includes('sakit') || tLower.includes('maternity');
+                
+                const isEditable = (isWorking || isOff) && !isLeave;
 
                 if (isWorking) badgeClass = 'bg-green-50 text-green-700 border-green-200';
                 else if (tLower.includes('sick') || tLower.includes('sakit')) badgeClass = 'bg-pink-50 text-pink-700 border-pink-200';
