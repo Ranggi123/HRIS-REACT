@@ -614,55 +614,18 @@ export default function Attendance() {
       }
 
       if (attendanceType === 'Checking out') {
-
-
         if (isOvertime === 'Yes') {
-
-
           const otDateToUse = overtimeDate || finalSubmissionDate;
-
-
           const otTimeToUse = `${overtimeTime}:00`;
-
-
-          
-
-
-          otEmailText = `
-Overtime : User requesting overtime
-Real check out at : ${todayDateStr}, ${timeStr}`;
-
-
+          otEmailText = `\nOvertime : User requesting overtime\nReal check out at : ${todayDateStr}, ${timeStr}`;
           otEmailHtml = `<strong>Overtime :</strong> User requesting overtime<br><strong>Real check out at :</strong> ${todayDateStr}, ${timeStr}<br>`;
-
-
-          
-
-
           safeAssign(payload, ['Checkout Time', 'checkout_time', 'Check Out Time'], `${otDateToUse} ${otTimeToUse}`);
-
-
           safeAssign(payload, ['Overtime', 'overtime', 'is_overtime'], true);
-
-
         } else if (lateCheckoutWarning && isOvertime === 'No') {
-
-
           const manualDateToUse = overtimeDate || finalSubmissionDate;
-
-
           const manualTimeToUse = `${overtimeTime}:00`;
-
-
-          
-
-
           safeAssign(payload, ['Checkout Time', 'checkout_time', 'Check Out Time'], `${manualDateToUse} ${manualTimeToUse}`);
-
-
         }
-
-
       }
 
       const gasUploadPromise = fetch('https://script.google.com/macros/s/AKfycby28F424Ikd21T4yf0MkGFXdQvgSBKJWXYO5-dQ582lOSxH-kxau6myCtGjulEUleo0RA/exec', {
@@ -1058,7 +1021,7 @@ Photo : ${photoUrl}`;
 
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Selfie Photo Proof (Camera) <span className="text-red-500">*</span></label>
-                <div className="relative w-full h-48 bg-gray-900 rounded-xl overflow-hidden shadow-inner flex items-center justify-center">
+                <div className="relative w-full h-80 bg-gray-900 rounded-xl overflow-hidden shadow-inner flex items-center justify-center">
                   {!photoData ? (
                     <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover transform scale-x-[-1]"></video>
                   ) : (
