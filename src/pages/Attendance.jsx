@@ -1021,7 +1021,7 @@ Photo : ${photoUrl}`;
 
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Selfie Photo Proof (Camera) <span className="text-red-500">*</span></label>
-                <div className="relative w-full h-96 bg-gray-900 rounded-xl overflow-hidden shadow-inner flex items-center justify-center">
+                <div className="relative w-full h-80 bg-gray-900 rounded-xl overflow-hidden shadow-inner flex items-center justify-center">
                   {!photoData ? (
                     <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover transform scale-x-[-1]"></video>
                   ) : (
