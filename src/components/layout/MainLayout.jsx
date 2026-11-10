@@ -74,31 +74,17 @@ export default function MainLayout() {
     return isTrue;
   };
 
-  // Helper cek apakah Job Level berhak atas approval
+  // Helper cek apakah user adalah Department Head
+  const checkDeptHead = (user) => {
+    if (!user) return false;
+    const rawVal = getCleanProp(user, ['department head', 'departmenthead', 'is department head']);
+    return ['true', '1', 't', 'yes', 'y'].includes(String(rawVal).trim().toLowerCase());
+  };
+
+  // Helper verifikasi apakah user berhak atas menu Approval
   const checkIsApprovalEligible = (user, isSuperAdmin = false) => {
     if (isSuperAdmin) return true;
-    if (!user) return false;
-
-    const rawLevel = String(
-      getCleanProp(user, ['job level', 'job_level', 'level', 'Job Level']) || ''
-    ).trim().toLowerCase().replace(/\s+/g, ' ');
-
-    if (!rawLevel || rawLevel === '-') return false;
-
-    const excludedLevels = [
-      'staff rank & file',
-      'staff rank and file',
-      'daily worker',
-      'trainee',
-      'intern',
-      'internship'
-    ];
-
-    const isExcluded = excludedLevels.some(
-      lvl => rawLevel === lvl || rawLevel.replace(/&/g, 'and') === lvl.replace(/&/g, 'and')
-    );
-
-    return !isExcluded;
+    return checkDeptHead(user);
   };
 
   // 1. Memuat user dan menghitung approval secara berurutan
@@ -162,7 +148,7 @@ export default function MainLayout() {
   const fetchApprovalCount = async (user) => {
     if (!user) return;
 
-    // Jika level tidak berhak dan bukan Super Admin, set 0 dan hentikan
+    // Jika user tidak berhak atas approval, set 0 dan hentikan
     if (!checkIsApprovalEligible(user, isSuperAdminMode)) {
       setApprovalCount(0);
       return;
@@ -324,7 +310,6 @@ export default function MainLayout() {
   const displayName = getProp(['name', 'nama', 'fullname', 'full_name'], currentLang === 'id' ? 'Tamu' : 'Guest');
   const deptName = getProp(['department', 'dept'], '-');
   const jobTitle = getProp(['job title', 'job_title', 'position'], currentLang === 'id' ? 'Tamu' : 'Guest');
-  // TAMBAHAN: Job Level
   const jobLevel = getProp(['job level', 'job_level', 'level', 'Job Level'], '-');
   const empId = getProp(['employee id', 'employee_id', 'id'], '-');
   const companyName = getProp(['company', 'Company Name'], '-');
@@ -764,6 +749,13 @@ export default function MainLayout() {
               <div className="flex justify-between items-center pt-2">
                 <span className="text-gray-400 font-medium">Job Level</span>
                 <strong className="text-gray-800 font-semibold">{jobLevel}</strong>
+              </div>
+
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-gray-400 font-medium">Department Head?</span>
+                <strong className={`font-semibold px-2 py-0.5 rounded text-[11px] border ${checkDeptHead(currentUser) ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                  {checkDeptHead(currentUser) ? 'Yes' : 'No'}
+                </strong>
               </div>
 
               <div className="flex justify-between items-center pt-2">

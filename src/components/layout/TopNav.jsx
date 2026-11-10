@@ -89,32 +89,20 @@ export default function TopNav({
 
   const showSuperAdminToggle = isSuperAdminEligible || isSuperAdminMode;
 
-  // Helper verifikasi apakah user berhak melihat Approval
-  const rawJobLevel = String(
-    currentUser?.['Job Level'] || 
-    currentUser?.['job_level'] || 
-    currentUser?.['job level'] || 
-    currentUser?.Job_Level || 
-    currentUser?.level || 
-    currentUser?.Level || 
-    ''
-  ).trim().toLowerCase().replace(/\s+/g, ' ');
+  // Helper verifikasi apakah user adalah Department Head
+  const checkDeptHead = (user) => {
+    if (!user) return false;
+    const keys = Object.keys(user);
+    const foundKey = keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g, '') === 'departmenthead');
+    if (foundKey) {
+      const val = user[foundKey];
+      return ['true', '1', 't', 'yes', 'y'].includes(String(val).trim().toLowerCase());
+    }
+    return false;
+  };
 
-  const excludedJobLevels = [
-    'staff rank & file',
-    'staff rank and file',
-    'daily worker',
-    'trainee',
-    'intern',
-    'internship'
-  ];
-
-  const isExcludedJobLevel = excludedJobLevels.some(
-    lvl => rawJobLevel === lvl || rawJobLevel.replace(/&/g, 'and') === lvl.replace(/&/g, 'and')
-  );
-
-  // Menu & badge hanya tampil jika Job Level BUKAN salah satu dari daftar di atas (atau Super Admin aktif)
-  const canShowApproval = isSuperAdminMode || (rawJobLevel !== '' && !isExcludedJobLevel);
+  // Menu & badge hanya tampil jika Department Head = TRUE (atau Super Admin aktif)
+  const canShowApproval = isSuperAdminMode || checkDeptHead(currentUser);
 
   // FUNGSI LOGOUT BERSIH TOTAL
   const handleLogout = async () => {
