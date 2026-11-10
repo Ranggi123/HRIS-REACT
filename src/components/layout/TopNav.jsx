@@ -89,6 +89,33 @@ export default function TopNav({
 
   const showSuperAdminToggle = isSuperAdminEligible || isSuperAdminMode;
 
+  // Helper verifikasi apakah user berhak melihat Approval
+  const rawJobLevel = String(
+    currentUser?.['Job Level'] || 
+    currentUser?.['job_level'] || 
+    currentUser?.['job level'] || 
+    currentUser?.Job_Level || 
+    currentUser?.level || 
+    currentUser?.Level || 
+    ''
+  ).trim().toLowerCase().replace(/\s+/g, ' ');
+
+  const excludedJobLevels = [
+    'staff rank & file',
+    'staff rank and file',
+    'daily worker',
+    'trainee',
+    'intern',
+    'internship'
+  ];
+
+  const isExcludedJobLevel = excludedJobLevels.some(
+    lvl => rawJobLevel === lvl || rawJobLevel.replace(/&/g, 'and') === lvl.replace(/&/g, 'and')
+  );
+
+  // Menu & badge hanya tampil jika Job Level BUKAN salah satu dari daftar di atas (atau Super Admin aktif)
+  const canShowApproval = isSuperAdminMode || (rawJobLevel !== '' && !isExcludedJobLevel);
+
   // FUNGSI LOGOUT BERSIH TOTAL
   const handleLogout = async () => {
     try {
@@ -191,7 +218,7 @@ export default function TopNav({
                   className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-inner bg-blue-100" 
                   onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }}
                 />
-                {approvalCount > 0 && (
+                {canShowApproval && approvalCount > 0 && (
                   <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center border-2 border-blue-700 shadow-sm animate-bounce">
                     {approvalCount}
                   </span>
@@ -260,23 +287,25 @@ export default function TopNav({
                 )}
 
                 {/* Approval Menu Item */}
-                <Link 
-                  to="/Approval" 
-                  onClick={() => setDropdownOpen(false)}
-                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 hover:text-blue-600 flex items-center justify-between transition border-b border-gray-50"
-                >
-                  <div className="flex items-center space-x-2.5">
-                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                    <span className="font-medium text-gray-700">{currentLang === 'id' ? 'Persetujuan' : 'Approval'}</span>
-                  </div>
-                  {approvalCount > 0 && (
-                    <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-xs">
-                      {approvalCount}
-                    </span>
-                  )}
-                </Link>
+                {canShowApproval && (
+                  <Link 
+                    to="/Approval" 
+                    onClick={() => setDropdownOpen(false)}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 hover:text-blue-600 flex items-center justify-between transition border-b border-gray-50"
+                  >
+                    <div className="flex items-center space-x-2.5">
+                      <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                      </svg>
+                      <span className="font-medium text-gray-700">{currentLang === 'id' ? 'Persetujuan' : 'Approval'}</span>
+                    </div>
+                    {approvalCount > 0 && (
+                      <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-xs">
+                        {approvalCount}
+                      </span>
+                    )}
+                  </Link>
+                )}
 
                 {/* My Profile Menu Item */}
                 <button 

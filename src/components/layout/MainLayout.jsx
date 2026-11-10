@@ -68,11 +68,38 @@ export default function MainLayout() {
     ]);
 
     const isTrue = (
-    saRawVal === true || 
-    ['TRUE', '1', 'T', 'YES'].includes(String(saRawVal).trim().toUpperCase())
-  );
-  return isTrue;
-};
+      saRawVal === true || 
+      ['TRUE', '1', 'T', 'YES'].includes(String(saRawVal).trim().toUpperCase())
+    );
+    return isTrue;
+  };
+
+  // Helper cek apakah Job Level berhak atas approval
+  const checkIsApprovalEligible = (user, isSuperAdmin = false) => {
+    if (isSuperAdmin) return true;
+    if (!user) return false;
+
+    const rawLevel = String(
+      getCleanProp(user, ['job level', 'job_level', 'level', 'Job Level']) || ''
+    ).trim().toLowerCase().replace(/\s+/g, ' ');
+
+    if (!rawLevel || rawLevel === '-') return false;
+
+    const excludedLevels = [
+      'staff rank & file',
+      'staff rank and file',
+      'daily worker',
+      'trainee',
+      'intern',
+      'internship'
+    ];
+
+    const isExcluded = excludedLevels.some(
+      lvl => rawLevel === lvl || rawLevel.replace(/&/g, 'and') === lvl.replace(/&/g, 'and')
+    );
+
+    return !isExcluded;
+  };
 
   // 1. Memuat user dan menghitung approval secara berurutan
   useEffect(() => {
@@ -132,93 +159,99 @@ export default function MainLayout() {
   }, []);
 
   // Menghitung data Pending Approval langsung dari Supabase
-const fetchApprovalCount = async (user) => {
-  if (!user) return;
+  const fetchApprovalCount = async (user) => {
+    if (!user) return;
 
-  try {
-    // 1. Kumpulkan semua kemungkinan identitas manager yang login
-    const userKeys = [
-      user['Work Email'],
-      user['work email'],
-      user.Work_Email,
-      user.work_email,
-      user['Employee work email'],
-      user.Employee_work_email,
-      user.email,
-      user.Email,
-      user.USER_UID,
-      user.name,
-      user.Name,
-      user.fullname,
-      user['employee id'],
-      user.employee_id,
-      user.id
-    ]
-      .filter(Boolean)
-      .map(k => String(k).trim().toLowerCase());
-
-    let pendingCount = 0;
-
-    const countPendingInArray = (dataArray) => {
-      let count = 0;
-      dataArray.forEach(item => {
-        // Ambil status & cek berbagai variasi kata pending/waiting/menunggu
-        const status = String(
-          item?.Status || 
-          item?.status || 
-          item?.approval_status || 
-          item?.Approval_Status || 
-          ''
-        ).trim().toLowerCase();
-
-        const isPending = 
-          status.includes('pending') || 
-          status.includes('waiting') || 
-          status.includes('menunggu') ||
-          status === 'submitted' ||
-          status === 'in review';
-
-        // Ambil identitas Line Manager di baris data
-        const lineManager = String(
-          item?.['Line Manager'] || 
-          item?.Line_Manager || 
-          item?.line_manager || 
-          item?.['line manager'] || 
-          item?.approver ||
-          item?.manager ||
-          item?.manager_email ||
-          ''
-        ).trim().toLowerCase();
-
-        // Jika Super Admin mode aktif, hitung semua yang pending.
-        // Jika bukan, cocokkan dengan salah satu identitas manager.
-        const isManagerMatch = isSuperAdminMode || userKeys.some(key => lineManager === key || lineManager.includes(key));
-
-        if (isPending && isManagerMatch) {
-          count++;
-        }
-      });
-      return count;
-    };
-
-    // Query 1: Data Cuti (leave_requests)
-    const { data: leaveData } = await supabase.from('leave_requests').select('*');
-    if (leaveData) pendingCount += countPendingInArray(leaveData);
-
-    // Query 2: Data Kehadiran (Cek attendance_requests dulu, fallback ke attendance)
-    let { data: attReqData, error: attErr } = await supabase.from('attendance').select('*');
-    if (attErr || !attReqData) {
-      const { data: fallbackData } = await supabase.from('attendance').select('*');
-      attReqData = fallbackData;
+    // Jika level tidak berhak dan bukan Super Admin, set 0 dan hentikan
+    if (!checkIsApprovalEligible(user, isSuperAdminMode)) {
+      setApprovalCount(0);
+      return;
     }
-    if (attReqData) pendingCount += countPendingInArray(attReqData);
 
-    setApprovalCount(pendingCount);
+    try {
+      // 1. Kumpulkan semua kemungkinan identitas manager yang login
+      const userKeys = [
+        user['Work Email'],
+        user['work email'],
+        user.Work_Email,
+        user.work_email,
+        user['Employee work email'],
+        user.Employee_work_email,
+        user.email,
+        user.Email,
+        user.USER_UID,
+        user.name,
+        user.Name,
+        user.fullname,
+        user['employee id'],
+        user.employee_id,
+        user.id
+      ]
+        .filter(Boolean)
+        .map(k => String(k).trim().toLowerCase());
 
-  } catch (error) {
-    console.warn("Error calculating approval count from database:", error);
-  }
-};
+      let pendingCount = 0;
+
+      const countPendingInArray = (dataArray) => {
+        let count = 0;
+        dataArray.forEach(item => {
+          // Ambil status & cek berbagai variasi kata pending/waiting/menunggu
+          const status = String(
+            item?.Status || 
+            item?.status || 
+            item?.approval_status || 
+            item?.Approval_Status || 
+            ''
+          ).trim().toLowerCase();
+
+          const isPending = 
+            status.includes('pending') || 
+            status.includes('waiting') || 
+            status.includes('menunggu') ||
+            status === 'submitted' ||
+            status === 'in review';
+
+          // Ambil identitas Line Manager di baris data
+          const lineManager = String(
+            item?.['Line Manager'] || 
+            item?.Line_Manager || 
+            item?.line_manager || 
+            item?.['line manager'] || 
+            item?.approver ||
+            item?.manager ||
+            item?.manager_email ||
+            ''
+          ).trim().toLowerCase();
+
+          // Jika Super Admin mode aktif, hitung semua yang pending.
+          // Jika bukan, cocokkan dengan salah satu identitas manager.
+          const isManagerMatch = isSuperAdminMode || userKeys.some(key => lineManager === key || lineManager.includes(key));
+
+          if (isPending && isManagerMatch) {
+            count++;
+          }
+        });
+        return count;
+      };
+
+      // Query 1: Data Cuti (leave_requests)
+      const { data: leaveData } = await supabase.from('leave_requests').select('*');
+      if (leaveData) pendingCount += countPendingInArray(leaveData);
+
+      // Query 2: Data Kehadiran (Cek attendance_requests dulu, fallback ke attendance)
+      let { data: attReqData, error: attErr } = await supabase.from('attendance').select('*');
+      if (attErr || !attReqData) {
+        const { data: fallbackData } = await supabase.from('attendance').select('*');
+        attReqData = fallbackData;
+      }
+      if (attReqData) pendingCount += countPendingInArray(attReqData);
+
+      setApprovalCount(pendingCount);
+
+    } catch (error) {
+      console.warn("Error calculating approval count from database:", error);
+    }
+  };
 
   const handleToggleSuperAdmin = async (active) => {
     if (active) {
@@ -291,6 +324,8 @@ const fetchApprovalCount = async (user) => {
   const displayName = getProp(['name', 'nama', 'fullname', 'full_name'], currentLang === 'id' ? 'Tamu' : 'Guest');
   const deptName = getProp(['department', 'dept'], '-');
   const jobTitle = getProp(['job title', 'job_title', 'position'], currentLang === 'id' ? 'Tamu' : 'Guest');
+  // TAMBAHAN: Job Level
+  const jobLevel = getProp(['job level', 'job_level', 'level', 'Job Level'], '-');
   const empId = getProp(['employee id', 'employee_id', 'id'], '-');
   const companyName = getProp(['company', 'Company Name'], '-');
   const email = getProp(['email', 'email address', 'user_uid'], '-');
@@ -724,6 +759,11 @@ const fetchApprovalCount = async (user) => {
                 <span className="font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded text-[11px]">
                   {jobTitle}
                 </span>
+              </div>
+
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-gray-400 font-medium">Job Level</span>
+                <strong className="text-gray-800 font-semibold">{jobLevel}</strong>
               </div>
 
               <div className="flex justify-between items-center pt-2">
