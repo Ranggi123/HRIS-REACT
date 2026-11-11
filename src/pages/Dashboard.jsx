@@ -109,8 +109,8 @@ export default function Dashboard() {
     }
 
     if (!isNaN(parsed.getTime())) {
-      const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       
       const dayName = days[parsed.getDay()];
       const dd = String(parsed.getDate()).padStart(2, '0');
@@ -119,8 +119,8 @@ export default function Dashboard() {
       const hh = String(parsed.getHours()).padStart(2, '0');
       const min = String(parsed.getMinutes()).padStart(2, '0');
       
-      // format: dddd, DD/MMM/YYYY HH:mm
-      return `${dayName}, ${dd}/${mmm}/${yyyy} ${hh}:${min}`;
+      // format: dddd, DD-MMM-YYYY HH:mm
+      return `${dayName}, ${dd}-${mmm}-${yyyy} ${hh}:${min}`;
     }
     return s;
   };
@@ -419,14 +419,14 @@ export default function Dashboard() {
                 iconHtml = '✅';
               } else if (hasCheckin && !hasCheckout) {
                 iconHtml = '⚠️';
-                checkoutToPass = 'Belum check out';
+                checkoutToPass = 'Not checked out';
                 styleConfig = {
                   cardClass: 'bg-red-50 border-red-300 text-red-950 font-medium',
                   badgeClass: 'bg-red-600 text-white',
                   badgeText: 'Missed Out',
                   shortCode: 'M'
                 };
-                tooltipText = `${scheduleType} - Belum check out (${dateToPass})`;
+                tooltipText = `${scheduleType} - Not checked out (${dateToPass})`;
               }
             } else if (isToday) {
               if (hasCheckin && hasCheckout) {
@@ -819,7 +819,7 @@ export default function Dashboard() {
               </div>
               <div className="flex justify-between border-b border-gray-50 pb-2">
                 <span className="text-gray-500 font-medium">Checked Out At</span>
-                {scheduleModalData.checkout && scheduleModalData.checkout.toLowerCase().includes('belum') ? (
+                {scheduleModalData.checkout && (scheduleModalData.checkout.toLowerCase().includes('belum') || scheduleModalData.checkout.toLowerCase().includes('not checked')) ? (
                   <span className="text-red-600 font-semibold text-xs italic bg-red-50 px-2 py-0.5 rounded border border-red-200">
                     {scheduleModalData.checkout}
                   </span>
