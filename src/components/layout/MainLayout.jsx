@@ -83,7 +83,6 @@ export default function MainLayout() {
 
   // Helper verifikasi apakah user berhak atas menu Approval
   const checkIsApprovalEligible = (user) => {
-    // Super Admin override dihapus, hanya mengandalkan checkDeptHead(user)
     return checkDeptHead(user);
   };
 
@@ -115,7 +114,6 @@ export default function MainLayout() {
       'approval_line_manager'
     ], '').trim().toLowerCase();
   
-    // STRICT: Jika kolom tidak ada, kosong, '-', 'null', atau 'undefined', LANGSUNG TOLAK
     if (!mgrVal || mgrVal === '-' || mgrVal === 'null' || mgrVal === 'undefined') {
       return false;
     }
@@ -145,7 +143,6 @@ export default function MainLayout() {
     return false;
   };
 
-  // Approval Status Checkers
   const isPendingApprovalStatus = (status) => {
     if (!status || status === '-' || status === 'null') return false;
     const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
@@ -184,7 +181,6 @@ export default function MainLayout() {
       'Attendance Status'
     ];
   
-    // 1. First pass: find any column that has a recognized approval status keyword
     for (const k of candidateKeys) {
       const val = getPropCaseInsensitive(row, [k], '');
       if (val && val !== '-' && val !== 'null' && val !== 'undefined') {
@@ -194,7 +190,6 @@ export default function MainLayout() {
       }
     }
   
-    // 2. Second pass: fallback to the first non-empty, non-dash value among candidates
     for (const k of candidateKeys) {
       const val = getPropCaseInsensitive(row, [k], '');
       if (val && val !== '-' && val !== 'null' && val !== 'undefined') {
@@ -205,69 +200,10 @@ export default function MainLayout() {
     return '';
   };
 
-
-  // 1. Memuat user dan menghitung approval secara berurutan
-  useEffect(() => {
-    const initializeData = async () => {
-      let activeUser = null;
-      let saved = localStorage.getItem('hris_session_data');
-      if (saved) {
-        try { activeUser = JSON.parse(saved); } catch (e) {}
-      }
-
-      let emailToMatch = activeUser 
-        ? String(getCleanProp(activeUser, ['email', 'email address', 'user_uid']) || '').trim().toLowerCase()
-        : '';
-
-      if (!emailToMatch) {
-        const { data: sData } = await supabase.auth.getSession();
-        if (sData?.session?.user?.email) {
-          emailToMatch = sData.session.user.email.trim().toLowerCase();
-        }
-      }
-
-      if (emailToMatch) {
-        try {
-          for (const tbl of TABLE_EMPLOYEES) {
-            const { data, error } = await supabase.from(tbl).select('*').limit(200);
-            if (!error && data && data.length > 0) {
-              const matched = data.find(row => {
-                const rowEmail = String(getCleanProp(row, ['email', 'email address', 'user_uid']) || '').trim().toLowerCase();
-                return rowEmail === emailToMatch;
-              });
-
-              if (matched) {
-                activeUser = matched;
-                localStorage.setItem('hris_session_data', JSON.stringify(matched));
-                break;
-              }
-            }
-          }
-        } catch (err) {
-          console.warn("Error fetching user profile:", err);
-        }
-      }
-
-      if (activeUser) {
-        setCurrentUser(activeUser);
-        setIsSuperAdminEligible(checkSuperAdmin(activeUser));
-        
-        // Hitung badge approval setelah user berhasil dimuat
-        await fetchApprovalCount(activeUser);
-      } else {
-        setCurrentUser(null);
-        setIsSuperAdminEligible(false);
-      }
-    };
-
-    initializeData();
-  }, []);
-
   // Menghitung data Pending Approval langsung dari Supabase
   const fetchApprovalCount = async (user) => {
     if (!user) return;
 
-    // Jika user tidak berhak atas approval, set 0 dan hentikan
     if (!checkIsApprovalEligible(user)) {
       setApprovalCount(0);
       return;
@@ -306,7 +242,6 @@ export default function MainLayout() {
       let subordinateEmails = [];
       const employeeDirectoryMap = new Map();
       
-      // 1. Fetch Subordinate Employees
       try {
         const { data: dirData, error: dirErr } = await supabase
           .from('employee_directory')
@@ -399,7 +334,6 @@ export default function MainLayout() {
 
       let pendingCount = 0;
 
-      // 2. Query Leave Requests
       const { data: leaveData } = await supabase.from('leave_requests').select('*').limit(3000);
       if (leaveData) {
           const myLeaves = leaveData.filter(row => {
@@ -416,7 +350,6 @@ export default function MainLayout() {
           pendingCount += myLeaves.length;
       }
       
-      // 3. Query Attendance
       let attData = [];
       try {
         const { data: defAtt, error: attErr } = await supabase.from('attendance').select('*').limit(3000);
@@ -464,6 +397,87 @@ export default function MainLayout() {
       console.warn("Error calculating approval count from database:", error);
     }
   };
+
+  useEffect(() => {
+    const initializeData = async () => {
+      let activeUser = null;
+      let saved = localStorage.getItem('hris_session_data');
+      if (saved) {
+        try { activeUser = JSON.parse(saved); } catch (e) {}
+      }
+
+      let emailToMatch = activeUser 
+        ? String(getCleanProp(activeUser, ['email', 'email address', 'user_uid']) || '').trim().toLowerCase()
+        : '';
+
+      if (!emailToMatch) {
+        const { data: sData } = await supabase.auth.getSession();
+        if (sData?.session?.user?.email) {
+          emailToMatch = sData.session.user.email.trim().toLowerCase();
+        }
+      }
+
+      if (emailToMatch) {
+        try {
+          for (const tbl of TABLE_EMPLOYEES) {
+            const { data, error } = await supabase.from(tbl).select('*').limit(200);
+            if (!error && data && data.length > 0) {
+              const matched = data.find(row => {
+                const rowEmail = String(getCleanProp(row, ['email', 'email address', 'user_uid']) || '').trim().toLowerCase();
+                return rowEmail === emailToMatch;
+              });
+
+              if (matched) {
+                activeUser = matched;
+                localStorage.setItem('hris_session_data', JSON.stringify(matched));
+                break;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("Error fetching user profile:", err);
+        }
+      }
+
+      if (activeUser) {
+        setCurrentUser(activeUser);
+        setIsSuperAdminEligible(checkSuperAdmin(activeUser));
+        await fetchApprovalCount(activeUser);
+      } else {
+        setCurrentUser(null);
+        setIsSuperAdminEligible(false);
+      }
+    };
+
+    initializeData();
+  }, []);
+
+  // --- ADDED REALTIME LISTENER FOR APPROVAL CHANGES ---
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    // Refresh count if changes occur in leave_requests or attendance
+    const handleRealtimeChange = (payload) => {
+      console.log('Realtime change detected, refreshing approval count...', payload);
+      fetchApprovalCount(currentUser);
+    };
+
+    const leaveChannel = supabase
+      .channel('public:leave_requests')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, handleRealtimeChange)
+      .subscribe();
+      
+    const attendanceChannel = supabase
+      .channel('public:attendance')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, handleRealtimeChange)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(leaveChannel);
+      supabase.removeChannel(attendanceChannel);
+    };
+  }, [currentUser]);
+  // --------------------------------------------------
 
   const handleToggleSuperAdmin = async (active) => {
     if (active) {
