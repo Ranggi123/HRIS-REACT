@@ -1,4 +1,3 @@
-// src/components/layout/TopNav.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
@@ -20,7 +19,6 @@ export default function TopNav({
   const [weatherText, setWeatherText] = useState('⛅ 29°C');
   const dropdownRef = useRef(null);
 
-  // Close dropdown when clicked outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -37,7 +35,6 @@ export default function TopNav({
     };
   }, [dropdownOpen]);
 
-  // Live time ticker
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -52,7 +49,6 @@ export default function TopNav({
     return () => clearInterval(timer);
   }, [currentLang]);
 
-  // Weather fetch
   useEffect(() => {
     const getWeatherIcon = (code, isDay = 1) => {
       if (code === 0) return isDay ? '☀️' : '🌙';
@@ -83,13 +79,12 @@ export default function TopNav({
     fetchWeather();
   }, []);
 
-  const userName = currentUser?.Name || currentUser?.name || currentUser?.fullname || 'Guest';
-  const userEmail = currentUser?.email || currentUser?.Email || currentUser?.USER_UID || 'Tidak ada email';
+  const userName = currentUser?.Name || currentUser?.name || currentUser?.fullname || (currentLang === 'id' ? 'Tamu' : 'Guest');
+  const userEmail = currentUser?.email || currentUser?.Email || currentUser?.USER_UID || (currentLang === 'id' ? 'Tidak ada email' : 'No email');
   const userAvatar = currentUser?.link || currentUser?.Link || currentUser?.photo || currentUser?.avatar || 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png';
 
   const showSuperAdminToggle = isSuperAdminEligible || isSuperAdminMode;
 
-  // Helper verifikasi apakah user adalah Department Head
   const checkDeptHead = (user) => {
     if (!user) return false;
     const keys = Object.keys(user);
@@ -101,23 +96,18 @@ export default function TopNav({
     return false;
   };
 
-  // Menu & badge HANYA tampil jika Department Head = TRUE (meskipun Super Admin aktif)
   const canShowApproval = checkDeptHead(currentUser);
 
-  // FUNGSI LOGOUT BERSIH TOTAL
   const handleLogout = async () => {
     try {
-      // 1. Sign out Supabase secara local agar session dihentikan langsung
       await supabase.auth.signOut({ scope: 'local' });
     } catch (err) {
       console.error('Gagal sign out Supabase:', err);
     } finally {
-      // 2. Hapus seluruh data sesi lokal HRIS
       localStorage.removeItem('hris_session_data');
       localStorage.removeItem('hris_super_admin_active');
       localStorage.removeItem('hris_original_super_admin');
 
-      // 3. Bersihkan seluruh token bawaan Supabase di browser
       Object.keys(localStorage).forEach((key) => {
         if (key.startsWith('sb-') || key.includes('supabase')) {
           localStorage.removeItem(key);
@@ -129,7 +119,6 @@ export default function TopNav({
         }
       });
 
-      // 4. Reset total dengan redirect replace
       window.location.replace('/login');
     }
   };
@@ -145,7 +134,6 @@ export default function TopNav({
     <nav className="bg-blue-600 p-2 sm:p-4 text-white shadow-md sticky top-0 z-50 w-full transition-all">
       <div className="container mx-auto flex justify-between items-center px-1 sm:px-2">
         
-        {/* Brand Logo & Live Widget */}
         <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
           <Link to="/" className="flex-shrink-0 group" title="HRIS Portal">
             <img 
@@ -165,7 +153,7 @@ export default function TopNav({
               </span>
             </Link>
             <div className="flex items-center space-x-1 sm:space-x-2 text-blue-100 text-[10px] sm:text-xs mt-1 leading-none whitespace-nowrap overflow-hidden">
-              <span className="font-medium tracking-tight truncate">{timeStr || 'Fri, Oct 30 - 10:18'}</span>
+              <span className="font-medium tracking-tight truncate">{timeStr}</span>
               <span className="opacity-50 hidden sm:inline-block">&bull;</span>
               <span className="hidden sm:inline-block truncate max-w-[140px] sm:max-w-none">{locationName}</span>
               <span className="opacity-50">&bull;</span>
@@ -174,10 +162,8 @@ export default function TopNav({
           </div>
         </div>
 
-        {/* Right: Language Switch + User Profile */}
         <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
           
-          {/* Language Switch */}
           <div className="flex items-center bg-blue-700 rounded-lg p-0.5 text-xs font-semibold border border-blue-500">
             <button 
               onClick={() => onLangChange && onLangChange('en')}
@@ -193,7 +179,6 @@ export default function TopNav({
             </button>
           </div>
 
-          {/* User Profile Menu */}
           <div className="relative" ref={dropdownRef}>
             <button 
               onClick={() => setDropdownOpen(!dropdownOpen)} 
@@ -218,7 +203,6 @@ export default function TopNav({
               </svg>
             </button>
 
-            {/* Dropdown Menu */}
             {dropdownOpen && (
               <div 
                 className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 text-gray-700 z-50 animate-fadeIn"
@@ -228,7 +212,6 @@ export default function TopNav({
                   <p className="text-xs font-bold text-gray-800 truncate mt-0.5">{userEmail}</p>
                 </div>
 
-                {/* SUPER ADMIN TOGGLE */}
                 {showSuperAdminToggle && (
                   <div 
                     className="px-4 py-2.5 border-b border-gray-100 bg-indigo-50/40"
@@ -268,13 +251,12 @@ export default function TopNav({
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
                         </svg>
-                        Switch Account
+                        {currentLang === 'id' ? 'Ganti Akun' : 'Switch Account'}
                       </button>
                     )}
                   </div>
                 )}
 
-                {/* Approval Menu Item */}
                 {canShowApproval && (
                   <Link 
                     to="/Approval" 
@@ -295,7 +277,6 @@ export default function TopNav({
                   </Link>
                 )}
 
-                {/* My Profile Menu Item */}
                 <button 
                   onClick={() => {
                     setDropdownOpen(false);
@@ -311,7 +292,6 @@ export default function TopNav({
                   <span className="font-medium text-gray-700">{currentLang === 'id' ? 'Profil Saya' : 'My Profile'}</span>
                 </button>
 
-                {/* Log Out Menu Item */}
                 <button 
                   type="button"
                   onClick={() => {

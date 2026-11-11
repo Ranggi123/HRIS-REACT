@@ -2,44 +2,57 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Users, ClipboardCheck, Home, Calendar, Wallet } from 'lucide-react';
 
-export default function BottomNav({ attendanceBadge = false, leaveBadgeCount = 0 }) {
+export default function BottomNav({ attendanceBadge = false, leaveBadgeCount = 0, currentLang = 'en' }) {
   const location = useLocation();
   const path = location.pathname;
 
+  const t = currentLang === 'id' ? {
+    directory: 'Direktori',
+    attendance: 'Absen...',
+    dashboard: 'Dasbor',
+    leave: 'Cuti',
+    payslip: 'Slip Gaji'
+  } : {
+    directory: 'Directory',
+    attendance: 'Attend...',
+    dashboard: 'Dashboard',
+    leave: 'Leave',
+    payslip: 'Payslip'
+  };
+
   const navItems = [
     {
-      label: 'Directory',
+      label: t.directory,
       to: '/directory',
       icon: Users,
     },
     {
-      label: 'Attend...',
+      label: t.attendance,
       to: '/attendance',
       icon: ClipboardCheck,
       badge: attendanceBadge ? '!' : null,
       isAlertBadge: true,
     },
     {
-      label: 'Dashboard',
+      label: t.dashboard,
       to: '/',
       icon: Home,
     },
     {
-      label: 'Leave',
+      label: t.leave,
       to: '/leave',
       icon: Calendar,
       badge: leaveBadgeCount > 0 ? leaveBadgeCount : null,
       isAlertBadge: false,
     },
     {
-      label: 'Payslip',
+      label: t.payslip,
       to: '/account',
       icon: Wallet,
     },
   ];
 
   return (
-    // Container dibuat mengambang (bottom-5), memiliki efek kaca (backdrop-blur), membulat sempurna (rounded-[2rem]), dan bayangan 3D
     <div className="md:hidden fixed bottom-5 left-1/2 transform -translate-x-1/2 w-[calc(100%-2rem)] max-w-[440px] bg-white/70 backdrop-blur-xl border border-white/60 shadow-[0_15px_35px_rgba(0,0,0,0.15),inset_0_1px_1px_rgba(255,255,255,1)] rounded-[2rem] z-40 overflow-visible">
       <div className="w-full grid grid-cols-5 items-center px-2 h-[68px]">
         {navItems.map((item) => {
@@ -52,7 +65,6 @@ export default function BottomNav({ attendanceBadge = false, leaveBadgeCount = 0
               to={item.to}
               className="relative flex flex-col items-center justify-center w-full h-full"
             >
-              {/* Pembungkus Ikon (Posisi absolut untuk animasi 3D Pop-out) */}
               <div
                 className={`absolute transition-all duration-300 ease-out z-10 flex items-center justify-center ${
                   isActive
@@ -62,7 +74,6 @@ export default function BottomNav({ attendanceBadge = false, leaveBadgeCount = 0
               >
                 <Icon size={isActive ? 24 : 22} />
 
-                {/* Badge Notifikasi */}
                 {item.badge && (
                   <span
                     className={`absolute -top-1 -right-1 bg-red-500 text-white rounded-full border-[1.5px] border-white shadow-md animate-pulse flex items-center justify-center ${
@@ -76,7 +87,6 @@ export default function BottomNav({ attendanceBadge = false, leaveBadgeCount = 0
                 )}
               </div>
 
-              {/* Teks Label (Tetap berada di bawah dalam kotak putih) */}
               <span
                 className={`absolute bottom-1.5 leading-tight truncate w-full text-center transition-all duration-300 ${
                   isActive

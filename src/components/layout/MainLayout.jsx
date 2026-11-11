@@ -13,22 +13,21 @@ const i18n = {
     jobTitleLabel: 'Job Title',
     statusLabel: 'Account Status:',
     modulesTitle: 'HRIS Module Access',
-    moduleNames: { empDir: 'Employee Directory', attendance: 'Attendance Requests', leave: 'Leave Requests', payslip: 'Payslip' },
+    moduleNames: { dashboard: 'Dashboard', empDir: 'Employee Directory', attendance: 'Attendance Requests', leave: 'Leave Requests', payslip: 'Payslip' },
   },
   id: {
     greeting: 'Halo',
     deptLabel: 'Departemen',
-    jobTitleLabel: 'Job Title',
+    jobTitleLabel: 'Jabatan',
     statusLabel: 'Status Akun:',
     modulesTitle: 'Akses Modul HRIS',
-    moduleNames: { empDir: 'Direktori Karyawan', attendance: 'Permintaan Absensi', leave: 'Pengajuan Cuti', payslip: 'Slip Gaji' },
+    moduleNames: { dashboard: 'Dasbor', empDir: 'Direktori Karyawan', attendance: 'Permintaan Absensi', leave: 'Pengajuan Cuti', payslip: 'Slip Gaji' },
   }
 };
 
 export default function MainLayout() {
   const [currentUser, setCurrentUser] = useState(null);
   
-  // States untuk badge TopNav & BottomNav
   const [approvalCount, setApprovalCount] = useState(0); 
   const [attendanceBadge, setAttendanceBadge] = useState(false);
   const [leaveBadgeCount, setLeaveBadgeCount] = useState(0);
@@ -41,7 +40,6 @@ export default function MainLayout() {
   const navigate = useNavigate();
   const currentPath = location.pathname;
 
-  // Modal states
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isFullscreenBarcodeOpen, setIsFullscreenBarcodeOpen] = useState(false);
 
@@ -74,14 +72,12 @@ export default function MainLayout() {
     return isTrue;
   };
 
-  // Helper cek apakah user adalah Department Head
   const checkDeptHead = (user) => {
     if (!user) return false;
     const rawVal = getCleanProp(user, ['department head', 'departmenthead', 'is department head']);
     return ['true', '1', 't', 'yes', 'y'].includes(String(rawVal).trim().toLowerCase());
   };
 
-  // Helper verifikasi apakah user berhak atas menu Approval
   const checkIsApprovalEligible = (user) => {
     return checkDeptHead(user);
   };
@@ -200,7 +196,6 @@ export default function MainLayout() {
     return '';
   };
 
-  // Menghitung data Pending Approval langsung dari Supabase
   const fetchApprovalCount = async (user) => {
     if (!user) return;
 
@@ -452,11 +447,9 @@ export default function MainLayout() {
     initializeData();
   }, []);
 
-  // --- ADDED REALTIME LISTENER FOR APPROVAL CHANGES ---
   useEffect(() => {
     if (!currentUser) return;
     
-    // Refresh count if changes occur in leave_requests or attendance
     const handleRealtimeChange = (payload) => {
       console.log('Realtime change detected, refreshing approval count...', payload);
       fetchApprovalCount(currentUser);
@@ -477,7 +470,6 @@ export default function MainLayout() {
       supabase.removeChannel(attendanceChannel);
     };
   }, [currentUser]);
-  // --------------------------------------------------
 
   const handleToggleSuperAdmin = async (active) => {
     if (active) {
@@ -545,7 +537,6 @@ export default function MainLayout() {
     navigate('/login');
   };
 
-  // Ekstraksi data profil user
   const getProp = (keys, fallback) => getCleanProp(currentUser, keys) || fallback;
   const displayName = getProp(['name', 'nama', 'fullname', 'full_name'], currentLang === 'id' ? 'Tamu' : 'Guest');
   const deptName = getProp(['department', 'dept'], '-');
@@ -642,7 +633,6 @@ export default function MainLayout() {
     return fallback;
   };
 
-  // Fetch badge untuk Attendance dan Leave
   useEffect(() => {
     const fetchBadges = async () => {
       if (!currentUser) return;
@@ -653,7 +643,6 @@ export default function MainLayout() {
 
       if (validUserKeys.length === 0) return;
 
-      // 1. BADGE ATTENDANCE
       try {
         const { data: sampleAtt } = await supabase.from('attendance').select('*').limit(1);
         let empCol = 'employee';
@@ -725,7 +714,6 @@ export default function MainLayout() {
         setAttendanceBadge(false);
       }
 
-      // 2. BADGE LEAVE
       try {
         const { data: holidayData, error } = await supabase.from('holiday_balance').select('*').limit(1000);
         if (!error && holidayData) {
@@ -781,7 +769,6 @@ export default function MainLayout() {
       
       <main className="container mx-auto mt-2 sm:mt-6 px-2 sm:px-6 flex-1 flex flex-col space-y-3 sm:space-y-6">
         
-        {/* Profile Summary Card */}
         <div className="bg-white p-3.5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-4">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -816,7 +803,6 @@ export default function MainLayout() {
           </div>
         </div>
 
-        {/* HRIS Module Access (Desktop) */}
         <div className="hidden md:block">
           <h3 className="text-sm sm:text-base font-bold text-gray-800 mb-3">{t.modulesTitle}</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
@@ -829,7 +815,7 @@ export default function MainLayout() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
                 </svg>
               </div>
-              <span className={`text-xs font-bold ${currentPath === '/' ? 'text-blue-700' : 'text-gray-700'}`}>Dashboard</span>
+              <span className={`text-xs font-bold ${currentPath === '/' ? 'text-blue-700' : 'text-gray-700'}`}>{t.moduleNames.dashboard}</span>
             </Link>
 
             <Link 
@@ -880,15 +866,12 @@ export default function MainLayout() {
           </div>
         </div>
 
-        {/* Page Content */}
         <Outlet context={{ currentUser, currentLang, isSuperAdminMode }} />
 
       </main>
       
-      {/* Mobile Bottom Navigation */}
-      <BottomNav attendanceBadge={attendanceBadge} leaveBadgeCount={leaveBadgeCount} />
+      <BottomNav attendanceBadge={attendanceBadge} leaveBadgeCount={leaveBadgeCount} currentLang={currentLang} />
 
-      {/* Modal Profile */}
       {isProfileModalOpen && (
         <div 
           className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-40 flex items-center justify-center p-3 sm:p-4"
@@ -937,7 +920,7 @@ export default function MainLayout() {
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path>
                     </svg>
-                    <span>Full Screen</span>
+                    <span>{currentLang === 'id' ? 'Layar Penuh' : 'Full Screen'}</span>
                   </button>
                 </div>
 
@@ -947,7 +930,7 @@ export default function MainLayout() {
                     setIsProfileModalOpen(false);
                     setIsFullscreenBarcodeOpen(true);
                   }}
-                  title="Click to view full screen"
+                  title={currentLang === 'id' ? 'Klik untuk layar penuh' : 'Click to view full screen'}
                 >
                   <img 
                     src={barcode} 
@@ -960,7 +943,7 @@ export default function MainLayout() {
 
             <div className="space-y-2.5 text-xs text-gray-600 divide-y divide-gray-100">
               <div className="flex justify-between items-center pt-2">
-                <span className="text-gray-400 font-medium">Employee ID</span>
+                <span className="text-gray-400 font-medium">{currentLang === 'id' ? 'ID Karyawan' : 'Employee ID'}</span>
                 <strong className="text-gray-800 font-bold">{empId}</strong>
               </div>
 
@@ -987,14 +970,14 @@ export default function MainLayout() {
               </div>
 
               <div className="flex justify-between items-center pt-2">
-                <span className="text-gray-400 font-medium">Job Level</span>
+                <span className="text-gray-400 font-medium">{currentLang === 'id' ? 'Tingkat Pekerjaan' : 'Job Level'}</span>
                 <strong className="text-gray-800 font-semibold">{jobLevel}</strong>
               </div>
 
               <div className="flex justify-between items-center pt-2">
-                <span className="text-gray-400 font-medium">Department Head?</span>
+                <span className="text-gray-400 font-medium">{currentLang === 'id' ? 'Kepala Departemen?' : 'Department Head?'}</span>
                 <strong className={`font-semibold px-2 py-0.5 rounded text-[11px] border ${checkDeptHead(currentUser) ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-                  {checkDeptHead(currentUser) ? 'Yes' : 'No'}
+                  {checkDeptHead(currentUser) ? (currentLang === 'id' ? 'Ya' : 'Yes') : (currentLang === 'id' ? 'Tidak' : 'No')}
                 </strong>
               </div>
 
@@ -1039,7 +1022,6 @@ export default function MainLayout() {
         </div>
       )}
 
-      {/* Modal Fullscreen Barcode */}
       {isFullscreenBarcodeOpen && (
         <div 
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-90 p-4" 
@@ -1058,7 +1040,9 @@ export default function MainLayout() {
             </button>
             <div className="bg-white p-6 sm:p-10 rounded-3xl shadow-2xl flex flex-col items-center border border-gray-100">
               <img src={barcode} alt="Barcode Fullscreen" className="max-h-[65vh] max-w-[80vw] object-contain" />
-              <p className="mt-4 text-xs text-gray-400 font-medium">Click anywhere outside to exit</p>
+              <p className="mt-4 text-xs text-gray-400 font-medium">
+                {currentLang === 'id' ? 'Klik di mana saja di luar area untuk keluar' : 'Click anywhere outside to exit'}
+              </p>
             </div>
           </div>
         </div>
