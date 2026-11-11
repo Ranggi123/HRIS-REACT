@@ -28,6 +28,17 @@ const i18n = {
     accountInactive: 'Your account is currently inactive.',
     emailNotRegistered: 'Email is not registered in Employee Directory.',
     pleaseSelectEmployee: 'Please select an employee first.',
+    superAdminMode: 'Super Admin Mode',
+    superAdminBypass: 'Super Admin: Bypass OTP Active',
+    turnOff: 'Turn Off',
+    loggingIn: 'Logging in...',
+    wait: 'Wait',
+    searchPh: 'Search employee...',
+    noEmpFound: 'No employee found',
+    tooManyReq: 'Too many requests. Please wait',
+    seconds: 'seconds.',
+    logDisabled: 'Super Admin Mode disabled.',
+    logReverted: 'Super Admin Mode disabled. Reverted to original profile'
   },
   id: {
     authSubtitle: 'Sistem Otentikasi Email OTP',
@@ -52,10 +63,20 @@ const i18n = {
     accountInactive: 'Akun Anda saat ini berstatus tidak aktif.',
     emailNotRegistered: 'Email tidak terdaftar di Employee Directory.',
     pleaseSelectEmployee: 'Silakan pilih karyawan terlebih dahulu.',
+    superAdminMode: 'Mode Super Admin',
+    superAdminBypass: 'Super Admin: Bypass OTP Aktif',
+    turnOff: 'Matikan',
+    loggingIn: 'Masuk...',
+    wait: 'Tunggu',
+    searchPh: 'Cari karyawan...',
+    noEmpFound: 'Tidak ada karyawan ditemukan',
+    tooManyReq: 'Terlalu banyak percobaan. Silakan tunggu',
+    seconds: 'detik lagi.',
+    logDisabled: 'Mode Super Admin dinonaktifkan.',
+    logReverted: 'Mode Super Admin dinonaktifkan. Kembali ke profil asli'
   }
 };
 
-// Helper: Memeriksa apakah kolom super admin? bernilai TRUE di database
 export const checkIsSuperAdmin = (emp) => {
   if (!emp || typeof emp !== 'object') return false;
   const keys = Object.keys(emp);
@@ -100,7 +121,6 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
-  // Status Super Admin
   const [isSuperAdminMode, setIsSuperAdminMode] = useState(false);
   const [companies, setCompanies] = useState([]);
   const [selectedCompany, setSelectedCompany] = useState('');
@@ -110,7 +130,6 @@ export default function Login() {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [empSearchQuery, setEmpSearchQuery] = useState('');
 
-  // Floating widget top-left
   const [timeStr, setTimeStr] = useState('');
   const [locationName, setLocationName] = useState('Kecamatan Kuta Selatan, ID');
   const [weatherText, setWeatherText] = useState('⛅ 29°C');
@@ -165,7 +184,6 @@ export default function Login() {
     return [];
   };
 
-  // 1. Live Time Update
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -180,7 +198,6 @@ export default function Login() {
     return () => clearInterval(interval);
   }, [currentLang]);
 
-  // 2. Weather & Location Widget
   useEffect(() => {
     const getWeatherIcon = (code, isDay = 1) => {
       if (code === 0) return isDay ? '☀️' : '🌙';
@@ -259,7 +276,6 @@ export default function Login() {
     fetchWeather();
   }, []);
 
-  // 3. Verifikasi Hak Akses Mode Super Admin
   useEffect(() => {
     const isModeActive = localStorage.getItem('hris_super_admin_active') === 'true';
     if (!isModeActive) {
@@ -278,36 +294,30 @@ export default function Login() {
       if (savedSess) sessionObj = JSON.parse(savedSess);
     } catch (e) {}
 
-    // Super Admin mode hanya diizinkan aktif jika akun asli atau akun sesi berstatus Super Admin
     if (checkIsSuperAdmin(originalObj) || checkIsSuperAdmin(sessionObj)) {
       setIsSuperAdminMode(true);
     } else {
-      // Jika bukan super admin asli, matikan mode dan bersihkan storage
       setIsSuperAdminMode(false);
       localStorage.removeItem('hris_super_admin_active');
       localStorage.removeItem('hris_original_super_admin');
     }
   }, []);
 
-  // 4. Redirect ke Dashboard hanya jika sesi aktif ada dan BUKAN sedang dalam proses alih akun
   useEffect(() => {
     const existing = localStorage.getItem('hris_session_data');
     const isSuperAdminActive = localStorage.getItem('hris_super_admin_active') === 'true';
     
-    // Jangan redirect jika Super Admin sedang berada di halaman login untuk memilih akun baru
     if (existing && !isSuperAdminActive) {
       navigate('/');
     }
   }, [navigate]);
 
-  // 5. OAuth redirection listener - HANYA diproses jika kembali dari proses login Google resmi
   useEffect(() => {
     const isOAuthReturn = 
       window.location.hash.includes('access_token') || 
       window.location.search.includes('code') ||
       sessionStorage.getItem('hris_oauth_active') === 'true';
 
-    // JIKA BUKAN PROSES LOGIN GOOGLE (misal: saat user baru saja Log Out), JANGAN AUTO-LOGIN!
     if (!isOAuthReturn) {
       return;
     }
@@ -327,7 +337,6 @@ export default function Login() {
     };
   }, []);
 
-  // 6. Muat data perusahaan dan karyawan jika mode Super Admin aktif
   useEffect(() => {
     if (isSuperAdminMode) {
       loadSuperAdminData();
@@ -434,7 +443,6 @@ export default function Login() {
 
     setIsLoading(true);
 
-    // Bypass OTP dalam Mode Super Admin
     if (isSuperAdminMode) {
       try {
         const data = await fetchDirectory();
@@ -443,7 +451,6 @@ export default function Login() {
         );
         if (!target) throw new Error(`${t.emailNotRegistered} (${targetEmail})`);
 
-        // Simpan sesi login karyawan terpilih
         localStorage.setItem('hris_session_data', JSON.stringify(target));
         localStorage.setItem('hris_super_admin_active', 'true');
         navigate('/');
@@ -455,7 +462,6 @@ export default function Login() {
       }
     }
 
-    // Alur Login Pengguna Normal
     try {
       const data = await fetchDirectory();
       const target = data.find(row => 
@@ -466,7 +472,6 @@ export default function Login() {
       const status = (target.STATUS || target.Status || target.status || '').toLowerCase();
       if (status && status !== 'active') throw new Error(t.accountInactive);
 
-      // Bypass jika perangkat terpercaya
       if (isDeviceVerifiedForEmail(targetEmail)) {
         localStorage.setItem('hris_session_data', JSON.stringify(target));
         if (checkIsSuperAdmin(target)) {
@@ -489,7 +494,7 @@ export default function Login() {
         if (match && match[1]) {
           const sec = parseInt(match[1], 10);
           setCooldown(sec);
-          throw new Error(currentLang === 'id' ? `Terlalu banyak percobaan. Silakan tunggu ${sec} detik lagi.` : `Too many requests. Please wait ${sec} seconds.`);
+          throw new Error(`${t.tooManyReq} ${sec} ${t.seconds}`);
         }
         throw new Error(otpError.message);
       }
@@ -623,13 +628,11 @@ export default function Login() {
     if (originalUser && checkIsSuperAdmin(originalUser)) {
       localStorage.setItem('hris_session_data', JSON.stringify(originalUser));
       const nameOrEmail = originalUser.Name || originalUser.name || originalUser.fullname || originalUser.email || 'Super Admin';
-      window.alert(currentLang === 'id' 
-        ? `Super Admin Mode dinonaktifkan. Kembali ke profil asli (${nameOrEmail}).` 
-        : `Super Admin Mode disabled. Reverted to original profile (${nameOrEmail}).`);
+      window.alert(`${t.logReverted} (${nameOrEmail}).`);
       navigate('/');
     } else {
       localStorage.removeItem('hris_original_super_admin');
-      window.alert(currentLang === 'id' ? "Super Admin Mode dinonaktifkan." : "Super Admin Mode disabled.");
+      window.alert(t.logDisabled);
       navigate('/login');
     }
   };
@@ -670,7 +673,7 @@ export default function Login() {
           <p className="text-sm text-gray-500 mt-1.5 flex items-center justify-center gap-1">
             {isSuperAdminMode ? (
               <span className="text-indigo-600 font-bold flex items-center gap-1">
-                <span className="text-amber-500">⚡</span> Super Admin Mode
+                <span className="text-amber-500">⚡</span> {t.superAdminMode}
               </span>
             ) : (
               t.authSubtitle
@@ -695,14 +698,14 @@ export default function Login() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-600"></span>
               </span>
-              <span>Super Admin: <strong className="text-indigo-700">Bypass OTP Active</strong></span>
+              <span><strong className="text-indigo-700">{t.superAdminBypass}</strong></span>
             </div>
             <button 
               type="button" 
               onClick={disableSuperAdminMode} 
               className="text-red-500 hover:text-red-700 font-bold hover:underline ml-2 cursor-pointer"
             >
-              Turn Off
+              {t.turnOff}
             </button>
           </div>
         )}
@@ -714,7 +717,7 @@ export default function Login() {
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 {isSuperAdminMode ? (
                   <span>
-                    Selected Employee <span className="text-indigo-600 font-semibold text-xs">(Bypass OTP)</span>
+                    {t.selectedEmployeeLabel}
                   </span>
                 ) : (
                   t.emailLabel
@@ -788,13 +791,13 @@ export default function Login() {
                             type="text" 
                             value={empSearchQuery}
                             onChange={handleSearchEmpChange}
-                            placeholder="Search employee..." 
+                            placeholder={t.searchPh} 
                             className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-gray-50"
                           />
                         </div>
                         <div className="py-1">
                           {filteredEmployees.length === 0 ? (
-                            <div className="px-3 py-2 text-xs text-gray-400 text-center">No employee found</div>
+                            <div className="px-3 py-2 text-xs text-gray-400 text-center">{t.noEmpFound}</div>
                           ) : (
                             filteredEmployees.map((emp) => (
                               <button 
@@ -834,13 +837,13 @@ export default function Login() {
               } ${isLoading || cooldown > 0 ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer active:scale-98'}`}
             >
               {isLoading ? (
-                <span>{isSuperAdminMode ? 'Logging in...' : t.loadingData}</span>
+                <span>{isSuperAdminMode ? t.loggingIn : t.loadingData}</span>
               ) : cooldown > 0 ? (
-                <span>{currentLang === 'id' ? `Tunggu ${cooldown}s` : `Wait ${cooldown}s`}</span>
+                <span>{t.wait} {cooldown}s</span>
               ) : isSuperAdminMode ? (
                 t.directLoginBtn
               ) : isDeviceVerifiedForEmail(emailInput) ? (
-                (currentLang === 'id' ? 'Masuk' : 'Log In')
+                t.loginDeviceVerifiedBtn
               ) : (
                 t.sendOtpBtn
               )}

@@ -328,7 +328,7 @@ export default function EmployeeDirectory() {
                       onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }} 
                     />
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-gray-900 truncate">{emp.name}</p>
+                      <p className="text-xs font-bold text-gray-900 break-words whitespace-normal">{emp.name}</p>
                       <p className="text-[11px] text-gray-500 truncate">{emp.jobTitle}</p>
                     </div>
                   </div>
@@ -383,7 +383,7 @@ export default function EmployeeDirectory() {
                       onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }} 
                     />
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-gray-900 truncate">{emp.name}</p>
+                      <p className="text-xs font-bold text-gray-900 break-words whitespace-normal">{emp.name}</p>
                       <p className="text-[11px] text-gray-500 truncate">{emp.jobTitle}</p>
                     </div>
                   </div>
@@ -500,7 +500,7 @@ export default function EmployeeDirectory() {
                     <span className={`absolute bottom-0 right-0 w-3 h-3 border-2 border-white rounded-full ${stripColor}`}></span>
                   </div>
                   <div className="min-w-0">
-                    <h4 className="text-sm font-bold text-gray-800 leading-tight truncate w-36 sm:w-44" title={emp.name}>
+                    <h4 className="text-sm font-bold text-gray-800 leading-tight break-words whitespace-normal" title={emp.name}>
                       {emp.name}
                     </h4>
                     <span className="text-[10px] text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100 mt-1 inline-block">
