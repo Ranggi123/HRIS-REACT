@@ -149,6 +149,50 @@ const resolveTableColumn = (knownCols, candidates) => {
   return null;
 };
 
+// --- Attendance Time Helpers ---
+const getMinutesFromMidnight = (timeVal, baseDateObj) => {
+  if (!timeVal) return null;
+  const str = String(timeVal).trim();
+  const ampmMatch = str.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)/i);
+  if (ampmMatch) {
+    let h = parseInt(ampmMatch[1], 10);
+    const m = parseInt(ampmMatch[2], 10);
+    const ampm = ampmMatch[4].toUpperCase();
+    if (ampm === 'PM' && h < 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+    return h * 60 + m;
+  }
+  const timeMatch = str.match(/(?:^|\s)(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s|$)/);
+  if (timeMatch && !str.includes('T')) {
+    return parseInt(timeMatch[1], 10) * 60 + parseInt(timeMatch[2], 10);
+  }
+  const parsed = parseFlexibleDate(str);
+  if (parsed && !isNaN(parsed.getTime())) {
+    return parsed.getHours() * 60 + parsed.getMinutes();
+  }
+  return null;
+};
+
+const calculateDurationWorked = (inVal, outVal, baseDate) => {
+  const inMins = getMinutesFromMidnight(inVal, baseDate);
+  const outMins = getMinutesFromMidnight(outVal, baseDate);
+  if (inMins === null || outMins === null) return null;
+  let diffMins = outMins - inMins;
+  if (diffMins < 0) diffMins += 24 * 60;
+  const hours = Math.floor(diffMins / 60);
+  const minutes = diffMins % 60;
+  return { hours, minutes, totalMinutes: diffMins };
+};
+
+const calculateMinuteDiff = (outVal, endVal, baseDate) => {
+  const outMins = getMinutesFromMidnight(outVal, baseDate);
+  const endMins = getMinutesFromMidnight(endVal, baseDate);
+  if (outMins === null || endMins === null) return 0;
+  let diff = outMins - endMins;
+  if (diff < -720) diff += 24 * 60;
+  return Math.max(0, diff);
+};
+
 // Approval Status Checkers (Bilingual: ID & EN)
 const isPendingApprovalStatus = (status) => {
   if (!status || status === '-' || status === 'null') return false;
@@ -1062,32 +1106,123 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const cols = Object.keys(item);
 
       const statusCol = resolveTableColumn(cols, [
-        'Approval Status',
-        'approval_status',
-        'Status Approval',
-        'status_approval',
-        'Status',
-        'status',
-        'Approval',
-        'approval',
-        'Request Status',
-        'request_status'
+        'Approval Status', 'approval_status', 'Status Approval', 'status_approval',
+        'Status', 'status', 'Approval', 'approval', 'Request Status', 'request_status'
       ]) || 'Status';
 
       const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'Leave ID', 'Leave_ID', 'no', '_id']);
-
       const nowIso = new Date().toISOString();
-      const payload = {
-        [statusCol]: newStatus
-      };
+      
+      let targetStatus = newStatus;
+      const payload = {};
+      let scheduleUpdatePayload = {};
+      let schedRow = null;
 
-      // Ensure both 'Status' and 'Approval Status' stay synchronized if both exist
+      // -------------------------------------------------------------
+      // LOGIKA ATTENDANCE & SCHEDULE
+      // -------------------------------------------------------------
+      if (item._category === 'Attendance') {
+        const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'user_uid', 'email']);
+        const attDate = getPropCaseInsensitive(item, ['Date', 'date', 'Tanggal', 'attendance_date', 'CreatedDate']);
+        
+        if (empEmail && attDate) {
+          const { data: schedData } = await supabase.from('schedule').select('*').ilike('Employee', `%${empEmail}%`).eq('Date', attDate).limit(1);
+          if (schedData && schedData.length > 0) {
+            schedRow = schedData[0];
+          }
+        }
+
+        const checkInOutRaw = getPropCaseInsensitive(item, ['Are you checking out or Checking in?', 'Are you checking out or Checking in', 'Check In/Out', 'Check Type', 'Action', 'action'], '');
+        const isCheckout = checkInOutRaw.toLowerCase().includes('out');
+        const isCheckin = checkInOutRaw.toLowerCase().includes('in');
+
+        const checkoutTimeVal = getPropCaseInsensitive(item, ['Checkout Time', 'checkout_time', 'Time Out', 'time_out', 'Time', 'time']);
+        const checkinTimeVal = getPropCaseInsensitive(item, ['Time', 'time', 'Time In', 'time_in']);
+        
+        const attActionCol = resolveTableColumn(cols, ['Action', 'action', 'Attendance Action', 'attendance_action']) || 'Action';
+        const attTimeCol = resolveTableColumn(cols, ['Time', 'time', 'Attendance Time', 'attendance_time']) || 'Time';
+
+        let schedCheckedIn = schedRow ? getPropCaseInsensitive(schedRow, ['Checked In At', 'checked_in_at', 'Time In']) : null;
+        let schedCheckedOut = schedRow ? getPropCaseInsensitive(schedRow, ['Checked Out At', 'checked_out_at', 'Time Out']) : null;
+        let schedStartTime = schedRow ? getPropCaseInsensitive(schedRow, ['Start Time', 'start_time']) : null;
+        let schedEndTime = schedRow ? getPropCaseInsensitive(schedRow, ['End Time', 'end_time']) : null;
+        let schedOvertime = schedRow ? getPropCaseInsensitive(schedRow, ['Overtime?', 'overtime', 'is_overtime']) : false;
+
+        if (newStatus === 'Approved') {
+          if (isCheckout) {
+            payload[attActionCol] = 'Checked Out';
+            if (checkoutTimeVal) payload[attTimeCol] = checkoutTimeVal;
+            targetStatus = 'Approved';
+            
+            schedCheckedOut = checkoutTimeVal;
+            scheduleUpdatePayload['Checked Out At'] = checkoutTimeVal;
+            scheduleUpdatePayload['LastEditDate'] = nowIso;
+            scheduleUpdatePayload['LastEditBy'] = actualUserName || userName;
+            
+            if (schedCheckedIn && schedCheckedOut) {
+              const dur = calculateDurationWorked(schedCheckedIn, schedCheckedOut, attDate);
+              if (dur) {
+                scheduleUpdatePayload['Total Hrs Worked'] = dur.hours;
+                scheduleUpdatePayload['Total Minutes Worked'] = dur.totalMinutes;
+              }
+            }
+            if (schedOvertime === true || schedOvertime === 'TRUE' || schedOvertime === 'true') {
+              scheduleUpdatePayload['Overtime?'] = true;
+              scheduleUpdatePayload['OvertimeDuration'] = calculateMinuteDiff(schedCheckedOut, schedEndTime, attDate);
+            }
+          } else if (isCheckin) {
+            payload[attActionCol] = 'Checked In';
+            targetStatus = 'Approved';
+            
+            schedCheckedIn = checkinTimeVal;
+            scheduleUpdatePayload['Checked In At'] = checkinTimeVal;
+            scheduleUpdatePayload['LastEditDate'] = nowIso;
+            scheduleUpdatePayload['LastEditBy'] = actualUserName || userName;
+            
+            if (schedCheckedIn && schedCheckedOut) {
+              const dur = calculateDurationWorked(schedCheckedIn, schedCheckedOut, attDate);
+              if (dur) {
+                scheduleUpdatePayload['Total Hrs Worked'] = dur.hours;
+                scheduleUpdatePayload['Total Minutes Worked'] = dur.totalMinutes;
+              }
+            }
+            if (schedCheckedIn && schedStartTime) {
+              const lateDiff = calculateMinuteDiff(schedCheckedIn, schedStartTime, attDate);
+              if (lateDiff > 0) scheduleUpdatePayload['Late Minutes'] = lateDiff;
+            }
+          }
+        } else if (newStatus === 'Rejected') {
+          if (isCheckout) {
+            payload[attActionCol] = 'Checked Out';
+            if (checkoutTimeVal) payload[attTimeCol] = checkoutTimeVal;
+            targetStatus = 'Approved'; // Sesuai instruksi khusus overtime reject
+            
+            schedCheckedOut = checkoutTimeVal;
+            scheduleUpdatePayload['Checked Out At'] = checkoutTimeVal;
+            scheduleUpdatePayload['LastEditDate'] = nowIso;
+            scheduleUpdatePayload['LastEditBy'] = actualUserName || userName;
+            
+            if (schedCheckedIn && schedCheckedOut) {
+              const dur = calculateDurationWorked(schedCheckedIn, schedCheckedOut, attDate);
+              if (dur) {
+                scheduleUpdatePayload['Total Hrs Worked'] = dur.hours;
+                scheduleUpdatePayload['Total Minutes Worked'] = dur.totalMinutes;
+              }
+            }
+            scheduleUpdatePayload['Overtime?'] = false;
+          } else {
+            targetStatus = 'Rejected';
+          }
+        }
+      }
+
+      payload[statusCol] = targetStatus;
       if (statusCol.toLowerCase() !== 'status') {
         const altStatusCol = resolveTableColumn(cols, ['Status', 'status']);
-        if (altStatusCol) payload[altStatusCol] = newStatus;
+        if (altStatusCol) payload[altStatusCol] = targetStatus;
       } else {
         const altApprovalCol = resolveTableColumn(cols, ['Approval Status', 'approval_status', 'Status Approval', 'status_approval', 'Approval']);
-        if (altApprovalCol) payload[altApprovalCol] = newStatus;
+        if (altApprovalCol) payload[altApprovalCol] = targetStatus;
       }
 
       const approverCol = resolveTableColumn(cols, ['approved_by', 'Approved By', 'action_by', 'Action By', 'lasteditby', 'last_edit_by']);
@@ -1096,7 +1231,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const dateCol = resolveTableColumn(cols, ['approved_date', 'Approved Date', 'approved_at', 'lasteditdate', 'last_editdate', 'last_edit_date']);
       if (dateCol) payload[dateCol] = nowIso;
 
-      if (newStatus === 'Rejected' && reason) {
+      if (targetStatus === 'Rejected' && reason) {
         const reasonCol = resolveTableColumn(cols, ['rejection_reason', 'Rejection Reason', 'reject_reason', 'reason', 'Reason', 'notes', 'Notes']);
         if (reasonCol) payload[reasonCol] = reason;
       }
@@ -1113,6 +1248,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
       const { error } = await query;
       if (error) throw error;
+      
+      // Update Schedule table
+      if (item._category === 'Attendance' && Object.keys(scheduleUpdatePayload).length > 0 && schedRow) {
+        const { error: schedErr } = await supabase.from('schedule')
+          .update(scheduleUpdatePayload)
+          .eq(schedRow.id ? 'id' : (schedRow.ID ? 'ID' : '_id'), schedRow.id || schedRow.ID || schedRow._id);
+        if (schedErr) console.warn("[Approval] Failed updating schedule:", schedErr.message);
+      }
 
       // LEAVE APPROVAL POST-LOGIC (Only for Leave requests)
       if (newStatus === 'Approved' && item._category === 'Leave') {
