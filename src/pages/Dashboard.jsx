@@ -90,6 +90,41 @@ export default function Dashboard() {
     return s;
   };
 
+  const formatLastEditDate = (val) => {
+    if (!val || val === '-' || val === 'null' || val === 'undefined') return '-';
+    const s = String(val).trim();
+    let parsed = new Date(s);
+    
+    // Fallback if parsing fails (e.g. DD-MM-YYYY format)
+    if (isNaN(parsed.getTime())) {
+      const m1 = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})(?:[T\s]+(\d{1,2})[:.](\d{1,2}))?/);
+      if (m1) {
+        const d = m1[1];
+        const m = m1[2];
+        const y = m1[3];
+        const hh = m1[4] || '00';
+        const mm = m1[5] || '00';
+        parsed = new Date(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}T${hh.padStart(2,'0')}:${mm.padStart(2,'0')}:00`);
+      }
+    }
+
+    if (!isNaN(parsed.getTime())) {
+      const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      
+      const dayName = days[parsed.getDay()];
+      const dd = String(parsed.getDate()).padStart(2, '0');
+      const mmm = months[parsed.getMonth()];
+      const yyyy = parsed.getFullYear();
+      const hh = String(parsed.getHours()).padStart(2, '0');
+      const min = String(parsed.getMinutes()).padStart(2, '0');
+      
+      // format: dddd, DD/MMM/YYYY HH:mm
+      return `${dayName}, ${dd}/${mmm}/${yyyy} ${hh}:${min}`;
+    }
+    return s;
+  };
+
   const formatIndoDateOnly = (val) => {
     if (!val || val === '-' || val === 'null' || val === 'undefined') return '-';
     const s = String(val).trim();
@@ -360,9 +395,12 @@ export default function Dashboard() {
           if (rawCheckout) checkoutToPass = formatIndoDateTime(rawCheckout);
 
           const rawLastEditBy = getPropCaseInsensitive(matched, ['last_edit_by', 'last edit by', 'updated_by', 'updated by', 'modified_by', 'modified by'], '-');
-          const rawLastEditTime = getPropCaseInsensitive(matched, ['last_edit_time', 'last edit time', 'updated_at', 'updated at', 'modified_at', 'modified at'], null);
+          
+          // Explicitly grab 'LastEditDate' using our getPropCaseInsensitive matching array
+          const rawLastEditTime = getPropCaseInsensitive(matched, ['lasteditdate', 'last_edit_date', 'last_edit_time', 'updated_at', 'updated at', 'modified_at', 'modified at'], null);
+          
           if (rawLastEditBy) lastEditByToPass = rawLastEditBy;
-          if (rawLastEditTime) lastEditTimeToPass = formatIndoDateTime(rawLastEditTime);
+          if (rawLastEditTime) lastEditTimeToPass = formatLastEditDate(rawLastEditTime);
 
           const styleRes = getScheduleStyle(scheduleType);
           styleConfig = styleRes;
