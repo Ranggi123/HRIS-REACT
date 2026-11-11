@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 
 const SUPABASE_URL = 'https://lfexpyqmjfkymvbacweo.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZXhweXFtamZreW12YmFjd2VvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2MzA3OTEsImV4cCI6MjEwNjIwNjc5MX0._e53PLDxsbN0aYM1mqSxLkVGnS0X85D9FYBvb1sQIWY';
@@ -12,6 +12,9 @@ const TABLE_EVENTS = ['events', 'event', 'company_events'];
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const outletContext = useOutletContext();
+  const currentLang = outletContext?.currentLang || 'en';
+  
   const [calendarMode, setCalendarMode] = useState('schedule'); 
   const [calendarDate, setCalendarDate] = useState(() => {
     const now = new Date();
@@ -33,6 +36,86 @@ export default function Dashboard() {
       navigate('/login', { replace: true });
     }
   }, [navigate]);
+
+  const t = currentLang === 'id' ? {
+    titleHoliday: 'Kalender Libur Nasional',
+    titleEvent: 'Kalender Acara',
+    titleSchedule: 'Kalender Jadwal Kerja',
+    subHoliday: 'Detail kalender libur nasional',
+    subEvent: 'Detail kalender acara',
+    subSchedule: 'Detail kalender Anda',
+    refresh: 'Muat Ulang',
+    loading: 'Memuat...',
+    optSchedule: 'Jadwal Kerja',
+    optHoliday: 'Libur Nasional',
+    optEvent: 'Acara',
+    thisMonth: 'Bulan Ini',
+    statDayOff: 'Libur',
+    statWorking: 'Kerja',
+    statSick: 'Sakit/Lain',
+    statLeave: 'Cuti',
+    legend: 'Legenda',
+    legWorking: 'Hari Kerja',
+    legSick: 'Sakit / Melahirkan',
+    legOff: 'Hari Libur',
+    legLeave: 'Cuti Tahunan / DP / EO',
+    legNoSched: 'Tidak Ada Jadwal',
+    modalTitle: 'Detail Jadwal',
+    modalDate: 'Tanggal',
+    modalType: 'Tipe / Status',
+    modalShift: 'Shift',
+    modalCheckIn: 'Waktu Check In',
+    modalCheckOut: 'Waktu Check Out',
+    modalLastEditBy: 'Terakhir Diedit Oleh',
+    modalLastEditTime: 'Waktu Terakhir Diedit',
+    btnClose: 'Tutup',
+    missedOut: 'Belum check out',
+    missedOutBadge: 'Terlewat',
+    workingDay: 'Hari Kerja',
+    daysOfWeek: ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'],
+    months: ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'],
+    monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'],
+    daysFull: ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+  } : {
+    titleHoliday: 'Public Holiday Calendar',
+    titleEvent: 'Event Calendar',
+    titleSchedule: 'Work Schedule Calendar',
+    subHoliday: 'Detail of public holiday calendar',
+    subEvent: 'Detail of event calendar',
+    subSchedule: 'Detail of your calendar',
+    refresh: 'Refresh',
+    loading: 'Loading...',
+    optSchedule: 'Working Schedule',
+    optHoliday: 'Public Holiday',
+    optEvent: 'Event',
+    thisMonth: 'This Month',
+    statDayOff: 'Day Off',
+    statWorking: 'Working',
+    statSick: 'Sick/Oth',
+    statLeave: 'Leave',
+    legend: 'Legend',
+    legWorking: 'Working Day',
+    legSick: 'Sick / Maternity',
+    legOff: 'Day Off / Holiday',
+    legLeave: 'Annual Leave / DP / EO',
+    legNoSched: 'No Schedule',
+    modalTitle: 'Schedule Detail',
+    modalDate: 'Date',
+    modalType: 'Type / Status',
+    modalShift: 'Shift',
+    modalCheckIn: 'Checked In At',
+    modalCheckOut: 'Checked Out At',
+    modalLastEditBy: 'Last Edit By',
+    modalLastEditTime: 'Last Edit Time',
+    btnClose: 'Close',
+    missedOut: 'Not checked out',
+    missedOutBadge: 'Missed Out',
+    workingDay: 'Working Day',
+    daysOfWeek: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+    monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    daysFull: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  };
 
   const getPropCaseInsensitive = (obj, candidateKeys, fallback = '') => {
     if (!obj) return fallback;
@@ -95,7 +178,6 @@ export default function Dashboard() {
     const s = String(val).trim();
     let parsed = new Date(s);
     
-    // Fallback if parsing fails (e.g. DD-MM-YYYY format)
     if (isNaN(parsed.getTime())) {
       const m1 = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})(?:[T\s]+(\d{1,2})[:.](\d{1,2}))?/);
       if (m1) {
@@ -109,39 +191,14 @@ export default function Dashboard() {
     }
 
     if (!isNaN(parsed.getTime())) {
-      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      
-      const dayName = days[parsed.getDay()];
+      const dayName = t.daysFull[parsed.getDay()];
       const dd = String(parsed.getDate()).padStart(2, '0');
-      const mmm = months[parsed.getMonth()];
+      const mmm = t.monthsShort[parsed.getMonth()];
       const yyyy = parsed.getFullYear();
       const hh = String(parsed.getHours()).padStart(2, '0');
       const min = String(parsed.getMinutes()).padStart(2, '0');
       
-      // format: dddd, DD-MMM-YYYY HH:mm
       return `${dayName}, ${dd}-${mmm}-${yyyy} ${hh}:${min}`;
-    }
-    return s;
-  };
-
-  const formatIndoDateOnly = (val) => {
-    if (!val || val === '-' || val === 'null' || val === 'undefined') return '-';
-    const s = String(val).trim();
-    const m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
-    if (m) {
-      return `${m[3].padStart(2, '0')}-${m[2].padStart(2, '0')}-${m[1]}`;
-    }
-    const m2 = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
-    if (m2) {
-      return `${m2[1].padStart(2, '0')}-${m2[2].padStart(2, '0')}-${m2[3]}`;
-    }
-    const parsed = new Date(s);
-    if (!isNaN(parsed.getTime())) {
-      const day = String(parsed.getDate()).padStart(2, '0');
-      const month = String(parsed.getMonth() + 1).padStart(2, '0');
-      const year = parsed.getFullYear();
-      return `${day}-${month}-${year}`;
     }
     return s;
   };
@@ -178,17 +235,17 @@ export default function Dashboard() {
 
   const getScheduleStyle = (type) => {
     if (!type) return { cardClass: 'bg-white border-gray-200 text-gray-700', badgeClass: 'bg-gray-100 text-gray-700', badgeText: '', shortCode: '' };
-    const t = type.toLowerCase().trim();
+    const tLower = type.toLowerCase().trim();
 
-    if (t.includes('working') || t === 'work' || t.includes('kerja')) {
+    if (tLower.includes('working') || tLower === 'work' || tLower.includes('kerja')) {
       return {
         cardClass: 'bg-green-100 border-green-300 text-green-950 font-medium',
         badgeClass: 'bg-green-600 text-white',
-        badgeText: 'Working Day',
+        badgeText: t.workingDay,
         shortCode: 'W'
       };
     }
-    if (t.includes('sick') || t.includes('matternity') || t.includes('maternity') || t.includes('compassionate') || t.includes('sakit') || t.includes('melahirkan') || t.includes('duka')) {
+    if (tLower.includes('sick') || tLower.includes('matternity') || tLower.includes('maternity') || tLower.includes('compassionate') || tLower.includes('sakit') || tLower.includes('melahirkan') || tLower.includes('duka')) {
       return {
         cardClass: 'bg-pink-100 border-pink-300 text-pink-950 font-medium',
         badgeClass: 'bg-pink-500 text-white',
@@ -196,7 +253,7 @@ export default function Dashboard() {
         shortCode: 'S'
       };
     }
-    if (t.includes('day off') || t === 'off' || t.includes('public holiday') || t.includes('holiday') || t.includes('libur')) {
+    if (tLower.includes('day off') || tLower === 'off' || tLower.includes('public holiday') || tLower.includes('holiday') || tLower.includes('libur')) {
       return {
         cardClass: 'bg-red-100 border-red-300 text-red-950 font-medium',
         badgeClass: 'bg-red-600 text-white',
@@ -325,11 +382,6 @@ export default function Dashboard() {
     setCalendarDate(new Date(now.getFullYear(), now.getMonth(), 1));
   };
 
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-
   const year = calendarDate.getFullYear();
   const month = calendarDate.getMonth();
   const firstDayIndex = new Date(year, month, 1).getDay();
@@ -395,8 +447,6 @@ export default function Dashboard() {
           if (rawCheckout) checkoutToPass = formatIndoDateTime(rawCheckout);
 
           const rawLastEditBy = getPropCaseInsensitive(matched, ['last_edit_by', 'last edit by', 'updated_by', 'updated by', 'modified_by', 'modified by'], '-');
-          
-          // Explicitly grab 'LastEditDate' using our getPropCaseInsensitive matching array
           const rawLastEditTime = getPropCaseInsensitive(matched, ['lasteditdate', 'last_edit_date', 'last_edit_time', 'updated_at', 'updated at', 'modified_at', 'modified at'], null);
           
           if (rawLastEditBy) lastEditByToPass = rawLastEditBy;
@@ -419,14 +469,14 @@ export default function Dashboard() {
                 iconHtml = '✅';
               } else if (hasCheckin && !hasCheckout) {
                 iconHtml = '⚠️';
-                checkoutToPass = 'Not checked out';
+                checkoutToPass = t.missedOut;
                 styleConfig = {
                   cardClass: 'bg-red-50 border-red-300 text-red-950 font-medium',
                   badgeClass: 'bg-red-600 text-white',
-                  badgeText: 'Missed Out',
+                  badgeText: t.missedOutBadge,
                   shortCode: 'M'
                 };
-                tooltipText = `${scheduleType} - Not checked out (${dateToPass})`;
+                tooltipText = `${scheduleType} - ${t.missedOut} (${dateToPass})`;
               }
             } else if (isToday) {
               if (hasCheckin && hasCheckout) {
@@ -523,7 +573,7 @@ export default function Dashboard() {
       calendarDays: days,
       stats: { dayOff: countDayOff, working: countWorking, sick: countSick, leave: countLeave }
     };
-  }, [year, month, totalDays, scheduleRecords, publicHolidayRecords, eventRecords, calendarMode]);
+  }, [year, month, totalDays, scheduleRecords, publicHolidayRecords, eventRecords, calendarMode, t]);
 
   const handleDayClick = (dayData) => {
     if (calendarMode === 'schedule') {
@@ -546,32 +596,28 @@ export default function Dashboard() {
   return (
     <div className="w-full text-gray-800 font-sans">
       
-      {/* Work Schedule Calendar Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 relative">
         
-        {/* Top Header & Controls Row */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 mb-4 sm:mb-5 border-b border-gray-200 gap-4">
           
-          {/* Left part: Title & Mobile Refresh */}
           <div className="flex justify-between items-start w-full sm:w-auto">
             <div>
               <h3 className="text-base sm:text-lg font-bold text-gray-900">
                 {calendarMode === 'public_holiday' 
-                  ? 'Public Holiday Calendar' 
+                  ? t.titleHoliday 
                   : calendarMode === 'event' 
-                  ? 'Event Calendar' 
-                  : 'Work Schedule Calendar'}
+                  ? t.titleEvent 
+                  : t.titleSchedule}
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
                 {calendarMode === 'public_holiday'
-                  ? 'Detail of public holiday calendar'
+                  ? t.subHoliday
                   : calendarMode === 'event'
-                  ? 'Detail of event calendar'
-                  : 'Detail of your calendar'}
+                  ? t.subEvent
+                  : t.subSchedule}
               </p>
             </div>
             
-            {/* Mobile Refresh Button (Hidden on Desktop) */}
             <button 
               onClick={loadData} 
               disabled={loading}
@@ -581,13 +627,11 @@ export default function Dashboard() {
               <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              <span>{loading ? 'Loading...' : 'Refresh'}</span>
+              <span>{loading ? t.loading : t.refresh}</span>
             </button>
           </div>
           
-          {/* Right part: Dropdown & Desktop Refresh */}
           <div className="flex w-full sm:w-auto items-center gap-3 sm:gap-4 justify-between sm:justify-end">
-            {/* Dropdown Select Mode (Working Schedule, Event, Public Holiday) */}
             <div className="relative w-full sm:w-48">
               <select 
                 value={calendarMode} 
@@ -600,13 +644,12 @@ export default function Dashboard() {
                   backgroundSize: '1rem'
                 }}
               >
-                <option value="schedule">Working Schedule</option>
-                <option value="public_holiday">Public Holiday</option>
-                <option value="event">Event</option>
+                <option value="schedule">{t.optSchedule}</option>
+                <option value="public_holiday">{t.optHoliday}</option>
+                <option value="event">{t.optEvent}</option>
               </select>
             </div>
 
-            {/* Desktop Refresh Button (Hidden on Mobile) */}
             <button 
               onClick={loadData} 
               disabled={loading}
@@ -616,13 +659,12 @@ export default function Dashboard() {
               <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              <span>{loading ? 'Loading...' : 'Refresh'}</span>
+              <span>{loading ? t.loading : t.refresh}</span>
             </button>
           </div>
 
         </div>
 
-        {/* Month Navigation Row: < October 2026 > This Month */}
         <div className="flex items-center justify-between gap-2 mb-3">
           <button 
             onClick={prevMonth} 
@@ -633,7 +675,7 @@ export default function Dashboard() {
           </button>
           
           <span className="text-sm sm:text-base font-bold text-gray-800">
-            {monthNames[month]} {year}
+            {t.months[month]} {year}
           </span>
           
           <div className="flex items-center gap-2">
@@ -648,53 +690,45 @@ export default function Dashboard() {
               onClick={setThisMonth} 
               className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition active:scale-95 shadow-xs"
             >
-              This Month
+              {t.thisMonth}
             </button>
           </div>
         </div>
 
-        {/* 4 Summary Stats Boxes (Day Off, Working, Sick/Oth, Leave) - Only in Schedule Mode */}
         {calendarMode === 'schedule' && (
           <div className="grid grid-cols-4 border border-gray-200 rounded-xl overflow-hidden divide-x divide-gray-100 text-center py-2.5 bg-white shadow-xs mb-3">
             <div>
-              <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">Day Off</span>
+              <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statDayOff}</span>
               <span className="text-base sm:text-lg font-black text-red-600 leading-tight">{stats.dayOff}</span>
             </div>
             <div>
-              <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">Working</span>
+              <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statWorking}</span>
               <span className="text-base sm:text-lg font-black text-green-600 leading-tight">{stats.working}</span>
             </div>
             <div>
-              <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">Sick/Oth</span>
+              <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statSick}</span>
               <span className="text-base sm:text-lg font-black text-pink-600 leading-tight">{stats.sick}</span>
             </div>
             <div>
-              <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">Leave</span>
+              <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statLeave}</span>
               <span className="text-base sm:text-lg font-black text-gray-800 leading-tight">{stats.leave}</span>
             </div>
           </div>
         )}
 
-        {/* Days of Week Header */}
         <div className="grid grid-cols-7 text-center text-xs font-bold pt-1 mb-1">
-          <span className="text-red-500">Sun</span>
-          <span className="text-gray-700">Mon</span>
-          <span className="text-gray-700">Tue</span>
-          <span className="text-gray-700">Wed</span>
-          <span className="text-gray-700">Thu</span>
-          <span className="text-gray-700">Fri</span>
-          <span className="text-blue-600">Sat</span>
+          {t.daysOfWeek.map((day, idx) => (
+            <span key={day} className={idx === 0 ? 'text-red-500' : idx === 6 ? 'text-blue-600' : 'text-gray-700'}>
+              {day}
+            </span>
+          ))}
         </div>
 
-        {/* Calendar Grid */}
         <div className="grid grid-cols-7 gap-1 sm:gap-1.5 text-center text-xs">
-          
-          {/* Empty padding before day 1 */}
           {Array.from({ length: firstDayIndex }).map((_, idx) => (
             <div key={`empty-${idx}`} className="h-16 sm:h-24 bg-gray-50 border border-dashed border-gray-200 rounded-xl opacity-40"></div>
           ))}
 
-          {/* Active Days */}
           {calendarDays.map((d) => {
             const hasBadge = !!d.styleConfig.badgeText;
             const isClickable = calendarMode === 'schedule';
@@ -708,7 +742,6 @@ export default function Dashboard() {
                 } ${isClickable ? 'cursor-pointer hover:shadow-md active:scale-95' : ''}`}
                 title={d.tooltipText || undefined}
               >
-                {/* Top Row: Date Number and Icon */}
                 <div className="flex justify-between items-start w-full">
                   <span className={`text-xs sm:text-sm font-extrabold leading-none ${
                     d.isToday ? 'text-blue-600' : d.isSunday ? 'text-red-500' : 'text-gray-800'
@@ -720,15 +753,12 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* Center Badge: Full Text on Desktop, Icon/Badge on Mobile */}
                 <div className="w-full flex items-center justify-center my-auto">
                   {hasBadge ? (
                     <>
-                      {/* Desktop View */}
                       <span className={`hidden sm:inline-block w-full py-0.5 px-1 rounded-md text-[10px] font-bold text-center truncate shadow-2xs ${d.styleConfig.badgeClass}`}>
                         {d.styleConfig.badgeText}
                       </span>
-                      {/* Mobile View */}
                       <span className={`sm:hidden inline-block w-full py-0.5 px-0.5 rounded text-[9px] font-bold text-center truncate shadow-2xs ${d.styleConfig.badgeClass}`}>
                         {d.styleConfig.shortCode || d.styleConfig.badgeText.slice(0, 4)}
                       </span>
@@ -738,7 +768,6 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* Holiday Note Overlay at Bottom */}
                 {d.noteOverlayText && (
                   <div 
                     className="hidden sm:block absolute bottom-1 left-1 right-1 bg-red-100 text-red-900 text-[9px] px-1 py-0.5 rounded border border-red-200 truncate z-10"
@@ -752,30 +781,29 @@ export default function Dashboard() {
           })}
         </div>
 
-        {/* Legend at Bottom (Matching index.html) */}
         {calendarMode === 'schedule' && (
           <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs">
-            <h4 className="font-bold text-gray-700 mb-1.5 border-b border-gray-200 pb-1">Legend</h4>
+            <h4 className="font-bold text-gray-700 mb-1.5 border-b border-gray-200 pb-1">{t.legend}</h4>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
               <div className="flex items-center space-x-1.5">
                 <span className="w-3 h-3 rounded bg-green-500 shrink-0"></span>
-                <span className="text-gray-600 font-medium">Working Day</span>
+                <span className="text-gray-600 font-medium">{t.legWorking}</span>
               </div>
               <div className="flex items-center space-x-1.5">
                 <span className="w-3 h-3 rounded bg-pink-500 shrink-0"></span>
-                <span className="text-gray-600 font-medium">Sick / Maternity</span>
+                <span className="text-gray-600 font-medium">{t.legSick}</span>
               </div>
               <div className="flex items-center space-x-1.5">
                 <span className="w-3 h-3 rounded bg-red-500 shrink-0"></span>
-                <span className="text-gray-600 font-medium">Day Off / Holiday</span>
+                <span className="text-gray-600 font-medium">{t.legOff}</span>
               </div>
               <div className="flex items-center space-x-1.5">
                 <span className="w-3 h-3 rounded bg-orange-500 shrink-0"></span>
-                <span className="text-gray-600 font-medium">Annual Leave / DP / EO</span>
+                <span className="text-gray-600 font-medium">{t.legLeave}</span>
               </div>
               <div className="flex items-center space-x-1.5">
                 <span className="w-3 h-3 rounded border border-gray-300 bg-white shrink-0"></span>
-                <span className="text-gray-600 font-medium">No Schedule</span>
+                <span className="text-gray-600 font-medium">{t.legNoSched}</span>
               </div>
             </div>
           </div>
@@ -783,7 +811,6 @@ export default function Dashboard() {
 
       </div>
 
-      {/* SCHEDULE MODAL DETAIL (Identical to index.html openScheduleModal) */}
       {scheduleModalData && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 px-4"
@@ -794,7 +821,7 @@ export default function Dashboard() {
             onClick={e => e.stopPropagation()}
           >
             <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100">
-              <h3 className="text-base sm:text-lg font-bold text-gray-800">Schedule Detail</h3>
+              <h3 className="text-base sm:text-lg font-bold text-gray-800">{t.modalTitle}</h3>
               <button onClick={closeScheduleModal} className="text-gray-400 hover:text-gray-600 p-1">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
@@ -802,24 +829,24 @@ export default function Dashboard() {
 
             <div className="space-y-3 text-sm">
               <div className="flex justify-between border-b border-gray-50 pb-2">
-                <span className="text-gray-500">Date</span>
+                <span className="text-gray-500">{t.modalDate}</span>
                 <strong className="text-gray-800">{scheduleModalData.date}</strong>
               </div>
               <div className="flex justify-between border-b border-gray-50 pb-2">
-                <span className="text-gray-500">Type / Status</span>
+                <span className="text-gray-500">{t.modalType}</span>
                 <strong className="text-gray-800">{scheduleModalData.type}</strong>
               </div>
               <div className="flex justify-between border-b border-gray-50 pb-2">
-                <span className="text-gray-500">Shift</span>
+                <span className="text-gray-500">{t.modalShift}</span>
                 <strong className="text-gray-800">{scheduleModalData.shift}</strong>
               </div>
               <div className="flex justify-between border-b border-gray-50 pb-2">
-                <span className="text-gray-500 font-medium">Checked In At</span>
+                <span className="text-gray-500 font-medium">{t.modalCheckIn}</span>
                 <strong className="text-green-600 font-mono text-xs">{scheduleModalData.checkin}</strong>
               </div>
               <div className="flex justify-between border-b border-gray-50 pb-2">
-                <span className="text-gray-500 font-medium">Checked Out At</span>
-                {scheduleModalData.checkout && (scheduleModalData.checkout.toLowerCase().includes('belum') || scheduleModalData.checkout.toLowerCase().includes('not checked')) ? (
+                <span className="text-gray-500 font-medium">{t.modalCheckOut}</span>
+                {scheduleModalData.checkout && (scheduleModalData.checkout.toLowerCase().includes('belum') || scheduleModalData.checkout.toLowerCase().includes('not checked') || scheduleModalData.checkout.toLowerCase().includes('terlewat')) ? (
                   <span className="text-red-600 font-semibold text-xs italic bg-red-50 px-2 py-0.5 rounded border border-red-200">
                     {scheduleModalData.checkout}
                   </span>
@@ -828,11 +855,11 @@ export default function Dashboard() {
                 )}
               </div>
               <div className="flex justify-between border-b border-gray-50 pb-2">
-                <span className="text-gray-500 font-medium">Last Edit By</span>
+                <span className="text-gray-500 font-medium">{t.modalLastEditBy}</span>
                 <strong className="text-gray-800 text-xs text-right break-words max-w-[150px]">{scheduleModalData.lastEditBy}</strong>
               </div>
               <div className="flex justify-between border-b border-gray-50 pb-2">
-                <span className="text-gray-500 font-medium">Last Edit Time</span>
+                <span className="text-gray-500 font-medium">{t.modalLastEditTime}</span>
                 <strong className="text-gray-800 font-mono text-xs">{scheduleModalData.lastEditTime}</strong>
               </div>
             </div>
@@ -842,7 +869,7 @@ export default function Dashboard() {
                 onClick={closeScheduleModal} 
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition active:scale-95 shadow-xs"
               >
-                Close
+                {t.btnClose}
               </button>
             </div>
           </div>
