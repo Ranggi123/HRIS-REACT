@@ -82,8 +82,8 @@ export default function MainLayout() {
   };
 
   // Helper verifikasi apakah user berhak atas menu Approval
-  const checkIsApprovalEligible = (user, isSuperAdmin = false) => {
-    if (isSuperAdmin) return true;
+  const checkIsApprovalEligible = (user) => {
+    // Super Admin override dihapus, hanya mengandalkan checkDeptHead(user)
     return checkDeptHead(user);
   };
 
@@ -148,8 +148,8 @@ export default function MainLayout() {
   const fetchApprovalCount = async (user) => {
     if (!user) return;
 
-    // Jika user tidak berhak atas approval, set 0 dan hentikan
-    if (!checkIsApprovalEligible(user, isSuperAdminMode)) {
+    // Jika user tidak berhak atas approval, set 0 dan hentikan (Bahkan saat mode super admin aktif, jika role asli =/= department head)
+    if (!checkIsApprovalEligible(user)) {
       setApprovalCount(0);
       return;
     }

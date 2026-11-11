@@ -101,8 +101,8 @@ export default function TopNav({
     return false;
   };
 
-  // Menu & badge hanya tampil jika Department Head = TRUE (atau Super Admin aktif)
-  const canShowApproval = isSuperAdminMode || checkDeptHead(currentUser);
+  // Menu & badge HANYA tampil jika Department Head = TRUE (meskipun Super Admin aktif)
+  const canShowApproval = checkDeptHead(currentUser);
 
   // FUNGSI LOGOUT BERSIH TOTAL
   const handleLogout = async () => {
