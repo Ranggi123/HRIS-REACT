@@ -420,6 +420,7 @@ const SHIFT_OPTIONS = [
 export default function Approval({ currentUser: propCurrentUser }) {
   const context = useOutletContext() || {};
   const currentLang = context.currentLang || 'en';
+  const lang = currentLang; // Fix for ReferenceError: lang is not defined
 
   const t = currentLang === 'id' ? {
     title: 'Permintaan Persetujuan',
