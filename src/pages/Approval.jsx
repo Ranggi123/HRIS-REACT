@@ -420,7 +420,7 @@ const SHIFT_OPTIONS = [
 export default function Approval({ currentUser: propCurrentUser }) {
   const context = useOutletContext() || {};
   const currentLang = context.currentLang || 'en';
-  const lang = currentLang;
+  const lang = currentLang; // Fix for ReferenceError: lang is not defined
 
   const t = currentLang === 'id' ? {
     title: 'Permintaan Persetujuan',
@@ -1251,6 +1251,26 @@ export default function Approval({ currentUser: propCurrentUser }) {
     const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']);
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'employee_name'], 'Employee');
     const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'Action', 'action', 'Status Type', 'Attendance Type'], item._category || 'Request');
+    
+    const isLeave = item._category === 'Leave';
+
+    // Get formatted date strings
+    let dateStr = '';
+    if (isLeave) {
+        const fromDateRaw = getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date']);
+        const toDateRaw = getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']);
+        const fromDateStr = formatDateDisplay(fromDateRaw, 'en');
+        
+        if (toDateRaw && toDateRaw !== fromDateRaw) {
+             const toDateStr = formatDateDisplay(toDateRaw, 'en');
+             dateStr = `${fromDateStr} to ${toDateStr}`;
+        } else {
+             dateStr = fromDateStr;
+        }
+    } else {
+        const rawDate = getPropCaseInsensitive(item, ['Time', 'time', 'created_at', 'CreatedDate', 'From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date']);
+        dateStr = formatDateTimeDisplay(rawDate, 'en');
+    }
 
     if (!empEmail || !empEmail.includes('@')) return;
 
@@ -1261,14 +1281,17 @@ export default function Approval({ currentUser: propCurrentUser }) {
       <div style="font-family: Arial, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
         <h2 style="color: ${statusColor}; margin-top: 0; font-size: 18px;">Request ${newStatus}</h2>
         <p style="font-size: 14px;">Hello <strong>${empName}</strong>,</p>
-        <p style="font-size: 14px;">Your <strong>${reqType} (${item._category})</strong> request status has been updated to <strong>${newStatus}</strong> by your Line Manager (<strong>${userName}</strong>).</p>
+        <p style="font-size: 14px;">Your <strong>${reqType} (${item._category})</strong> request for <strong>${dateStr}</strong> has been updated to <strong>${newStatus}</strong> by your Line Manager (<strong>${userName}</strong>).</p>
         ${reason ? `<p style="font-size: 14px; background: #fef2f2; border-left: 4px solid #ef4444; padding: 10px; margin: 15px 0;"><strong>Notes:</strong> ${reason}</p>` : ''}
         <div style="margin-top: 20px; padding: 12px; background: #f8fafc; border-radius: 8px; font-size: 13px;">
           <p style="margin: 4px 0;"><strong>Status:</strong> <span style="color: ${statusColor}; font-weight: bold;">${newStatus}</span></p>
-          <p style="margin: 4px 0;"><strong>Line Manager:</strong> ${actualUserWorkEmail || topNavEmail || userWorkEmail}</p>
+          <p style="margin: 4px 0;"><strong>Date:</strong> ${dateStr}</p>
         </div>
       </div>
     `;
+
+    // Only force "Leave Request" as subject if it's a leave request, otherwise default behavior
+    const subjectTitle = isLeave ? `Leave Request - ${newStatus}` : `[${newStatus}] ${item._category} Request - ${empName}`;
 
     try {
       await fetch(GAS_WEB_APP_URL, {
@@ -1277,10 +1300,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
         body: JSON.stringify({
           action: "sendEmail",
           to: empEmail,
-          subject: `[${newStatus}] ${item._category} Request - ${empName}`,
+          subject: subjectTitle,
           body: emailHtml,
           htmlBody: emailHtml,
-          fromEmail: actualUserWorkEmail || topNavEmail || userWorkEmail
+          fromEmail: actualUserWorkEmail || topNavEmail || userWorkEmail // Use the correct user email as the sender
         })
       });
     } catch (e) {
