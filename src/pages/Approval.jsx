@@ -1251,9 +1251,23 @@ export default function Approval({ currentUser: propCurrentUser }) {
       
       // Update Schedule table
       if (item._category === 'Attendance' && Object.keys(scheduleUpdatePayload).length > 0 && schedRow) {
-        const { error: schedErr } = await supabase.from('schedule')
-          .update(scheduleUpdatePayload)
-          .eq(schedRow.id ? 'id' : (schedRow.ID ? 'ID' : '_id'), schedRow.id || schedRow.ID || schedRow._id);
+        const rowKeys = Object.keys(schedRow);
+        // Supabase REST membutuhkan nama kolom sama persis seperti yang di database (biasanya 'id')
+        const pkCol = rowKeys.find(k => k.toLowerCase() === 'id' || k === 'ID' || k === '_id');
+        
+        let schedQuery = supabase.from('schedule').update(scheduleUpdatePayload);
+        
+        if (pkCol && schedRow[pkCol] !== undefined && schedRow[pkCol] !== null) {
+          // Fallback aman untuk mengatasi supabase js client
+          schedQuery = schedQuery.eq(pkCol, schedRow[pkCol]);
+        } else {
+          // Cari kolom Employee / Date untuk WHERE clause
+          const empCol = rowKeys.find(k => ['employee', 'email', 'user_uid'].includes(k.toLowerCase())) || 'Employee';
+          const dateCol = rowKeys.find(k => ['date', 'tanggal'].includes(k.toLowerCase())) || 'Date';
+          schedQuery = schedQuery.eq(empCol, schedRow[empCol]).eq(dateCol, schedRow[dateCol]);
+        }
+        
+        const { error: schedErr } = await schedQuery;
         if (schedErr) console.warn("[Approval] Failed updating schedule:", schedErr.message);
       }
 
