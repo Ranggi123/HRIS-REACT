@@ -87,6 +87,125 @@ export default function MainLayout() {
     return checkDeptHead(user);
   };
 
+  const matchesLineManager = (record, targetEmail, targetName = '', extraKeys = []) => {
+    if (!record) return false;
+    const mgrVal = getPropCaseInsensitive(record, [
+      'Line Manager work email',
+      'line_manager_work_email',
+      'Line Manager Email',
+      'line_manager_email',
+      'Line Manager',
+      'line_manager',
+      'Line_Manager',
+      'linemanager',
+      'manager_email',
+      'Manager Email',
+      'Manager',
+      'manager',
+      'Approver Email',
+      'approver_email',
+      'Approver',
+      'approver',
+      'Atasan Email',
+      'atasan_email',
+      'Atasan',
+      'atasan',
+      'atasan_langsung',
+      'Atasan Langsung',
+      'approval_line_manager'
+    ], '').trim().toLowerCase();
+  
+    // STRICT: Jika kolom tidak ada, kosong, '-', 'null', atau 'undefined', LANGSUNG TOLAK
+    if (!mgrVal || mgrVal === '-' || mgrVal === 'null' || mgrVal === 'undefined') {
+      return false;
+    }
+  
+    const cleanMgrVal = mgrVal.replace(/<|>|\(|\)/g, ' ').trim();
+  
+    const allKeys = new Set([
+      (targetEmail || '').trim().toLowerCase(),
+      (targetName || '').trim().toLowerCase(),
+      (targetEmail || '').includes('@') ? (targetEmail || '').split('@')[0].trim().toLowerCase() : '',
+      ...extraKeys.map(k => (k || '').trim().toLowerCase())
+    ]);
+  
+    for (const key of allKeys) {
+      if (key && key.length >= 2) {
+        if (
+          cleanMgrVal === key ||
+          mgrVal === key ||
+          (key.includes('@') && cleanMgrVal.includes(key)) ||
+          (cleanMgrVal.includes('@') && key.includes(cleanMgrVal))
+        ) {
+          return true;
+        }
+      }
+    }
+  
+    return false;
+  };
+
+  // Approval Status Checkers
+  const isPendingApprovalStatus = (status) => {
+    if (!status || status === '-' || status === 'null') return false;
+    const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
+    return (
+      s === 'pendingapproval' ||
+      s === 'pending' ||
+      s === 'requesttocancel' ||
+      s === 'menunggu' ||
+      s === 'menunggupersetujuan' ||
+      s === 'diajukan' ||
+      s === 'submitted' ||
+      s === 'review' ||
+      s === 'waiting' ||
+      s === 'waitingapproval' ||
+      s.includes('pending') ||
+      s.includes('menunggu')
+    );
+  };
+  
+  const getRowStatus = (row) => {
+    if (!row) return '';
+    const candidateKeys = [
+      'Status',
+      'status',
+      'Approval Status',
+      'approval_status',
+      'Status Approval',
+      'status_approval',
+      'Approval',
+      'approval',
+      'Request Status',
+      'request_status',
+      'Status Pengajuan',
+      'status_pengajuan',
+      'attendance_status',
+      'Attendance Status'
+    ];
+  
+    // 1. First pass: find any column that has a recognized approval status keyword
+    for (const k of candidateKeys) {
+      const val = getPropCaseInsensitive(row, [k], '');
+      if (val && val !== '-' && val !== 'null' && val !== 'undefined') {
+        if (isPendingApprovalStatus(val)) {
+          return val;
+        }
+      }
+    }
+  
+    // 2. Second pass: fallback to the first non-empty, non-dash value among candidates
+    for (const k of candidateKeys) {
+      const val = getPropCaseInsensitive(row, [k], '');
+      if (val && val !== '-' && val !== 'null' && val !== 'undefined') {
+        return val;
+      }
+    }
+  
+    return '';
+  };
+
+
   // 1. Memuat user dan menghitung approval secara berurutan
   useEffect(() => {
     const initializeData = async () => {
@@ -148,89 +267,196 @@ export default function MainLayout() {
   const fetchApprovalCount = async (user) => {
     if (!user) return;
 
-    // Jika user tidak berhak atas approval, set 0 dan hentikan (Bahkan saat mode super admin aktif, jika role asli =/= department head)
+    // Jika user tidak berhak atas approval, set 0 dan hentikan
     if (!checkIsApprovalEligible(user)) {
       setApprovalCount(0);
       return;
     }
 
     try {
-      // 1. Kumpulkan semua kemungkinan identitas manager yang login
-      const userKeys = [
-        user['Work Email'],
-        user['work email'],
-        user.Work_Email,
-        user.work_email,
-        user['Employee work email'],
-        user.Employee_work_email,
-        user.email,
-        user.Email,
-        user.USER_UID,
-        user.name,
-        user.Name,
-        user.fullname,
-        user['employee id'],
-        user.employee_id,
-        user.id
-      ]
-        .filter(Boolean)
-        .map(k => String(k).trim().toLowerCase());
+      
+      const userWorkEmail = (
+        getCleanProp(user, [
+          'Employee work email',
+          'employee_work_email',
+          'work_email',
+          'work email',
+          'Work Email',
+          'email',
+          'Email',
+          'user_uid',
+          'USER_UID'
+        ]) || ''
+      ).trim().toLowerCase();
+
+      const topNavEmail = (
+        user?.email ||
+        user?.Email ||
+        user?.USER_UID ||
+        user?.['Employee work email'] ||
+        user?.employee_work_email ||
+        userWorkEmail ||
+        ''
+      ).trim().toLowerCase();
+      
+      const userNameRaw = getCleanProp(user, ['Name', 'name', 'nama', 'fullname', 'full_name'], userWorkEmail.split('@')[0] || 'Manager');
+      
+      let realWorkEmail = userWorkEmail || topNavEmail;
+      let realName = userNameRaw;
+      let subordinateEmails = [];
+      const employeeDirectoryMap = new Map();
+      
+      // 1. Fetch Subordinate Employees
+      try {
+        const { data: dirData, error: dirErr } = await supabase
+          .from('employee_directory')
+          .select('*')
+          .limit(2500);
+
+        if (!dirErr && dirData) {
+          const cleanUserWorkEmail = (userWorkEmail || topNavEmail || '').trim().toLowerCase();
+          const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
+
+          const myProfile = dirData.find(emp => {
+            const empEmail = (getCleanProp(emp, ['Email', 'email', 'user_uid']) || '').trim().toLowerCase();
+            const empWorkEmail = (getCleanProp(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
+            const empName = (getCleanProp(emp, ['Name', 'name', 'nama', 'fullname', 'full_name']) || '').trim().toLowerCase();
+
+            const empEmailPrefix = empEmail.includes('@') ? empEmail.split('@')[0] : empEmail;
+            const empWorkPrefix = empWorkEmail.includes('@') ? empWorkEmail.split('@')[0] : empWorkEmail;
+
+            if (cleanUserWorkEmail) {
+              if (empEmail === cleanUserWorkEmail || empWorkEmail === cleanUserWorkEmail) return true;
+              if (userPrefix && (empEmailPrefix === userPrefix || empWorkPrefix === userPrefix)) return true;
+            }
+            if (userNameRaw && empName === userNameRaw.toLowerCase()) return true;
+            return false;
+          });
+
+          if (myProfile) {
+            const foundWorkEmail = getCleanProp(myProfile, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']).trim().toLowerCase();
+            if (foundWorkEmail) realWorkEmail = foundWorkEmail;
+
+            const foundName = getCleanProp(myProfile, ['Name', 'name', 'nama', 'fullname', 'full_name']);
+            if (foundName) realName = foundName;
+          }
+
+          const cleanRealWorkEmail = (realWorkEmail || '').trim().toLowerCase();
+          const realPrefix = cleanRealWorkEmail.includes('@') ? cleanRealWorkEmail.split('@')[0] : cleanRealWorkEmail;
+
+          const managerKeys = Array.from(new Set([
+            userWorkEmail,
+            topNavEmail,
+            realWorkEmail,
+            userPrefix,
+            realPrefix,
+            userNameRaw.toLowerCase(),
+            realName.toLowerCase()
+          ])).filter(k => k && k.length >= 2);
+
+          const uniqueMap = new Map();
+          const subordinates = dirData.filter(row => matchesLineManager(row, realWorkEmail, realName, managerKeys));
+          
+          subordinates.forEach(emp => {
+            const email = (getCleanProp(emp, [
+              'Employee work email',
+              'employee_work_email',
+              'work_email',
+              'work email',
+              'Work Email',
+              'email',
+              'Email',
+              'user_uid'
+            ]) || '').trim().toLowerCase();
+
+            if (email) {
+              if (!uniqueMap.has(email)) {
+                uniqueMap.set(email, { email });
+              }
+            }
+          });
+
+          subordinateEmails = Array.from(uniqueMap.keys());
+        }
+      } catch (err) {
+        console.warn("[MainLayout] Could not query employee_directory:", err);
+      }
+
+      const cleanRealWorkEmail = (realWorkEmail || '').trim().toLowerCase();
+      const realPrefix = cleanRealWorkEmail.includes('@') ? cleanRealWorkEmail.split('@')[0] : cleanRealWorkEmail;
+      const cleanUserWorkEmail = (userWorkEmail || topNavEmail || '').trim().toLowerCase();
+      const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
+
+      const allManagerKeys = Array.from(new Set([
+        userWorkEmail,
+        topNavEmail,
+        realWorkEmail,
+        userPrefix,
+        realPrefix,
+        userNameRaw.toLowerCase(),
+        realName.toLowerCase()
+      ])).filter(k => k && k.length >= 2);
 
       let pendingCount = 0;
 
-      const countPendingInArray = (dataArray) => {
-        let count = 0;
-        dataArray.forEach(item => {
-          // Ambil status & cek berbagai variasi kata pending/waiting/menunggu
-          const status = String(
-            item?.Status || 
-            item?.status || 
-            item?.approval_status || 
-            item?.Approval_Status || 
-            ''
-          ).trim().toLowerCase();
-
-          const isPending = 
-            status.includes('pending') || 
-            status.includes('waiting') || 
-            status.includes('menunggu') ||
-            status === 'submitted' ||
-            status === 'in review';
-
-          // Ambil identitas Line Manager di baris data
-          const lineManager = String(
-            item?.['Line Manager'] || 
-            item?.Line_Manager || 
-            item?.line_manager || 
-            item?.['line manager'] || 
-            item?.approver ||
-            item?.manager ||
-            item?.manager_email ||
-            ''
-          ).trim().toLowerCase();
-
-          // Jika Super Admin mode aktif, hitung semua yang pending.
-          // Jika bukan, cocokkan dengan salah satu identitas manager.
-          const isManagerMatch = isSuperAdminMode || userKeys.some(key => lineManager === key || lineManager.includes(key));
-
-          if (isPending && isManagerMatch) {
-            count++;
-          }
-        });
-        return count;
-      };
-
-      // Query 1: Data Cuti (leave_requests)
-      const { data: leaveData } = await supabase.from('leave_requests').select('*');
-      if (leaveData) pendingCount += countPendingInArray(leaveData);
-
-      // Query 2: Data Kehadiran (Cek attendance_requests dulu, fallback ke attendance)
-      let { data: attReqData, error: attErr } = await supabase.from('attendance').select('*');
-      if (attErr || !attReqData) {
-        const { data: fallbackData } = await supabase.from('attendance').select('*');
-        attReqData = fallbackData;
+      // 2. Query Leave Requests
+      const { data: leaveData } = await supabase.from('leave_requests').select('*').limit(3000);
+      if (leaveData) {
+          const myLeaves = leaveData.filter(row => {
+              const status = getRowStatus(row);
+              const isRelevant = isPendingApprovalStatus(status);
+              const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
+              const empVal = (getPropCaseInsensitive(row, [
+                'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
+                'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
+              ]) || '').trim().toLowerCase();
+              const isSelf = cleanUserWorkEmail && (empVal === cleanUserWorkEmail);
+              return isRelevant && hasDirectMgr && !isSelf;
+          });
+          pendingCount += myLeaves.length;
       }
-      if (attReqData) pendingCount += countPendingInArray(attReqData);
+      
+      // 3. Query Attendance
+      let attData = [];
+      try {
+        const { data: defAtt, error: attErr } = await supabase.from('attendance').select('*').limit(3000);
+        if (!attErr && defAtt) {
+          attData = defAtt;
+        }
+      } catch (e) {
+        console.warn("Failed fetching attendance data:", e);
+      }
+
+      try {
+        const { data: pendingAttRows } = await supabase.from('attendance').select('*').ilike('Status', '%Pending%').limit(1000);
+        if (pendingAttRows && pendingAttRows.length > 0) {
+          const existingIds = new Set(attData.map(r => r.id ?? `${r.Employee}_${r.Date}_${r.Status}`));
+          pendingAttRows.forEach(r => {
+            const rowKey = r.id ?? `${r.Employee}_${r.Date}_${r.Status}`;
+            if (!existingIds.has(rowKey)) {
+              attData.unshift(r);
+              existingIds.add(rowKey);
+            }
+          });
+        }
+      } catch (e) {}
+      
+      if (attData && attData.length > 0) {
+          const myAttendance = attData.filter(row => {
+              const status = getRowStatus(row);
+              const isRelevant = isPendingApprovalStatus(status);
+              const empEmail = (getPropCaseInsensitive(row, [
+                'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
+                'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
+              ]) || '').trim().toLowerCase();
+              const hasDirectMgr = 
+                matchesLineManager(row, realWorkEmail, realName, allManagerKeys) ||
+                (empEmail && subordinateEmails.includes(empEmail)) ||
+                (empEmail && subordinateEmails.some(sub => sub && (sub === empEmail || empEmail.includes(sub) || sub.includes(empEmail))));
+              return isRelevant && hasDirectMgr;
+          });
+          pendingCount += myAttendance.length;
+      }
 
       setApprovalCount(pendingCount);
 
@@ -389,13 +615,26 @@ export default function MainLayout() {
     return { timestamp: 0, y: 0, m: 0, d: 0 };
   };
 
+  const getPropCaseInsensitive = (obj, candidateNames, fallback = '') => {
+    if (!obj) return fallback;
+    const keys = Object.keys(obj);
+    for (const cand of candidateNames) {
+      const normalizedCand = cand.toLowerCase().replace(/[\s_-]/g, '');
+      const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedCand);
+      if (found && obj[found] !== null && obj[found] !== undefined && String(obj[found]).trim() !== '') {
+        return String(obj[found]).trim();
+      }
+    }
+    return fallback;
+  };
+
   // Fetch badge untuk Attendance dan Leave
   useEffect(() => {
     const fetchBadges = async () => {
       if (!currentUser) return;
-      const userEmail = String(getCleanProp(currentUser, ['email', 'email address', 'user_uid']) || '').trim().toLowerCase();
-      const empIdStr = String(getCleanProp(currentUser, ['employee id', 'employee_id', 'id']) || '').trim().toLowerCase();
-      const empNameStr = String(getCleanProp(currentUser, ['name', 'nama', 'fullname', 'full_name']) || '').trim().toLowerCase();
+      const userEmail = String(getPropCaseInsensitive(currentUser, ['email', 'email address', 'user_uid']) || '').trim().toLowerCase();
+      const empIdStr = String(getPropCaseInsensitive(currentUser, ['employee id', 'employee_id', 'id']) || '').trim().toLowerCase();
+      const empNameStr = String(getPropCaseInsensitive(currentUser, ['name', 'nama', 'fullname', 'full_name']) || '').trim().toLowerCase();
       const validUserKeys = [userEmail, empIdStr, empNameStr].filter(Boolean);
 
       if (validUserKeys.length === 0) return;
@@ -506,19 +745,6 @@ export default function MainLayout() {
 
     fetchBadges();
   }, [currentUser]);
-
-  const getPropCaseInsensitive = (obj, candidateNames, fallback = '') => {
-    if (!obj) return fallback;
-    const keys = Object.keys(obj);
-    for (const cand of candidateNames) {
-      const normalizedCand = cand.toLowerCase().replace(/[\s_-]/g, '');
-      const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedCand);
-      if (found && obj[found] !== null && obj[found] !== undefined && String(obj[found]).trim() !== '') {
-        return String(obj[found]).trim();
-      }
-    }
-    return fallback;
-  };
 
   const t = i18n[currentLang] || i18n.en;
 
@@ -778,7 +1004,7 @@ export default function MainLayout() {
               <button 
                 type="button"
                 onClick={() => setIsProfileModalOpen(false)} 
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold transition cursor-pointer"
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
               >
                 {currentLang === 'id' ? 'Tutup' : 'Close'}
               </button>
