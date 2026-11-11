@@ -6,6 +6,146 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export default function Attendance() {
+  const currentLang = localStorage.getItem('hris_lang') || 'en';
+
+  const t = currentLang === 'id' ? {
+    title: 'Catatan Absensi',
+    refresh: 'Muat Ulang',
+    loading: 'Memuat...',
+    recordBtn: 'Rekam Absensi',
+    schError: 'Jadwal kerja hari ini tidak ditemukan.',
+    schChecking: 'Memeriksa jadwal kerja hari ini...',
+    attDisabled: 'Absensi ditutup: Anda telah',
+    attAlreadyOut: 'selesai check out',
+    attToday: 'hari ini.',
+    noticeNotOut: 'Perhatian: Anda belum check out dari shift sebelumnya',
+    noticeLink: 'Checkout ini akan otomatis dihubungkan ke check-in terakhir Anda.',
+    latestRec: 'Catatan terakhir hari ini adalah',
+    btnActiveFor: 'Tombol aktif untuk',
+    todayIs: 'Hari ini adalah',
+    shiftStr: 'Shift',
+    startStr: 'Waktu Mulai',
+    endStr: 'Selesai',
+    canRecord: 'Anda bisa merekam absensi.',
+    noRecords: 'Tidak ada catatan absensi ditemukan.',
+    loadRecords: 'Memuat catatan...',
+    colDate: 'Tanggal Jadwal',
+    colType: 'Check In / Out',
+    colTime: 'Waktu',
+    missedTitle: 'Tindakan Diperlukan: Check Out Terlewat',
+    missedSub: 'Catatan masa lalu terakhir Anda adalah :',
+    missingOutBadge: '(Check Out Terlewat)',
+    page: 'Halaman',
+    of: 'dari',
+    prev: 'Sebelumnya',
+    next: 'Selanjutnya',
+    formTitle: 'Formulir Absensi',
+    formNoticeLastIn: 'Check-In Terakhir',
+    formOtQ: 'Apakah Anda lembur?',
+    formOtYes: 'Ya',
+    formOtNo: 'Tidak',
+    formOtDate: 'Tanggal Lembur',
+    formOtTime: 'Waktu Lembur',
+    formActOutDate: 'Tanggal Aktual Checkout',
+    formActOutTime: 'Waktu Aktual Checkout',
+    formAttType: 'Tipe Absensi',
+    formCurrTime: 'Waktu Saat Ini',
+    formCurrLoc: 'Lokasi Saat Ini',
+    formGpsReq: 'Wajib GPS',
+    formFakeGps: 'Lokasi palsu terdeteksi! Harap gunakan GPS asli.',
+    formEnableGps: 'Aktifkan lokasi perangkat (GPS) pada browser Anda.',
+    formWaitLoc: 'Menunggu akses lokasi...',
+    formFailLoc: 'Gagal mengakses GPS',
+    formSelfie: 'Bukti Foto Selfie (Kamera)',
+    formTakePhoto: 'Ambil Foto',
+    formRetakePhoto: 'Ulangi Foto',
+    formSelfieNote: 'Pengambilan gambar langsung melalui kamera wajib dilakukan.',
+    formReason: 'Alasan',
+    formReasonPh: 'Masukkan alasan (wajib)...',
+    formCancel: 'Batal',
+    formSubmit: 'Kirim Absensi',
+    formSubmitting: 'Mengirim...',
+    detTitle: 'Detail Absensi',
+    detEmpId: 'ID Karyawan',
+    detDate: 'Tanggal',
+    detShift: 'Shift',
+    detType: 'Tipe Check In/Out',
+    detTime: 'Waktu',
+    detLoc: 'Lokasi',
+    detPhoto: 'Foto',
+    detNoPhoto: 'Tidak ada bukti foto',
+    detBlocked: 'Gambar diblokir Drive. Klik untuk melihat.',
+    detClose: 'Tutup'
+  } : {
+    title: 'Attendance Records',
+    refresh: 'Refresh',
+    loading: 'Loading...',
+    recordBtn: 'Record Attendance',
+    schError: 'No schedule found for today.',
+    schChecking: 'Checking today\'s work schedule status...',
+    attDisabled: 'Attendance disabled: You have',
+    attAlreadyOut: 'already checked out',
+    attToday: 'today.',
+    noticeNotOut: 'Notice: You haven\'t checked out from the previous shift.',
+    noticeLink: 'This checkout will be automatically linked to your last check-in.',
+    latestRec: 'Latest record today is',
+    btnActiveFor: 'Button is active for',
+    todayIs: 'Today is',
+    shiftStr: 'Shift',
+    startStr: 'Start Time',
+    endStr: 'End Time',
+    canRecord: 'You can record attendance.',
+    noRecords: 'No attendance records found.',
+    loadRecords: 'Loading records...',
+    colDate: 'Schedule Date',
+    colType: 'Check In / Out',
+    colTime: 'Time',
+    missedTitle: 'Action Required: Missed Checkout',
+    missedSub: 'Your latest past attendance is :',
+    missingOutBadge: '(Missing Checkout)',
+    page: 'Page',
+    of: 'of',
+    prev: 'Prev',
+    next: 'Next',
+    formTitle: 'Attendance Form',
+    formNoticeLastIn: 'Last Checking In',
+    formOtQ: 'Are you overtime?',
+    formOtYes: 'Yes',
+    formOtNo: 'No',
+    formOtDate: 'Overtime Date',
+    formOtTime: 'Overtime Time',
+    formActOutDate: 'Actual Checkout Date',
+    formActOutTime: 'Actual Checkout Time',
+    formAttType: 'Attendance Type',
+    formCurrTime: 'Current Time',
+    formCurrLoc: 'Current Location',
+    formGpsReq: 'GPS Required',
+    formFakeGps: 'Fake/Mock location detected! Please use real GPS.',
+    formEnableGps: 'Please enable device location (GPS) on your browser.',
+    formWaitLoc: 'Waiting for location access...',
+    formFailLoc: 'Failed to access GPS',
+    formSelfie: 'Selfie Photo Proof (Camera)',
+    formTakePhoto: 'Take Photo',
+    formRetakePhoto: 'Retake Photo',
+    formSelfieNote: 'Live camera capture is strictly required to submit attendance.',
+    formReason: 'Reason',
+    formReasonPh: 'Enter reason (required)...',
+    formCancel: 'Cancel',
+    formSubmit: 'Submit Attendance',
+    formSubmitting: 'Submitting...',
+    detTitle: 'Attendance Detail',
+    detEmpId: 'Employee ID',
+    detDate: 'Date',
+    detShift: 'Shift',
+    detType: 'Check In/Out Type',
+    detTime: 'Time',
+    detLoc: 'Location',
+    detPhoto: 'Photo',
+    detNoPhoto: 'No photo proof',
+    detBlocked: 'Image blocked by Drive. Click to view.',
+    detClose: 'Close'
+  };
+
   const [attendanceRecords, setAttendanceRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -97,15 +237,14 @@ export default function Attendance() {
     }
     if (!d || isNaN(d.getTime())) return String(rawDate);
 
-    const lang = localStorage.getItem('hris_lang') || 'id';
     const dayNamesId = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     const monthNamesId = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
     const dayNamesEn = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const monthNamesEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-    const dayNames = lang === 'en' ? dayNamesEn : dayNamesId;
-    const monthNames = lang === 'en' ? monthNamesEn : monthNamesId;
+    const dayNames = currentLang === 'en' ? dayNamesEn : dayNamesId;
+    const monthNames = currentLang === 'en' ? monthNamesEn : monthNamesId;
 
     const dayName = dayNames[d.getDay()];
     const day = String(d.getDate()).padStart(2, '0');
@@ -365,7 +504,7 @@ export default function Attendance() {
   }, [isOvertime, lateCheckoutWarning]);
 
   const autoFetchLocation = () => {
-    setLocationText('Waiting for location access...');
+    setLocationText(t.formWaitLoc);
     setIsFakeLocation(false);
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -374,12 +513,12 @@ export default function Attendance() {
           
           if (isMocked) {
              setIsFakeLocation(true);
-             setLocationText('Fake/Mock Location detected. Please disable it.');
+             setLocationText(t.formFakeGps);
           } else {
              setLocationText(`${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`);
           }
         },
-        () => setLocationText('Failed to access GPS'),
+        () => setLocationText(t.formFailLoc),
         { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
       );
     } else {
@@ -440,22 +579,22 @@ export default function Attendance() {
     if (e) e.preventDefault();
 
     if (isFakeLocation) {
-       alert('Terdeteksi penggunaan Fake GPS. Silakan matikan aplikasi Fake GPS Anda untuk melakukan absensi.');
+       alert(currentLang === 'id' ? 'Terdeteksi lokasi palsu.' : 'Fake location detected.');
        return;
     }
 
-    if (!locationText || locationText.includes('Waiting') || locationText.includes('Failed')) {
-      alert('Harap pastikan izin GPS diaktifkan dan lokasi berhasil terkunci.');
+    if (!locationText || locationText.includes('Wait') || locationText.includes('Fail') || locationText.includes('Tunggu') || locationText.includes('Gagal')) {
+      alert(currentLang === 'id' ? 'Harap pastikan izin GPS diaktifkan.' : 'Please make sure GPS is allowed.');
       return;
     }
 
     if (!photoData) {
-      alert('Harap ambil foto selfie sebagai bukti presensi.');
+      alert(currentLang === 'id' ? 'Harap ambil foto selfie.' : 'Please take a selfie photo.');
       return;
     }
 
     if (!reason.trim()) {
-      alert('Alasan (reason) wajib diisi.');
+      alert(currentLang === 'id' ? 'Alasan (reason) wajib diisi.' : 'Reason is required.');
       return;
     }
 
@@ -707,14 +846,14 @@ Photo : ${photoUrl}`;
         updateAttendanceRequestsBadgeState(true);
       }
 
-      alert('Presensi berhasil dicatat dan permohonan telah terkirim!');
+      alert(currentLang === 'id' ? 'Presensi berhasil dicatat dan permohonan terkirim!' : 'Attendance successfully recorded and request sent!');
       closeModal();
       setReason('');
       setIsOvertime('No');
       fetchAttendanceData(activeUser);
 
     } catch (err) {
-      alert('Gagal mencatat presensi: ' + err.message);
+      alert((currentLang === 'id' ? 'Gagal mencatat presensi: ' : 'Failed to submit: ') + err.message);
     } finally {
       setFormSubmitting(false);
     }
@@ -724,28 +863,28 @@ Photo : ${photoUrl}`;
     if (hasCheckedOutToday) {
       return (
         <>
-          Attendance disabled: You have <strong className="text-red-500 font-bold">already checked out</strong> today.
+          {t.attDisabled} <strong className="text-red-500 font-bold">{t.attAlreadyOut}</strong> {t.attToday}
         </>
       );
     }
 
     if (lateCheckoutWarning && missedCheckoutList.length > 0) {
-      return `Notice: You haven't checked out from previous shift (${formatScheduleDate(missedCheckoutList[0].date)}).`;
+      return `${t.noticeNotOut} (${formatScheduleDate(missedCheckoutList[0].date)}).`;
     }
     
     if (isTodayCheckInActive) {
       return (
         <>
-          Latest record today is <strong className="text-teal-600 font-bold">Checking In</strong>. Button is active for <strong className="text-blue-600 font-bold">Checking Out</strong>.
+          {t.latestRec} <strong className="text-teal-600 font-bold">Checking In</strong>. {t.btnActiveFor} <strong className="text-blue-600 font-bold">Checking Out</strong>.
         </>
       );
     }
 
     if (!todaySchedule) {
-      return "Checking today's work schedule status...";
+      return t.schChecking;
     }
     if (todaySchedule.type === 'No Schedule' || todaySchedule.type === 'Error') {
-      return "No schedule found for today.";
+      return t.schError;
     }
     const shiftType = getPropCaseInsensitive(todaySchedule, ['Schedule Type', 'schedule_type', 'tipe'], 'Working Day');
     const shiftCode = getPropCaseInsensitive(todaySchedule, ['Shift', 'shift_code'], 'M9');
@@ -754,7 +893,7 @@ Photo : ${photoUrl}`;
 
     return (
       <>
-        Today is <strong className="text-teal-600 font-bold">{shiftType}</strong>. Shift: {shiftCode}, <strong className="text-teal-600 font-bold">Start Time: {startTime}, End Time: {endTime}</strong>. You can record attendance.
+        {t.todayIs} <strong className="text-teal-600 font-bold">{shiftType}</strong>. {t.shiftStr}: {shiftCode}, <strong className="text-teal-600 font-bold">{t.startStr}: {startTime}, {t.endStr}: {endTime}</strong>. {t.canRecord}
       </>
     );
   };
@@ -769,7 +908,6 @@ Photo : ${photoUrl}`;
     return "Checking in";
   };
 
-  // CHECK LOGIC FOR BUTTON RENDERING
   const isWorkingDay = todaySchedule && todaySchedule.type !== 'No Schedule' && todaySchedule.type !== 'Error' && getPropCaseInsensitive(todaySchedule, ['Schedule Type', 'schedule_type', 'tipe'], 'Working Day').toLowerCase() === 'working day';
 
   let latestIsCheckingIn = false;
@@ -785,7 +923,7 @@ Photo : ${photoUrl}`;
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
         <div className="flex flex-row justify-between items-start sm:items-center pb-4 mb-4 sm:mb-5 border-b border-gray-200 gap-3 sm:gap-4">
           <div className="flex-1 pr-3">
-            <h3 className="text-base sm:text-lg font-bold text-gray-900">Attendance Records</h3>
+            <h3 className="text-base sm:text-lg font-bold text-gray-900">{t.title}</h3>
             <p className="text-xs text-gray-500 mt-0.5 break-words">
               {renderScheduleText()}
             </p>
@@ -803,19 +941,19 @@ Photo : ${photoUrl}`;
                 }`}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
-                Record Attendance
+                {t.recordBtn}
               </button>
             )}
             <button 
               onClick={() => { fetchAttendanceData(activeUser); fetchTodaySchedule(activeUser); }} 
               disabled={loading}
               className="px-3.5 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
-              title="Refresh Data"
+              title={t.refresh}
             >
               <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              <span>{loading ? 'Loading...' : 'Refresh'}</span>
+              <span>{loading ? t.loading : t.refresh}</span>
             </button>
           </div>
         </div>
@@ -832,7 +970,7 @@ Photo : ${photoUrl}`;
               }`}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
-              Record Attendance
+              {t.recordBtn}
             </button>
           </div>
         )}
@@ -844,12 +982,12 @@ Photo : ${photoUrl}`;
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
               <div className="ml-3">
-                <h4 className="text-sm font-bold text-red-800">Action Required: Missed Checkout</h4>
-                <p className="mt-0.5 text-xs text-red-700 mb-1.5">Your latest past attendance is :</p>
+                <h4 className="text-sm font-bold text-red-800">{t.missedTitle}</h4>
+                <p className="mt-0.5 text-xs text-red-700 mb-1.5">{t.missedSub}</p>
                 <ul className="list-disc pl-4 space-y-1 text-xs text-red-700">
                   {missedCheckoutList.map((m, idx) => (
                     <li key={idx}>
-                      <strong>{formatScheduleDate(m.date)}</strong> - <span className="font-bold underline text-red-600">(Missing Checkout)</span>
+                      <strong>{formatScheduleDate(m.date)}</strong> - <span className="font-bold underline text-red-600">{t.missingOutBadge}</span>
                     </li>
                   ))}
                 </ul>
@@ -862,7 +1000,7 @@ Photo : ${photoUrl}`;
           <div className="flex justify-end items-center mb-3">
             <div className="flex items-center gap-2 sm:gap-3">
               <span className="text-[10px] sm:text-xs font-medium text-gray-500 mr-1 sm:mr-2">
-                Page <strong className="text-gray-800">{currentPage}</strong> of <strong className="text-gray-800">{totalPages}</strong>
+                {t.page} <strong className="text-gray-800">{currentPage}</strong> {t.of} <strong className="text-gray-800">{totalPages}</strong>
               </span>
               <button 
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -870,14 +1008,14 @@ Photo : ${photoUrl}`;
                 className={`px-2.5 py-1.5 bg-white border border-gray-300 text-gray-600 font-semibold text-[10px] sm:text-xs rounded-lg shadow-sm transition flex items-center gap-1 ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 hover:text-blue-600'}`}
               >
                 <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg>
-                Prev
+                {t.prev}
               </button>
               <button 
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
                 className={`px-2.5 py-1.5 bg-white border border-gray-300 text-gray-600 font-semibold text-[10px] sm:text-xs rounded-lg shadow-sm transition flex items-center gap-1 ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 hover:text-blue-600'}`}
               >
-                Next
+                {t.next}
                 <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
               </button>
             </div>
@@ -888,16 +1026,16 @@ Photo : ${photoUrl}`;
           <table className="w-full text-sm text-left text-gray-600 table-fixed">
             <thead className="bg-gray-50 text-[11px] font-semibold uppercase text-gray-700 border-b border-gray-200">
               <tr>
-                <th className="w-[60%] sm:w-[40%] px-4 py-3 sm:px-6 sm:py-3.5">Schedule Date</th>
-                <th className="w-[40%] sm:w-[30%] px-3 py-3 sm:px-6 sm:py-3.5 text-center">Check In / Out</th>
-                <th className="hidden sm:table-cell w-[30%] px-3 py-3 sm:px-6 sm:py-3.5 text-center">Time</th>
+                <th className="w-[60%] sm:w-[40%] px-4 py-3 sm:px-6 sm:py-3.5">{t.colDate}</th>
+                <th className="w-[40%] sm:w-[30%] px-3 py-3 sm:px-6 sm:py-3.5 text-center">{t.colType}</th>
+                <th className="hidden sm:table-cell w-[30%] px-3 py-3 sm:px-6 sm:py-3.5 text-center">{t.colTime}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan="3" className="text-center py-8 text-gray-400 italic">Loading records...</td></tr>
+                <tr><td colSpan="3" className="text-center py-8 text-gray-400 italic">{t.loadRecords}</td></tr>
               ) : attendanceRecords.length === 0 ? (
-                <tr><td colSpan="3" className="text-center py-8 text-gray-400 italic">No attendance records found.</td></tr>
+                <tr><td colSpan="3" className="text-center py-8 text-gray-400 italic">{t.noRecords}</td></tr>
               ) : (
                 currentRecords.map((r, i) => {
                   const typeVal = getPropCaseInsensitive(r, ['Are you checking out or Checking in?', 'Type', 'type', 'status'], 'Checking in');
@@ -933,7 +1071,7 @@ Photo : ${photoUrl}`;
         <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-150">
             <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-              <h3 className="text-base sm:text-lg font-bold text-gray-800">Attendance Form</h3>
+              <h3 className="text-base sm:text-lg font-bold text-gray-800">{t.formTitle}</h3>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
@@ -946,20 +1084,20 @@ Photo : ${photoUrl}`;
                     <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> 
                     Notice:
                   </strong>
-                  <p className="mb-1">You haven't checked out from the previous shift. This checkout will be automatically linked to your last check-in.</p>
-                  <p className="font-bold">Last Checking In: {lastCheckInTime}</p>
+                  <p className="mb-1">{t.noticeLink}</p>
+                  <p className="font-bold">{t.formNoticeLastIn}: {lastCheckInTime}</p>
                 </div>
               )}
 
               {getAttendanceTypeLabel() === 'Checking out' && (
                 <div className="mb-3 p-3 border border-gray-200 rounded-xl bg-gray-50 shadow-xs">
-                  <p className="text-xs font-bold text-gray-700 mb-2">Are you overtime?</p>
+                  <p className="text-xs font-bold text-gray-700 mb-2">{t.formOtQ}</p>
                   <div className="flex gap-4 mb-2">
                     <label className="flex items-center gap-1 cursor-pointer text-xs">
-                      <input type="radio" name="ot" value="Yes" checked={isOvertime === 'Yes'} onChange={() => setIsOvertime('Yes')} className="text-blue-600 focus:ring-blue-500" /> Yes
+                      <input type="radio" name="ot" value="Yes" checked={isOvertime === 'Yes'} onChange={() => setIsOvertime('Yes')} className="text-blue-600 focus:ring-blue-500" /> {t.formOtYes}
                     </label>
                     <label className="flex items-center gap-1 cursor-pointer text-xs">
-                      <input type="radio" name="ot" value="No" checked={isOvertime === 'No'} onChange={() => setIsOvertime('No')} className="text-blue-600 focus:ring-blue-500" /> No
+                      <input type="radio" name="ot" value="No" checked={isOvertime === 'No'} onChange={() => setIsOvertime('No')} className="text-blue-600 focus:ring-blue-500" /> {t.formOtNo}
                     </label>
                   </div>
                   
@@ -967,13 +1105,13 @@ Photo : ${photoUrl}`;
                     <div className="flex gap-2 pt-2 border-t border-gray-200">
                       <div className="flex-1">
                         <label className="block text-[10px] font-semibold text-gray-600 mb-1">
-                          {isOvertime === 'Yes' ? 'Overtime Date' : 'Actual Checkout Date'}
+                          {isOvertime === 'Yes' ? t.formOtDate : t.formActOutDate}
                         </label>
                         <input type="date" value={overtimeDate} onChange={e => setOvertimeDate(e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
                       </div>
                       <div className="flex-1">
                         <label className="block text-[10px] font-semibold text-gray-600 mb-1">
-                          {isOvertime === 'Yes' ? 'Overtime Time' : 'Actual Checkout Time'}
+                          {isOvertime === 'Yes' ? t.formOtTime : t.formActOutTime}
                         </label>
                         <input type="time" value={overtimeTime} onChange={e => setOvertimeTime(e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
                       </div>
@@ -983,7 +1121,7 @@ Photo : ${photoUrl}`;
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Attendance Type</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">{t.formAttType}</label>
                 <input 
                   type="text" 
                   readOnly 
@@ -995,13 +1133,13 @@ Photo : ${photoUrl}`;
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Current Time</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">{t.formCurrTime}</label>
                 <input type="text" readOnly value={formatIndoDateTime(new Date())} className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 text-sm focus:outline-none shadow-xs" />
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="block text-xs font-semibold text-gray-600">Current Location <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-semibold text-gray-600">{t.formCurrLoc} <span className="text-red-500">*</span></label>
                   <div className="flex items-center gap-1.5">
                     <button 
                       type="button" 
@@ -1011,16 +1149,16 @@ Photo : ${photoUrl}`;
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                     </button>
-                    <span className="text-[10px] font-bold text-gray-500">GPS Required</span>
+                    <span className="text-[10px] font-bold text-gray-500">{t.formGpsReq}</span>
                   </div>
                 </div>
-                {isFakeLocation && <p className="text-[10px] text-red-500 mb-1 font-bold">Fake/Mock location detected! Please use real GPS.</p>}
-                {!locationText.includes(',') && !isFakeLocation && <p className="text-[10px] text-red-500 mb-1">Please enable device location (GPS) on your browser.</p>}
-                <input type="text" readOnly value={locationText} placeholder="Waiting for location access..." className={`w-full px-3 py-2 border rounded-lg bg-gray-50 text-xs focus:outline-none shadow-xs ${isFakeLocation ? 'border-red-500 text-red-600' : 'border-gray-300 text-gray-600'}`} />
+                {isFakeLocation && <p className="text-[10px] text-red-500 mb-1 font-bold">{t.formFakeGps}</p>}
+                {!locationText.includes(',') && !isFakeLocation && <p className="text-[10px] text-red-500 mb-1">{t.formEnableGps}</p>}
+                <input type="text" readOnly value={locationText} placeholder={t.formWaitLoc} className={`w-full px-3 py-2 border rounded-lg bg-gray-50 text-xs focus:outline-none shadow-xs ${isFakeLocation ? 'border-red-500 text-red-600' : 'border-gray-300 text-gray-600'}`} />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Selfie Photo Proof (Camera) <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">{t.formSelfie} <span className="text-red-500">*</span></label>
                 <div className="relative w-full h-80 bg-gray-900 rounded-xl overflow-hidden shadow-inner flex items-center justify-center">
                   {!photoData ? (
                     <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover transform scale-x-[-1]"></video>
@@ -1033,28 +1171,28 @@ Photo : ${photoUrl}`;
                   {!photoData ? (
                     <button type="button" onClick={capturePhoto} className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold border border-blue-200 rounded-lg text-xs flex justify-center items-center gap-1.5 shadow-xs transition">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                      Take Photo
+                      {t.formTakePhoto}
                     </button>
                   ) : (
                     <button type="button" onClick={startCamera} className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold border border-gray-200 rounded-lg text-xs flex justify-center items-center gap-1.5 shadow-xs transition">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                      Retake Photo
+                      {t.formRetakePhoto}
                     </button>
                   )}
                 </div>
-                <p className="text-center text-[10px] text-gray-400 mt-1.5">Live camera capture is strictly required to submit attendance.</p>
+                <p className="text-center text-[10px] text-gray-400 mt-1.5">{t.formSelfieNote}</p>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Reason <span className="text-red-500">*</span></label>
-                <textarea rows="2" value={reason} onChange={e => setReason(e.target.value)} placeholder="Enter reason (required)..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none shadow-xs"></textarea>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">{t.formReason} <span className="text-red-500">*</span></label>
+                <textarea rows="2" value={reason} onChange={e => setReason(e.target.value)} placeholder={t.formReasonPh} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none shadow-xs"></textarea>
               </div>
             </div>
 
             <div className="p-3.5 border-t border-gray-100 flex justify-end gap-2 bg-gray-50">
-              <button onClick={closeModal} className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-xs font-semibold shadow-xs hover:bg-gray-50 transition">Cancel</button>
+              <button onClick={closeModal} className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-xs font-semibold shadow-xs hover:bg-gray-50 transition">{t.formCancel}</button>
               <button onClick={handleAttendanceSubmit} disabled={formSubmitting} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-xs transition flex items-center justify-center min-w-[120px] disabled:opacity-50">
-                {formSubmitting ? "Submitting..." : "Submit Attendance"}
+                {formSubmitting ? t.formSubmitting : t.formSubmit}
               </button>
             </div>
           </div>
@@ -1084,21 +1222,21 @@ Photo : ${photoUrl}`;
             </div>
 
             <div className="mb-4">
-              <p className="text-xs text-gray-500">Employee ID: <strong className="text-gray-800">{activeUser?.['Employee ID'] || activeUser?.employee_id || '-'}</strong></p>
+              <p className="text-xs text-gray-500">{t.detEmpId}: <strong className="text-gray-800">{activeUser?.['Employee ID'] || activeUser?.employee_id || '-'}</strong></p>
               <h3 className="text-base font-bold text-gray-900 mt-0.5">{activeUser?.Name || activeUser?.name || 'Employee Name'}</h3>
             </div>
 
             <div className="space-y-3 text-xs">
               <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                <span className="text-gray-500 font-medium">Date</span>
+                <span className="text-gray-500 font-medium">{t.detDate}</span>
                 <strong className="text-gray-900">{formatScheduleDate(getPropCaseInsensitive(selectedRecord, ['Date', 'date', 'tanggal', 'CreatedDate']))}</strong>
               </div>
               <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                <span className="text-gray-500 font-medium">Shift</span>
+                <span className="text-gray-500 font-medium">{t.detShift}</span>
                 <span className="bg-gray-100 text-gray-800 font-bold px-2 py-0.5 rounded text-[11px]">{selectedRecord.Shift || 'M9'}</span>
               </div>
               <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                <span className="text-gray-500 font-medium">Are you checking out or Checking in?</span>
+                <span className="text-gray-500 font-medium">{t.detType}</span>
                 <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
                   getPropCaseInsensitive(selectedRecord, ['Are you checking out or Checking in?', 'Type', 'type', 'status']).toLowerCase().includes('out') ||
                   getPropCaseInsensitive(selectedRecord, ['Are you checking out or Checking in?', 'Type', 'type', 'status']).toLowerCase().includes('pulang')
@@ -1109,18 +1247,18 @@ Photo : ${photoUrl}`;
                 </span>
               </div>
               <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                <span className="text-gray-500 font-medium">Time</span>
+                <span className="text-gray-500 font-medium">{t.detTime}</span>
                 <strong className="text-gray-900 text-sm tracking-tight">{formatIndoDateTime(selectedRecord)}</strong>
               </div>
               <div className="flex justify-between items-start border-b border-gray-100 pb-2">
-                <span className="text-gray-500 font-medium">Location</span>
+                <span className="text-gray-500 font-medium">{t.detLoc}</span>
                 <span className="text-blue-600 flex items-center gap-1 text-[11px] text-right max-w-[60%]">
                   <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                   {getPropCaseInsensitive(selectedRecord, ['Location', 'location', 'lokasi', 'alamat'], '-')}
                 </span>
               </div>
               <div className="pt-1">
-                <span className="text-gray-500 font-medium block mb-2">Photo</span>
+                <span className="text-gray-500 font-medium block mb-2">{t.detPhoto}</span>
                 <div className="flex justify-center">
                   {(() => {
                     const imgSrc = getPropCaseInsensitive(selectedRecord, ['Image', 'image', 'Photo', 'photo']);
@@ -1143,19 +1281,19 @@ Photo : ${photoUrl}`;
                             }}
                           />
                           <span className="hidden text-blue-600 font-bold underline text-[11px] mt-2">
-                            Image blocked by Drive. Click to view.
+                            {t.detBlocked}
                           </span>
                         </a>
                       );
                     }
-                    return <span className="text-gray-400 italic text-[11px]">No photo proof</span>;
+                    return <span className="text-gray-400 italic text-[11px]">{t.detNoPhoto}</span>;
                   })()}
                 </div>
               </div>
             </div>
 
             <div className="mt-5 flex justify-end">
-              <button onClick={() => setSelectedRecord(null)} className="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition">Close</button>
+              <button onClick={() => setSelectedRecord(null)} className="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition">{t.detClose}</button>
             </div>
           </div>
         </div>

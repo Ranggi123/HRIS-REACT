@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { useOutletContext } from 'react-router-dom';
 
 const SUPABASE_URL = 'https://lfexpyqmjfkymvbacweo.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZXhweXFtamZreW12YmFjd2VvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2MzA3OTEsImV4cCI6MjEwNjIwNjc5MX0._e53PLDxsbN0aYM1mqSxLkVGnS0X85D9FYBvb1sQIWY';
@@ -149,7 +150,6 @@ const resolveTableColumn = (knownCols, candidates) => {
   return null;
 };
 
-// --- Attendance Time Helpers ---
 const getMinutesFromMidnight = (timeVal, baseDateObj) => {
   if (!timeVal) return null;
   const str = String(timeVal).trim();
@@ -193,7 +193,6 @@ const calculateMinuteDiff = (outVal, endVal, baseDate) => {
   return Math.max(0, diff);
 };
 
-// Approval Status Checkers (Bilingual: ID & EN)
 const isPendingApprovalStatus = (status) => {
   if (!status || status === '-' || status === 'null') return false;
   const s = String(status).trim().toLowerCase().replace(/[\s_-]/g, '');
@@ -247,7 +246,6 @@ const isRejectedStatus = (status) => {
   );
 };
 
-// Robust Row Status Resolver: Prioritizes recognizable approval statuses and skips "-" or nulls
 const getReqTypeColor = (reqType, category) => {
   if (!reqType) return 'text-gray-800';
   const typeLower = String(reqType).toLowerCase();
@@ -265,7 +263,7 @@ const getReqTypeColor = (reqType, category) => {
       return 'text-orange-600';
     }
   }
-  return 'text-blue-700'; // default for others
+  return 'text-blue-700';
 };
 
 const getRowStatus = (row) => {
@@ -287,7 +285,6 @@ const getRowStatus = (row) => {
     'Attendance Status'
   ];
 
-  // 1. First pass: find any column that has a recognized approval status keyword
   for (const k of candidateKeys) {
     const val = getPropCaseInsensitive(row, [k], '');
     if (val && val !== '-' && val !== 'null' && val !== 'undefined') {
@@ -297,7 +294,6 @@ const getRowStatus = (row) => {
     }
   }
 
-  // 2. Second pass: fallback to the first non-empty, non-dash value among candidates
   for (const k of candidateKeys) {
     const val = getPropCaseInsensitive(row, [k], '');
     if (val && val !== '-' && val !== 'null' && val !== 'undefined') {
@@ -308,7 +304,6 @@ const getRowStatus = (row) => {
   return '';
 };
 
-// Flexible Line Manager Matcher
 const matchesLineManager = (record, targetEmail, targetName = '', extraKeys = []) => {
   if (!record) return false;
   const mgrVal = getPropCaseInsensitive(record, [
@@ -337,7 +332,6 @@ const matchesLineManager = (record, targetEmail, targetName = '', extraKeys = []
     'approval_line_manager'
   ], '').trim().toLowerCase();
 
-  // STRICT: Jika kolom tidak ada, kosong, '-', 'null', atau 'undefined', LANGSUNG TOLAK
   if (!mgrVal || mgrVal === '-' || mgrVal === 'null' || mgrVal === 'undefined') {
     return false;
   }
@@ -367,7 +361,6 @@ const matchesLineManager = (record, targetEmail, targetName = '', extraKeys = []
   return false;
 };
 
-// Calendar Date Matcher
 const checkDateMatch = (rawDbDate, targetYear, targetMonth, targetDay) => {
   if (!rawDbDate) return false;
   const str = String(rawDbDate).trim();
@@ -398,13 +391,220 @@ const checkDateMatch = (rawDbDate, targetYear, targetMonth, targetDay) => {
   return false;
 };
 
-const monthNames = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
+const SHIFT_OPTIONS = [
+  { label: "M1", value: "M1", start: "01:00" },
+  { label: "M2", value: "M2", start: "02:00" },
+  { label: "M3", value: "M3", start: "03:00" },
+  { label: "M4", value: "M4", start: "04:00" },
+  { label: "M5", value: "M5", start: "05:00" },
+  { label: "M6", value: "M6", start: "06:00" },
+  { label: "M7", value: "M7", start: "07:00" },
+  { label: "M8", value: "M8", start: "08:00" },
+  { label: "M9", value: "M9", start: "09:00" },
+  { label: "M10", value: "M10", start: "10:00" },
+  { label: "M11", value: "M11", start: "11:00" },
+  { label: "A12", value: "A12", start: "12:00" },
+  { label: "A13", value: "A13", start: "13:00" },
+  { label: "A14", value: "A14", start: "14:00" },
+  { label: "A15", value: "A15", start: "15:00" },
+  { label: "A16", value: "A16", start: "16:00" },
+  { label: "A17", value: "A17", start: "17:00" },
+  { label: "E18", value: "E18", start: "18:00" },
+  { label: "E19", value: "E19", start: "19:00" },
+  { label: "E20", value: "E20", start: "20:00" },
+  { label: "E21", value: "E21", start: "21:00" },
+  { label: "E22", value: "E22", start: "22:00" },
+  { label: "E23", value: "E23", start: "23:00" }
 ];
 
 export default function Approval({ currentUser: propCurrentUser }) {
-  // Support both props from parent and localStorage session fallback
+  const context = useOutletContext() || {};
+  const currentLang = context.currentLang || 'en';
+
+  const t = currentLang === 'id' ? {
+    title: 'Permintaan Persetujuan',
+    manager: 'Atasan Langsung:',
+    refresh: 'Muat Ulang',
+    loading: 'Memuat...',
+    tabLeave: 'Cuti',
+    tabAttendance: 'Absensi',
+    filterPending: 'Menunggu',
+    filterApproved: 'Disetujui',
+    filterRejected: 'Ditolak',
+    filterAll: 'Semua Status',
+    empFilterAll: 'Semua Karyawan',
+    colEmp: 'Karyawan',
+    colReq: 'Tipe Permintaan',
+    colLeavePeriod: 'Periode Cuti',
+    colAttTime: 'Waktu Absensi',
+    colStatus: 'Status',
+    colAction: 'Aksi',
+    noRequests: 'Tidak ada permintaan yang ditemukan',
+    noRecordsDesc: 'Tidak ada catatan yang sesuai dengan filter Anda.',
+    btnCancel: 'Batal',
+    btnApproveCancel: 'Setujui Pembatalan',
+    btnReject: 'Tolak',
+    btnApprove: 'Setujui',
+    sumAnn: 'Cuti Tahunan:',
+    sumDop: 'Pembayaran Libur:',
+    sumEo: 'Libur Ekstra:',
+    calTitle: 'Kalender Tim',
+    calDescAll: 'Menampilkan jadwal semua anggota tim',
+    calDescOne: 'Menampilkan jadwal untuk:',
+    btnThisMonth: 'Bulan Ini',
+    statOff: 'Libur',
+    statWork: 'Kerja',
+    statSick: 'Sakit/Lain',
+    statLeave: 'Cuti',
+    daysOfWeek: ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'],
+    monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'],
+    monthsFull: ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'],
+    btnBulkEdit: 'Edit Masal (1 Bulan)',
+    bulkTitle: 'Edit Jadwal Masal',
+    bulkEmp: 'Karyawan:',
+    bulkMonth: 'Bulan:',
+    bulkTypeWork: 'Hari Kerja',
+    bulkTypeOff: 'Libur',
+    bulkLocked: 'Dikunci',
+    bulkCannotEdit: 'Tidak bisa mengedit cuti yang dijadwalkan.',
+    bulkAutoInfo8: 'Waktu selesai otomatis (berdasarkan 8 jam).',
+    bulkAutoInfo9: 'Waktu selesai otomatis (berdasarkan 9 jam).',
+    btnSaveSchedule: 'Simpan Jadwal',
+    btnSaving: 'Menyimpan...',
+    teamModalTitle: 'Jadwal Tim:',
+    badgeWork: 'Hari Kerja',
+    badgeSick: 'Sakit / Melahirkan',
+    badgeOff: 'Hari Libur',
+    badgeLeave: 'Cuti Tahunan',
+    editModalTitle: 'Edit Jadwal Tanggal',
+    editModalSub: 'Perbarui shift atau tipe kerja karyawan',
+    lblDate: 'Tanggal (Hanya Baca)',
+    lblBarcode: 'Barcode Karyawan',
+    lblName: 'Nama Karyawan',
+    lblType: 'Tipe Hari',
+    lblShift: 'Shift Kerja',
+    lblShiftHint: 'Angka belakang menunjukkan jam mulai',
+    lblAutoCalc: 'Kalkulasi Jam Kerja Otomatis',
+    lblStart: 'Waktu Mulai:',
+    lblEnd: 'Waktu Selesai:',
+    msgOffDay: 'Status Libur tidak memerlukan jam kerja (Mulai & Selesai diisi \'-\').',
+    reqDetailTitle: 'Detail Permintaan',
+    reqEmpInfo: 'Informasi Karyawan',
+    reqCurrentStatus: 'Status Saat Ini',
+    reqAttTime: 'Waktu Absensi',
+    reqFromDate: 'Dari Tanggal',
+    reqToDate: 'Sampai Tanggal',
+    reqLastEdit: 'Terakhir Diedit',
+    reqTotalDays: 'Total Hari Diminta',
+    reqFinalBal: 'Sisa Saldo Final',
+    reqReason: 'Alasan / Catatan',
+    reqAttLoc: 'Lokasi / Peta Absensi',
+    reqOpenMap: 'Buka di Google Maps',
+    reqNoLoc: 'Tidak ada koordinat lokasi untuk absensi ini',
+    reqProof: 'Lampiran / Bukti',
+    reqClickEnlarge: 'Klik untuk memperbesar gambar',
+    reqProofDesc: 'Pratinjau foto absensi / dokumen',
+    confRejectTitle: 'Konfirmasi Penolakan Permintaan',
+    confRejectDesc: 'Anda akan menolak permintaan',
+    confRejectFrom: 'dari',
+    confReasonLbl: 'Alasan Penolakan',
+    confReasonOpt: '(opsional)',
+    confReasonPh: 'misal: Bukti tidak lengkap / konflik jadwal...',
+    btnRejectReq: 'Tolak Permintaan',
+    previewTitle: 'Pratinjau Lampiran'
+  } : {
+    title: 'Approval Requests',
+    manager: 'Line Manager:',
+    refresh: 'Refresh',
+    loading: 'Loading...',
+    tabLeave: 'Leave',
+    tabAttendance: 'Attendance',
+    filterPending: 'Pending',
+    filterApproved: 'Approved',
+    filterRejected: 'Rejected',
+    filterAll: 'All Status',
+    empFilterAll: 'All Employees',
+    colEmp: 'Employee',
+    colReq: 'Request Type',
+    colLeavePeriod: 'Leave Period',
+    colAttTime: 'Attendance Time',
+    colStatus: 'Status',
+    colAction: 'Action',
+    noRequests: 'No requests found',
+    noRecordsDesc: 'There are no records matching your current filter.',
+    btnCancel: 'Cancel',
+    btnApproveCancel: 'Approve Cancel',
+    btnReject: 'Reject',
+    btnApprove: 'Approve',
+    sumAnn: 'Annual Leave:',
+    sumDop: 'Day Off Payment:',
+    sumEo: 'Extra Off:',
+    calTitle: 'Team Calendar',
+    calDescAll: 'Showing schedules for all team members',
+    calDescOne: 'Showing schedule for:',
+    btnThisMonth: 'This Month',
+    statOff: 'Day Off',
+    statWork: 'Work',
+    statSick: 'Sick/Oth',
+    statLeave: 'Leave',
+    daysOfWeek: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    monthsFull: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+    btnBulkEdit: 'Bulk Edit (1 Month)',
+    bulkTitle: 'Bulk Edit Schedule',
+    bulkEmp: 'Employee:',
+    bulkMonth: 'Month:',
+    bulkTypeWork: 'Working Day',
+    bulkTypeOff: 'Day Off',
+    bulkLocked: 'Locked',
+    bulkCannotEdit: 'Cannot edit scheduled leave.',
+    bulkAutoInfo8: 'End time auto-calculates (8 hours).',
+    bulkAutoInfo9: 'End time auto-calculates (9 hours).',
+    btnSaveSchedule: 'Save Schedule',
+    btnSaving: 'Saving...',
+    teamModalTitle: 'Team Schedule:',
+    badgeWork: 'Working Day',
+    badgeSick: 'Sick / Maternity',
+    badgeOff: 'Day Off',
+    badgeLeave: 'Leave',
+    editModalTitle: 'Edit Schedule Date',
+    editModalSub: 'Update employee shift or type',
+    lblDate: 'Date (Read-Only)',
+    lblBarcode: 'Employee Barcode',
+    lblName: 'Employee Name',
+    lblType: 'Day Type',
+    lblShift: 'Work Shift',
+    lblShiftHint: 'Trailing number indicates start hour',
+    lblAutoCalc: 'Auto Calculate Work Hours',
+    lblStart: 'Start Time:',
+    lblEnd: 'End Time:',
+    msgOffDay: 'Day Off status requires no hours (Start & End set to \'-\').',
+    reqDetailTitle: 'Request Detail',
+    reqEmpInfo: 'Employee Information',
+    reqCurrentStatus: 'Current Status',
+    reqAttTime: 'Attendance Time',
+    reqFromDate: 'From Date',
+    reqToDate: 'To Date',
+    reqLastEdit: 'Last Edit Date',
+    reqTotalDays: 'Total Days Requested',
+    reqFinalBal: 'Remaining / Final Balance',
+    reqReason: 'Reason / Request Notes',
+    reqAttLoc: 'Attendance Location / Map',
+    reqOpenMap: 'Open in Google Maps',
+    reqNoLoc: 'No location coordinates recorded for this attendance',
+    reqProof: 'Attachment / Proof',
+    reqClickEnlarge: 'Click to enlarge preview',
+    reqProofDesc: 'Attendance photo / document preview',
+    confRejectTitle: 'Confirm Request Rejection',
+    confRejectDesc: 'You are about to reject the',
+    confRejectFrom: 'from',
+    confReasonLbl: 'Rejection Reason',
+    confReasonOpt: '(optional)',
+    confReasonPh: 'e.g. Incomplete proof / conflict with schedule...',
+    btnRejectReq: 'Reject Request',
+    previewTitle: 'Attachment Preview'
+  };
+
   const [sessionUser] = useState(() => {
     const possibleKeys = ['hris_session_data', 'currentUser', 'user', 'hris_user'];
     for (const k of possibleKeys) {
@@ -420,28 +620,21 @@ export default function Approval({ currentUser: propCurrentUser }) {
   });
 
   const currentUser = propCurrentUser || sessionUser;
-  const lang = localStorage.getItem('hris_lang') || 'en';
 
-  // Data States
   const [loading, setLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [attendanceRequests, setAttendanceRequests] = useState([]);
-
-  // Active Category Tab: 'leave' | 'attendance'
   const [activeCategoryTab, setActiveCategoryTab] = useState('leave');
 
-  // Team Calendar & Directory States
   const [teamMembers, setTeamMembers] = useState([]);
   const [teamScheduleRecords, setTeamScheduleRecords] = useState([]);
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [teamScheduleModalData, setTeamScheduleModalData] = useState(null);
 
-  // Filter States: 'all' | 'pending' | 'approved' | 'rejected'
-  const [statusTab, setStatusTab] = useState('pending'); // Default: Pending
+  const [statusTab, setStatusTab] = useState('pending');
   const [selectedEmployee, setSelectedEmployee] = useState('all');
 
-  // Modals
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -451,44 +644,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   
-  // Bulk Edit Schedule States
   const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
   const [bulkEditEmployee, setBulkEditEmployee] = useState(null);
   const [bulkEditData, setBulkEditData] = useState([]);
   const [isSavingBulk, setIsSavingBulk] = useState(false);
 
-  // Single Schedule Edit States (ketika diklik salah satu tanggal)
   const [singleScheduleEdit, setSingleScheduleEdit] = useState(null);
   const [isSavingSingleSchedule, setIsSavingSingleSchedule] = useState(false);
 
-  const SHIFT_OPTIONS = [
-    { label: "M1", value: "M1", start: "01:00" },
-    { label: "M2", value: "M2", start: "02:00" },
-    { label: "M3", value: "M3", start: "03:00" },
-    { label: "M4", value: "M4", start: "04:00" },
-    { label: "M5", value: "M5", start: "05:00" },
-    { label: "M6", value: "M6", start: "06:00" },
-    { label: "M7", value: "M7", start: "07:00" },
-    { label: "M8", value: "M8", start: "08:00" },
-    { label: "M9", value: "M9", start: "09:00" },
-    { label: "M10", value: "M10", start: "10:00" },
-    { label: "M11", value: "M11", start: "11:00" },
-    { label: "A12", value: "A12", start: "12:00" },
-    { label: "A13", value: "A13", start: "13:00" },
-    { label: "A14", value: "A14", start: "14:00" },
-    { label: "A15", value: "A15", start: "15:00" },
-    { label: "A16", value: "A16", start: "16:00" },
-    { label: "A17", value: "A17", start: "17:00" },
-    { label: "E18", value: "E18", start: "18:00" },
-    { label: "E19", value: "E19", start: "19:00" },
-    { label: "E20", value: "E20", start: "20:00" },
-    { label: "E21", value: "E21", start: "21:00" },
-    { label: "E22", value: "E22", start: "22:00" },
-    { label: "E23", value: "E23", start: "23:00" }
-  ];
-
-
-  // User Work Email exactly as seen in TopNav
   const userWorkEmail = useMemo(() => {
     return (
       getPropCaseInsensitive(currentUser, [
@@ -505,7 +668,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
     ).trim().toLowerCase();
   }, [currentUser]);
 
-  // TopNav direct email (TopNav line 89 uses: currentUser?.email || currentUser?.Email || currentUser?.USER_UID)
   const topNavEmail = useMemo(() => {
     return (
       currentUser?.email ||
@@ -525,7 +687,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const [actualUserWorkEmail, setActualUserWorkEmail] = useState('');
   const [actualUserName, setActualUserName] = useState('');
 
-  // Fetch Requests, Directory, and Schedule for this Line Manager
   const refreshAllData = useCallback(async () => {
     if (!userWorkEmail && !topNavEmail && !userName) return;
     setLoading(true);
@@ -537,7 +698,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
       let realWorkEmail = userWorkEmail || topNavEmail;
       let realName = userName;
 
-      // 1. Fetch Subordinate Employees from employee_directory
       try {
         const { data: dirData, error: dirErr } = await supabase
           .from('employee_directory')
@@ -646,7 +806,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
         realName.toLowerCase()
       ])).filter(k => k && k.length >= 2);
 
-      // 2. Fetch Leave Requests: STRICT MATCH (Line Manager = Current User Work Email)
       let myLeaves = [];
       try {
         const { data: lvData, error: lvError } = await supabase
@@ -681,12 +840,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
         console.warn("[Approval] Failed fetching leave_requests:", e);
       }
 
-      // 3. Fetch Attendance Requests: Kondisi Line Manager = User Work Email di TopNav
       let myAttendance = [];
       try {
         let attData = [];
 
-        // Attempt 1: Fetch recent records (tanpa order by id untuk mencegah 400 Bad Request)
         try {
           const { data: defAtt, error: attErr } = await supabase
             .from('attendance')
@@ -700,7 +857,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
           console.warn("Failed fetching attendance data:", e);
         }
 
-        // Attempt 2: Explicitly query pending approval records to guarantee no pending records are missed
         try {
           const { data: pendingAttRows } = await supabase
             .from('attendance')
@@ -726,7 +882,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
               const status = getRowStatus(row);
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
 
-              // Match Line Manager by direct column OR by subordinate team member
               const empEmail = (getPropCaseInsensitive(row, [
                 'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
                 'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
@@ -749,7 +904,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
         console.warn("[Approval] Failed fetching attendance:", e);
       }
 
-      // 4. Fetch Team Schedule
       let teamSched = [];
       try {
         const { data: schedData, error: schedErr } = await supabase
@@ -780,7 +934,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
     refreshAllData();
   }, [refreshAllData]);
 
-  // Calendar Controls
   const prevMonth = () => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1));
   const nextMonth = () => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1));
   const setThisMonth = () => setCalendarDate(new Date());
@@ -791,7 +944,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const totalDays = new Date(year, month + 1, 0).getDate();
   const today = new Date();
 
-  // Filtered schedules according to selected employee dropdown
   const employeeSummary = useMemo(() => {
     if (!selectedEmployee || selectedEmployee === 'all') {
       return { annual: '-', dayOff: '-', extraOff: '-' };
@@ -836,11 +988,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
       let workingCount = 0; let sickCount = 0; let offCount = 0; let leaveCount = 0;
       teamOnThisDay.forEach(item => {
-        const t = (getPropCaseInsensitive(item, ['type', 'Type', 'status']) || '').toLowerCase();
-        if (t.includes('working') || t === 'work' || t.includes('kerja')) workingCount++;
-        else if (t.includes('sick') || t.includes('maternity') || t.includes('sakit') || t.includes('melahirkan')) sickCount++;
-        else if (t.includes('day off') || t === 'off' || t.includes('holiday') || t.includes('libur')) offCount++;
-        else if (t) leaveCount++;
+        const typ = (getPropCaseInsensitive(item, ['type', 'Type', 'status']) || '').toLowerCase();
+        if (typ.includes('working') || typ === 'work' || typ.includes('kerja')) workingCount++;
+        else if (typ.includes('sick') || typ.includes('maternity') || typ.includes('sakit') || typ.includes('melahirkan')) sickCount++;
+        else if (typ.includes('day off') || typ === 'off' || typ.includes('holiday') || typ.includes('libur')) offCount++;
+        else if (typ) leaveCount++;
       });
       
       days.push({
@@ -858,7 +1010,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
   
   const getShiftTimes = (shiftVal, stdWorkingDay = 'BACKOFFICE52') => {
-    const shiftInfo = SHIFT_OPTIONS.find(s => s.value === shiftVal) || SHIFT_OPTIONS[8]; // default M9
+    const shiftInfo = SHIFT_OPTIONS.find(s => s.value === shiftVal) || SHIFT_OPTIONS[8];
     const startTime = shiftInfo.start;
     const startHour = parseInt(startTime.split(':')[0], 10);
     const workingHours = stdWorkingDay?.toUpperCase().includes('OPERATIONAL') ? 8 : 9;
@@ -955,20 +1107,20 @@ export default function Approval({ currentUser: propCurrentUser }) {
         }
       }
 
-      alert('Jadwal berhasil diperbarui!');
+      alert(currentLang === 'id' ? 'Jadwal berhasil diperbarui!' : 'Schedule updated successfully!');
       setSingleScheduleEdit(null);
       setTeamScheduleModalData(null);
       refreshAllData();
     } catch (err) {
       console.error(err);
-      alert('Gagal memperbarui jadwal: ' + err.message);
+      alert((currentLang === 'id' ? 'Gagal memperbarui jadwal: ' : 'Failed to save schedule: ') + err.message);
     }
     setIsSavingSingleSchedule(false);
   };
 
   const openBulkEditModal = () => {
     if (!selectedEmployee || selectedEmployee === 'all') {
-      alert("Please select a specific employee from the filter first to edit their schedule.");
+      alert(currentLang === 'id' ? "Silakan pilih satu karyawan dari filter untuk mengedit jadwal." : "Please select a specific employee from the filter first to edit their schedule.");
       return;
     }
     
@@ -977,7 +1129,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
     setBulkEditEmployee(empData);
 
     const newBulkData = calendarDays.map(d => {
-      // Find existing schedule for this day
       const existing = d.teamData.find(r => {
          const rEmail = (getPropCaseInsensitive(r, ['Employee', 'employee', 'email', 'user_uid', 'employee_email']) || '').toLowerCase();
          return rEmail === selectedEmployee.toLowerCase();
@@ -988,9 +1139,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const existingId = existing ? getPropCaseInsensitive(existing, ['id', 'ID', 'uid']) : null;
       
       return {
-        id: existingId, // null if no existing record
+        id: existingId,
         date: d.dateToPass,
-        dateDisplay: `${d.day} ${monthNames[month]} ${year}`,
+        dateDisplay: `${d.day} ${t.monthsFull[month]} ${year}`,
         type: defaultType,
         shift: defaultShift,
         dbRecord: existing || null
@@ -1015,7 +1166,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const workingHours = bulkEditEmployee.standart_working_day?.toUpperCase().includes('OPERATIONAL') ? 8 : 9;
       
       for (const row of bulkEditData) {
-        // Calculate Times based on Shift and standard working hours
         let startTime = "";
         let endTime = "";
         
@@ -1030,7 +1180,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
         }
         
         const payload = {
-          Employee: bulkEditEmployee.email, // Adjust based on your schedule table
+          Employee: bulkEditEmployee.email,
           Date: row.date,
           Type: row.type,
           Shift: row.type === 'Working Day' ? row.shift : '-',
@@ -1039,24 +1189,21 @@ export default function Approval({ currentUser: propCurrentUser }) {
         };
 
         if (row.id) {
-           // Update existing
            await supabase.from('schedule').update(payload).eq('id', row.id);
         } else {
-           // Insert new record if not exists but user explicitly defined it
-           // In most systems, default records are pre-populated, but just in case:
            await supabase.from('schedule').insert([payload]);
         }
       }
-      alert('Schedule updated successfully!');
+      alert(currentLang === 'id' ? 'Jadwal berhasil diperbarui!' : 'Schedule updated successfully!');
       setIsBulkEditModalOpen(false);
-      refreshAllData(); // reload
+      refreshAllData();
     } catch (err) {
       console.error(err);
-      alert('Failed to save schedule: ' + err.message);
+      alert((currentLang === 'id' ? 'Gagal menyimpan jadwal: ' : 'Failed to save schedule: ') + err.message);
     }
     setIsSavingBulk(false);
   };
-// Send email notification upon Approve / Reject / Cancel
+
   const sendNotificationEmail = async (item, newStatus, reason = '') => {
     const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']);
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'employee_name'], 'Employee');
@@ -1098,7 +1245,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
     }
   };
 
-  // Action: Approve or Reject
   const handleUpdateStatus = async (item, newStatus, reason = '') => {
     setIsProcessing(true);
     try {
@@ -1118,9 +1264,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
       let scheduleUpdatePayload = {};
       let schedRow = null;
 
-      // -------------------------------------------------------------
-      // LOGIKA ATTENDANCE & SCHEDULE
-      // -------------------------------------------------------------
       if (item._category === 'Attendance') {
         const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'user_uid', 'email']);
         const attDate = getPropCaseInsensitive(item, ['Date', 'date', 'Tanggal', 'attendance_date', 'CreatedDate']);
@@ -1195,7 +1338,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
           if (isCheckout) {
             payload[attActionCol] = 'Checked Out';
             if (checkoutTimeVal) payload[attTimeCol] = checkoutTimeVal;
-            targetStatus = 'Approved'; // Sesuai instruksi khusus overtime reject
+            targetStatus = 'Approved';
             
             schedCheckedOut = checkoutTimeVal;
             scheduleUpdatePayload['Checked Out At'] = checkoutTimeVal;
@@ -1249,19 +1392,15 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const { error } = await query;
       if (error) throw error;
       
-      // Update Schedule table
       if (item._category === 'Attendance' && Object.keys(scheduleUpdatePayload).length > 0 && schedRow) {
         const rowKeys = Object.keys(schedRow);
-        // Supabase REST membutuhkan nama kolom sama persis seperti yang di database (biasanya 'id')
         const pkCol = rowKeys.find(k => k.toLowerCase() === 'id' || k === 'ID' || k === '_id');
         
         let schedQuery = supabase.from('schedule').update(scheduleUpdatePayload);
         
         if (pkCol && schedRow[pkCol] !== undefined && schedRow[pkCol] !== null) {
-          // Fallback aman untuk mengatasi supabase js client
           schedQuery = schedQuery.eq(pkCol, schedRow[pkCol]);
         } else {
-          // Cari kolom Employee / Date untuk WHERE clause
           const empCol = rowKeys.find(k => ['employee', 'email', 'user_uid'].includes(k.toLowerCase())) || 'Employee';
           const dateCol = rowKeys.find(k => ['date', 'tanggal'].includes(k.toLowerCase())) || 'Date';
           schedQuery = schedQuery.eq(empCol, schedRow[empCol]).eq(dateCol, schedRow[dateCol]);
@@ -1271,7 +1410,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
         if (schedErr) console.warn("[Approval] Failed updating schedule:", schedErr.message);
       }
 
-      // LEAVE APPROVAL POST-LOGIC (Only for Leave requests)
       if (newStatus === 'Approved' && item._category === 'Leave') {
         const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'user_uid', 'email']);
         const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name']);
@@ -1316,16 +1454,16 @@ export default function Approval({ currentUser: propCurrentUser }) {
             }
             const { data: allHolidays, error: holFetchErr } = await holQuery;
 
-            if (holFetchErr) throw new Error("Gagal membaca holiday_balance: " + holFetchErr.message);
+            if (holFetchErr) throw new Error("Failed read holiday_balance: " + holFetchErr.message);
 
             const candidateHolidays = (allHolidays || []).filter(row => {
               const s = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
               if (s !== 'unused') return false;
 
-              const t = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
+              const typ = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
               const isTypeMatch = leaveType.toLowerCase().includes('extra')
-                ? (t.includes('extra off') || t.includes('extra'))
-                : (t.includes('day off') || t.includes('dayoff'));
+                ? (typ.includes('extra off') || typ.includes('extra'))
+                : (typ.includes('day off') || typ.includes('dayoff'));
               if (!isTypeMatch) return false;
 
               const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
@@ -1365,14 +1503,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
               }
             }
 
-            // Update schedule
             await supabase.from('schedule').update({
               [schedTypeCol]: leaveType
             })
             .ilike(schedEmpCol, `%${empEmail}%`)
             .eq(schedDateCol, fromDate);
 
-            // Recalculate Balance
             let recheckQuery = supabase.from('holiday_balance').select('*').limit(5000);
             if (orConditions) {
                recheckQuery = recheckQuery.or(orConditions);
@@ -1384,10 +1520,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
               unusedCount = recheckHolidays.filter(row => {
                 const s = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
                 if (s !== 'unused') return false;
-                const t = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
+                const typ = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
                 const isTypeMatch = leaveType.toLowerCase().includes('extra')
-                  ? (t.includes('extra off') || t.includes('extra'))
-                  : (t.includes('day off') || t.includes('dayoff'));
+                  ? (typ.includes('extra off') || typ.includes('extra'))
+                  : (typ.includes('day off') || typ.includes('dayoff'));
                 if (!isTypeMatch) return false;
                 const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
                 return validKeys.some(k => empVal === k || empVal.includes(k) || k.includes(empVal));
@@ -1430,13 +1566,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
         } catch (sideErr) {
           console.error('Error applying post-approval side effects:', sideErr);
-          alert('Catatan Sinkronisasi: ' + sideErr.message);
+          alert((currentLang === 'id' ? 'Catatan Sinkronisasi: ' : 'Sync Note: ') + sideErr.message);
         }
       }
 
       await sendNotificationEmail(item, newStatus, reason);
 
-      alert(`Request successfully ${newStatus === 'Approved' ? 'approved' : 'rejected'}!`);
+      alert(currentLang === 'id' ? `Permintaan berhasil ${newStatus === 'Approved' ? 'disetujui' : 'ditolak'}!` : `Request successfully ${newStatus === 'Approved' ? 'approved' : 'rejected'}!`);
       setIsDetailModalOpen(false);
       setIsRejectModalOpen(false);
       setItemToReject(null);
@@ -1445,18 +1581,17 @@ export default function Approval({ currentUser: propCurrentUser }) {
       refreshAllData();
     } catch (err) {
       console.error(err);
-      alert('Failed to process request: ' + err.message);
+      alert((currentLang === 'id' ? 'Gagal memproses permintaan: ' : 'Failed to process request: ') + err.message);
     }
     setIsProcessing(false);
   };
 
-  // Action: Cancel Approved Request and Revert Balances to Unused
   const handleCancelApproved = async (item) => {
     const empName = getPropCaseInsensitive(item, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Employee');
     const reqCategory = item._category || 'Leave';
     const reqType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Action', 'action', 'Type', 'type', 'Attendance Type'], reqCategory);
 
-    if (!window.confirm(`Batalkan persetujuan ${reqType} untuk ${empName}?`)) {
+    if (!window.confirm(currentLang === 'id' ? `Batalkan persetujuan ${reqType} untuk ${empName}?` : `Cancel ${reqType} approval for ${empName}?`)) {
       return;
     }
 
@@ -1511,7 +1646,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const { error: cancelErr } = await query;
       if (cancelErr) throw cancelErr;
 
-      // REVERT BALANCE & SCHEDULE IF LEAVE
       if (reqCategory === 'Leave') {
         const empEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'user_uid', 'email']);
         const leaveType = getPropCaseInsensitive(item, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '');
@@ -1558,10 +1692,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
             const s = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
             if (s !== 'used') return false;
 
-            const t = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
+            const typ = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
             const isTypeMatch = leaveType.toLowerCase().includes('extra')
-              ? (t.includes('extra off') || t.includes('extra'))
-              : (t.includes('day off') || t.includes('dayoff'));
+              ? (typ.includes('extra off') || typ.includes('extra'))
+              : (typ.includes('day off') || typ.includes('dayoff'));
             if (!isTypeMatch) return false;
 
             const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
@@ -1619,10 +1753,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
             unusedCount = recheckHolidays.filter(row => {
               const s = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
               if (s !== 'unused') return false;
-              const t = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
+              const typ = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
               const isTypeMatch = leaveType.toLowerCase().includes('extra')
-                ? (t.includes('extra off') || t.includes('extra'))
-                : (t.includes('day off') || t.includes('dayoff'));
+                ? (typ.includes('extra off') || typ.includes('extra'))
+                : (typ.includes('day off') || typ.includes('dayoff'));
               if (!isTypeMatch) return false;
               const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
               return validKeys.some(k => empVal === k || empVal.includes(k) || k.includes(empVal));
@@ -1664,15 +1798,19 @@ export default function Approval({ currentUser: propCurrentUser }) {
         }
       }
 
-      await sendNotificationEmail(item, 'Cancelled', 'Persetujuan request telah dibatalkan oleh Line Manager dan kuota/saldo telah dikembalikan (jika ada).');
+      const reasonStr = currentLang === 'id' 
+        ? 'Persetujuan request telah dibatalkan oleh Line Manager dan kuota/saldo telah dikembalikan (jika ada).'
+        : 'Approval request cancelled by Line Manager and balances have been reverted (if applicable).';
 
-      alert('Persetujuan berhasil dibatalkan!');
+      await sendNotificationEmail(item, 'Cancelled', reasonStr);
+
+      alert(currentLang === 'id' ? 'Persetujuan berhasil dibatalkan!' : 'Approval successfully cancelled!');
       setIsDetailModalOpen(false);
       setSelectedRequest(null);
       refreshAllData();
     } catch (err) {
       console.error(err);
-      alert('Gagal membatalkan persetujuan: ' + err.message);
+      alert((currentLang === 'id' ? 'Gagal membatalkan persetujuan: ' : 'Failed to cancel approval: ') + err.message);
     }
     setIsProcessing(false);
   };
@@ -1694,11 +1832,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
     handleUpdateStatus(itemToReject, 'Rejected', rejectReason);
   };
 
-  // -------------------------------------------------------------
-  // COUNTS & LIST FILTERING
-  // -------------------------------------------------------------
-  
-  // Total pending counts globally for the tab badges
   const pendingLeavesCount = useMemo(() => {
     return leaveRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   }, [leaveRequests]);
@@ -1707,12 +1840,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
     return attendanceRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   }, [attendanceRequests]);
 
-  // Active Category List (either leave or attendance array)
   const activeCategoryList = useMemo(() => {
     return activeCategoryTab === 'attendance' ? attendanceRequests : leaveRequests;
   }, [activeCategoryTab, attendanceRequests, leaveRequests]);
 
-  // Combined status filtering based on statusTab and selectedEmployee
   const displayList = useMemo(() => {
     let list = [...activeCategoryList];
 
@@ -1751,7 +1882,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
     });
   }, [activeCategoryList, activeCategoryTab, statusTab, selectedEmployee]);
 
-  // Dropdown counts (dynamically changes based on active category)
   const pendingStatusCount = activeCategoryList.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   const approvedStatusCount = activeCategoryList.filter(r => isApprovedStatus(getRowStatus(r))).length;
   const rejectedStatusCount = activeCategoryList.filter(r => isRejectedStatus(getRowStatus(r))).length;
@@ -1759,10 +1889,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
   return (
     <div className="w-full text-gray-800 font-sans">
       
-      {/* 1. Unified Main Card: Controls, Filters, and Table */}
+      {/* 1. Unified Main Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-6 w-full">
         
-        {/* Top Header Row (Simpler Header matching requested design) */}
         <div className="p-4 sm:p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 bg-blue-50 text-blue-600 rounded-xl">
@@ -1770,20 +1899,19 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-gray-900 tracking-tight">Approval Requests</h2>
+            <h2 className="text-xl font-bold text-gray-900 tracking-tight">{t.title}</h2>
           </div>
           
-          {/* Refresh & Manager Info hidden on small screens for cleaner look like image */}
           <div className="hidden sm:flex items-center gap-3">
             <div className="bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs">
-              <span className="text-gray-400 mr-1.5 font-medium">Line Manager:</span>
+              <span className="text-gray-400 mr-1.5 font-medium">{t.manager}</span>
               <span className="font-semibold text-gray-700">{actualUserWorkEmail || topNavEmail || userWorkEmail || '-'}</span>
             </div>
             <button
               onClick={refreshAllData}
               disabled={loading}
               className="p-2 border border-gray-200 hover:bg-gray-50 text-gray-600 rounded-xl transition shadow-sm active:scale-95 disabled:opacity-50"
-              title="Refresh Data"
+              title={t.refresh}
             >
               <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -1792,12 +1920,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
           </div>
         </div>
 
-        {/* --- TAB AND STATUS ROW AS REQUESTED IN IMAGE --- */}
         <div className="p-4 sm:px-5 sm:py-4 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100">
           
-          {/* Sejajar di mobile dan desktop: Tab & Status Filter */}
           <div className="flex items-center gap-2 w-full sm:w-auto flex-nowrap overflow-x-auto">
-            {/* Custom Pill Tabs container */}
             <div className="flex bg-gray-100 rounded-xl p-1 gap-1 shrink-0">
               <button
                 onClick={() => setActiveCategoryTab('leave')}
@@ -1807,7 +1932,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
                 }`}
               >
-                Leave ({pendingLeavesCount})
+                {t.tabLeave} ({pendingLeavesCount})
               </button>
               <button
                 onClick={() => setActiveCategoryTab('attendance')}
@@ -1817,11 +1942,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
                 }`}
               >
-                Attendance ({pendingAttendanceCount})
+                {t.tabAttendance} ({pendingAttendanceCount})
               </button>
             </div>
 
-            {/* Status Filter sejajar langsung di sebelah kanan tab Attendance */}
             {activeCategoryTab !== 'attendance' && (
               <div className="relative shrink-0 flex-1 sm:flex-initial sm:w-[170px]">
                 <select
@@ -1835,16 +1959,15 @@ export default function Approval({ currentUser: propCurrentUser }) {
                     backgroundSize: '0.85rem'
                   }}
                 >
-                  <option value="pending">Pending ({pendingStatusCount})</option>
-                  <option value="approved">Approved ({approvedStatusCount})</option>
-                  <option value="rejected">Rejected ({rejectedStatusCount})</option>
-                  <option value="all">All Status</option>
+                  <option value="pending">{t.filterPending} ({pendingStatusCount})</option>
+                  <option value="approved">{t.filterApproved} ({approvedStatusCount})</option>
+                  <option value="rejected">{t.filterRejected} ({rejectedStatusCount})</option>
+                  <option value="all">{t.filterAll}</option>
                 </select>
               </div>
             )}
           </div>
 
-          {/* Employee Dropdown Filter */}
           <div className="relative w-full sm:w-[200px] shrink-0">
             <select
               value={selectedEmployee}
@@ -1857,7 +1980,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 backgroundSize: '1rem'
               }}
             >
-              <option value="all">All Employees</option>
+              <option value="all">{t.empFilterAll}</option>
               {teamMembers.map((member) => (
                 <option key={member.email} value={member.email}>
                   {member.name}
@@ -1867,16 +1990,15 @@ export default function Approval({ currentUser: propCurrentUser }) {
           </div>
         </div>
 
-        {/* Main List Table */}
         <div className="overflow-x-auto w-full">
           <table className="w-full text-sm text-left text-gray-600">
             <thead className="text-xs text-gray-500 uppercase bg-gray-50/50 border-b border-gray-100">
               <tr>
-                <th className="px-5 py-3.5 font-semibold">Employee</th>
-                <th className="px-5 py-3.5 font-semibold">Request Type</th>
-                <th className="px-5 py-3.5 font-semibold">{activeCategoryTab === 'attendance' ? 'Attendance Time' : 'Leave Period'}</th>
-                <th className="px-5 py-3.5 font-semibold text-center">Status</th>
-                <th className="px-5 py-3.5 font-semibold text-center">Action</th>
+                <th className="px-5 py-3.5 font-semibold">{t.colEmp}</th>
+                <th className="px-5 py-3.5 font-semibold">{t.colReq}</th>
+                <th className="px-5 py-3.5 font-semibold">{activeCategoryTab === 'attendance' ? t.colAttTime : t.colLeavePeriod}</th>
+                <th className="px-5 py-3.5 font-semibold text-center">{t.colStatus}</th>
+                <th className="px-5 py-3.5 font-semibold text-center">{t.colAction}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -1888,7 +2010,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                       </svg>
-                      <p className="text-xs">Loading requests...</p>
+                      <p className="text-xs">{t.loading}</p>
                     </div>
                   </td>
                 </tr>
@@ -1899,9 +2021,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
                       <svg className="w-10 h-10 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      <p className="font-semibold text-gray-600 text-sm">No {activeCategoryTab} requests found</p>
+                      <p className="font-semibold text-gray-600 text-sm">{t.noRequests}</p>
                       <p className="text-xs text-gray-400 mt-1">
-                        There are no {statusTab !== 'all' ? statusTab : ''} records matching your current filter.
+                        {t.noRecordsDesc}
                       </p>
                     </div>
                   </td>
@@ -1983,10 +2105,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
                                 disabled={isProcessing}
                                 onClick={() => handleCancelApproved(item)}
                                 className="px-2.5 py-1.5 bg-white hover:bg-red-50 active:scale-95 text-red-600 border border-gray-200 hover:border-red-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer mx-auto shadow-sm"
-                                title="Cancel Approval"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                                <span>Cancel</span>
+                                <span>{t.btnCancel}</span>
                               </button>
                             );
                           }
@@ -1997,19 +2118,17 @@ export default function Approval({ currentUser: propCurrentUser }) {
                                   disabled={isProcessing}
                                   onClick={() => handleCancelApproved(item)}
                                   className="px-2.5 py-1.5 bg-white hover:bg-purple-50 active:scale-95 text-purple-700 border border-gray-200 hover:border-purple-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shadow-sm"
-                                  title="Approve Cancellation"
                                 >
                                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                                  <span>Approve Cancel</span>
+                                  <span>{t.btnApproveCancel}</span>
                                 </button>
                                 <button
                                   disabled={isProcessing}
                                   onClick={(e) => openRejectDialog(item, e)}
                                   className="px-2.5 py-1.5 bg-white hover:bg-gray-50 active:scale-95 text-gray-700 border border-gray-200 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shadow-sm"
-                                  title="Reject Cancel Request"
                                 >
                                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                                  <span>Reject</span>
+                                  <span>{t.btnReject}</span>
                                 </button>
                               </div>
                             );
@@ -2019,24 +2138,22 @@ export default function Approval({ currentUser: propCurrentUser }) {
                               <button
                                 disabled={isProcessing}
                                 onClick={() => {
-                                  if (window.confirm(`Approve request from ${employeeName}?`)) {
+                                  if (window.confirm(currentLang === 'id' ? `Setujui permintaan dari ${employeeName}?` : `Approve request from ${employeeName}?`)) {
                                     handleUpdateStatus(item, 'Approved');
                                   }
                                 }}
                                 className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1 cursor-pointer"
-                                title="Approve"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                                <span>Approve</span>
+                                <span>{t.btnApprove}</span>
                               </button>
                               <button
                                 disabled={isProcessing}
                                 onClick={(e) => openRejectDialog(item, e)}
                                 className="px-3 py-1.5 bg-white hover:bg-red-50 active:scale-95 text-red-600 border border-gray-200 hover:border-red-200 text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1 cursor-pointer"
-                                title="Reject"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                                <span>Reject</span>
+                                <span>{t.btnReject}</span>
                               </button>
                             </div>
                           );
@@ -2052,37 +2169,36 @@ export default function Approval({ currentUser: propCurrentUser }) {
       </div>
 
       
-      {/* 1.5 Summary Balance Cards (Tab Style) */}
+      {/* 1.5 Summary Balance Cards */}
       <div className="mb-6 flex overflow-x-auto">
         <div className="flex bg-gray-100 rounded-xl p-1 gap-1 shrink-0">
           <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg bg-white shadow-sm border border-gray-200/50">
-             <span className="text-xs sm:text-[13px] font-bold text-gray-500">Annual Leave :</span>
+             <span className="text-xs sm:text-[13px] font-bold text-gray-500">{t.sumAnn}</span>
              <span className="text-xs sm:text-[13px] font-black text-blue-700">{employeeSummary.annual}</span>
           </div>
           <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg bg-white shadow-sm border border-gray-200/50">
-             <span className="text-xs sm:text-[13px] font-bold text-gray-500">Day Off Payment :</span>
+             <span className="text-xs sm:text-[13px] font-bold text-gray-500">{t.sumDop}</span>
              <span className="text-xs sm:text-[13px] font-black text-blue-700">{employeeSummary.dayOff}</span>
           </div>
           <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg bg-white shadow-sm border border-gray-200/50">
-             <span className="text-xs sm:text-[13px] font-bold text-gray-500">Extra Off :</span>
+             <span className="text-xs sm:text-[13px] font-bold text-gray-500">{t.sumEo}</span>
              <span className="text-xs sm:text-[13px] font-black text-blue-700">{employeeSummary.extraOff}</span>
           </div>
         </div>
       </div>
 
       {/* 2. Team Working Calendar Card */}
-
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 w-full">
         <div className="flex flex-row justify-between items-start sm:items-center pb-4 mb-4 border-b border-gray-100 gap-2 sm:gap-3">
           <div className="flex-1 pr-2 sm:pr-3">
             <h3 className="text-sm sm:text-lg font-bold text-gray-900 flex flex-wrap items-center gap-1.5 sm:gap-2">
               <svg className="w-5 h-5 text-blue-600 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-              Team Calendar
+              {t.calTitle}
             </h3>
             <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 break-words">
               {selectedEmployee === 'all' 
-                ? 'Showing schedules for all team members' 
-                : `Showing schedule for: ${teamMembers.find(m => m.email === selectedEmployee)?.name || selectedEmployee}`}
+                ? t.calDescAll 
+                : `${t.calDescOne} ${teamMembers.find(m => m.email === selectedEmployee)?.name || selectedEmployee}`}
             </p>
           </div>
           
@@ -2091,29 +2207,25 @@ export default function Approval({ currentUser: propCurrentUser }) {
               <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
             </button>
             <span className="text-[10px] sm:text-base font-bold text-gray-800 min-w-[65px] sm:min-w-[120px] text-center">
-              {monthNames[month]} {year}
+              {t.monthsFull[month]} {year}
             </span>
             <button onClick={nextMonth} className="p-1 sm:p-2 border border-gray-200 hover:bg-gray-50 rounded-lg sm:rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Next Month">
               <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
             </button>
             <button onClick={setThisMonth} className="hidden sm:block px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition shadow-sm active:scale-95 ml-1">
-              This Month
+              {t.btnThisMonth}
             </button>
           </div>
         </div>
 
-        {/* Days of Week Header */}
         <div className="grid grid-cols-7 text-center text-xs font-bold pt-1 mb-1">
-          <span className="text-red-500">Sun</span>
-          <span className="text-gray-700">Mon</span>
-          <span className="text-gray-700">Tue</span>
-          <span className="text-gray-700">Wed</span>
-          <span className="text-gray-700">Thu</span>
-          <span className="text-gray-700">Fri</span>
-          <span className="text-blue-600">Sat</span>
+          {t.daysOfWeek.map((day, idx) => (
+            <span key={idx} className={idx === 0 ? 'text-red-500' : idx === 6 ? 'text-blue-600' : 'text-gray-700'}>
+              {day}
+            </span>
+          ))}
         </div>
 
-        {/* Calendar Grid */}
         <div className="grid grid-cols-7 gap-1 sm:gap-1.5 text-center text-xs">
           {Array.from({ length: firstDayIndex }).map((_, idx) => (
             <div key={`empty-${idx}`} className="h-20 sm:h-24 bg-gray-50 border border-dashed border-gray-200 rounded-xl opacity-40"></div>
@@ -2146,10 +2258,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
               </div>
 
               <div className="w-full flex flex-col items-center justify-center my-auto gap-0.5 sm:gap-1 mt-1">
-                {d.counts.workingCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-green-600 text-white shadow-sm">{d.counts.workingCount} Work</span>}
-                {d.counts.sickCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-pink-500 text-white shadow-sm">{d.counts.sickCount} Sick</span>}
-                {d.counts.leaveCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-orange-500 text-white shadow-sm">{d.counts.leaveCount} Leave</span>}
-                {d.counts.offCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-red-600 text-white shadow-sm">{d.counts.offCount} Off</span>}
+                {d.counts.workingCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-green-600 text-white shadow-sm">{d.counts.workingCount} {t.statWork}</span>}
+                {d.counts.sickCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-pink-500 text-white shadow-sm">{d.counts.sickCount} {t.statSick}</span>}
+                {d.counts.leaveCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-orange-500 text-white shadow-sm">{d.counts.leaveCount} {t.statLeave}</span>}
+                {d.counts.offCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-red-600 text-white shadow-sm">{d.counts.offCount} {t.statOff}</span>}
                 
                 {d.teamData.length === 0 && <span className="text-[10px] text-gray-300">-</span>}
               </div>
@@ -2164,13 +2276,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
              className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl shadow-sm transition border border-indigo-200 flex items-center gap-2"
            >
              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-             Bulk Edit Schedule (1 Month)
+             {t.btnBulkEdit}
            </button>
         </div>
       </div>
-
-
-      {/* --- MODALS --- */}
 
       {/* Bulk Edit Modal */}
       {isBulkEditModalOpen && bulkEditEmployee && (
@@ -2178,11 +2287,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
           <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl p-0 border border-gray-100 flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-2xl">
               <div>
-                <h3 className="text-lg font-bold text-gray-900">Bulk Edit Schedule</h3>
+                <h3 className="text-lg font-bold text-gray-900">{t.bulkTitle}</h3>
                 <p className="text-xs text-gray-500 mt-1">
-                  Employee: <strong className="text-gray-800">{bulkEditEmployee.name}</strong> | Barcode: <strong className="text-gray-800">{bulkEditEmployee.barcode || '-'}</strong>
+                  {t.bulkEmp} <strong className="text-gray-800">{bulkEditEmployee.name}</strong> | Barcode: <strong className="text-gray-800">{bulkEditEmployee.barcode || '-'}</strong>
                 </p>
-                <p className="text-xs text-gray-500">Month: {monthNames[month]} {year}</p>
+                <p className="text-xs text-gray-500">{t.bulkMonth} {t.monthsFull[month]} {year}</p>
               </div>
               <button disabled={isSavingBulk} onClick={() => setIsBulkEditModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-2 bg-white rounded-xl shadow-sm border border-gray-200">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -2202,7 +2311,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                          <div className="w-full sm:w-1/4">
                             {isLockedType ? (
                               <div className="w-full p-2 text-xs font-bold text-gray-600 border border-gray-300 rounded-lg bg-gray-200">
-                                {row.type} (Locked)
+                                {row.type} ({t.bulkLocked})
                               </div>
                             ) : (
                               <select
@@ -2210,8 +2319,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
                                  onChange={(e) => handleBulkChange(idx, 'type', e.target.value)}
                                  className="w-full p-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
                               >
-                                 <option value="Working Day">Working Day</option>
-                                 <option value="Day Off">Day Off</option>
+                                 <option value="Working Day">{t.bulkTypeWork}</option>
+                                 <option value="Day Off">{t.bulkTypeOff}</option>
                               </select>
                             )}
                          </div>
@@ -2229,12 +2338,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
                             
                             {row.type === 'Working Day' && !isLockedType && (
                               <span className="text-[10px] text-gray-400 italic">
-                                End time will auto-calculate based on {bulkEditEmployee.standart_working_day?.toUpperCase().includes('OPERATIONAL') ? '8 hours' : '9 hours'} standard limit.
+                                {bulkEditEmployee.standart_working_day?.toUpperCase().includes('OPERATIONAL') ? t.bulkAutoInfo8 : t.bulkAutoInfo9}
                               </span>
                             )}
                             {isLockedType && (
                               <span className="text-[10px] text-gray-400 font-medium italic">
-                                Cannot edit scheduled leave.
+                                {t.bulkCannotEdit}
                               </span>
                             )}
                          </div>
@@ -2250,7 +2359,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 onClick={() => setIsBulkEditModalOpen(false)}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
               >
-                Cancel
+                {t.btnCancel}
               </button>
               <button
                 disabled={isSavingBulk}
@@ -2258,9 +2367,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm transition cursor-pointer flex items-center gap-2"
               >
                 {isSavingBulk ? (
-                  <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Saving...</>
+                  <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> {t.btnSaving}</>
                 ) : (
-                  'Save Schedule'
+                  t.btnSaveSchedule
                 )}
               </button>
             </div>
@@ -2268,14 +2377,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
         </div>
       )}
 
-      
       {/* Team Schedule Date Detail Modal */}
       {teamScheduleModalData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setTeamScheduleModalData(null)}>
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-5 border border-gray-100" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100">
               <h3 className="text-base sm:text-lg font-bold text-gray-900">
-                Team Schedule: <span className="text-blue-600">{teamScheduleModalData.date}</span>
+                {t.teamModalTitle} <span className="text-blue-600">{teamScheduleModalData.date}</span>
               </h3>
               <button onClick={() => setTeamScheduleModalData(null)} className="text-gray-400 hover:text-gray-600 p-1">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -2285,24 +2393,33 @@ export default function Approval({ currentUser: propCurrentUser }) {
             <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
               {teamScheduleModalData.records.map((emp, idx) => {
                 const empName = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'employee_name', 'Employee'], 'Employee');
-                const t = getPropCaseInsensitive(emp, ['type', 'Type', 'status'], '-');
+                const typ = getPropCaseInsensitive(emp, ['type', 'Type', 'status'], '-');
                 const shift = getPropCaseInsensitive(emp, ['shift', 'jam kerja'], '-');
                 
                 let badgeClass = 'bg-gray-100 text-gray-700 border-gray-200';
-                const tLower = t.toLowerCase();
+                let displayType = typ;
+                
+                const tLower = typ.toLowerCase();
                 const isWorking = tLower.includes('working') || tLower === 'work' || tLower.includes('kerja');
                 const isOff = tLower.includes('day off') || tLower === 'off' || tLower.includes('libur');
                 
-                // Cuti (Leave) tidak bisa diedit.
-                // Jika mengandung 'leave', 'sakit', 'sick', 'cuti', 'maternity', maka isEditable = false
                 const isLeave = tLower.includes('leave') || tLower.includes('cuti') || tLower.includes('sick') || tLower.includes('sakit') || tLower.includes('maternity');
                 
                 const isEditable = (isWorking || isOff) && !isLeave;
 
-                if (isWorking) badgeClass = 'bg-green-50 text-green-700 border-green-200';
-                else if (tLower.includes('sick') || tLower.includes('sakit')) badgeClass = 'bg-pink-50 text-pink-700 border-pink-200';
-                else if (isOff) badgeClass = 'bg-red-50 text-red-700 border-red-200';
-                else if (tLower.includes('leave') || tLower.includes('cuti')) badgeClass = 'bg-orange-50 text-orange-700 border-orange-200';
+                if (isWorking) {
+                  badgeClass = 'bg-green-50 text-green-700 border-green-200';
+                  displayType = t.badgeWork;
+                } else if (tLower.includes('sick') || tLower.includes('sakit')) {
+                  badgeClass = 'bg-pink-50 text-pink-700 border-pink-200';
+                  displayType = t.badgeSick;
+                } else if (isOff) {
+                  badgeClass = 'bg-red-50 text-red-700 border-red-200';
+                  displayType = t.badgeOff;
+                } else if (tLower.includes('leave') || tLower.includes('cuti')) {
+                  badgeClass = 'bg-orange-50 text-orange-700 border-orange-200';
+                  displayType = t.badgeLeave;
+                }
 
                 return (
                   <div 
@@ -2319,12 +2436,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
                         )}
                       </div>
                       <div className="text-[11px] text-gray-500 font-medium mt-0.5">
-                        Shift: {shift !== '-' ? shift : (isOff ? 'Day Off' : '-')}
+                        Shift: {shift !== '-' ? shift : (isOff ? t.badgeOff : '-')}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold border ${badgeClass}`}>
-                        {t}
+                        {displayType}
                       </span>
                       {isEditable && (
                         <button
@@ -2334,7 +2451,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
                             openSingleScheduleEdit(emp, teamScheduleModalData.date);
                           }}
                           className="px-2.5 py-1 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
-                          title="Edit Jadwal"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                           <span>Edit</span>
@@ -2349,7 +2465,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
         </div>
       )}
 
-      {/* Single Schedule Edit Modal (Form Menumpuk Diatasnya) */}
+      {/* Single Schedule Edit Modal */}
       {singleScheduleEdit && (
         <div 
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
@@ -2359,15 +2475,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
             className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-0 border border-gray-100 flex flex-col overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
-            {/* Modal Header */}
             <div className="p-4 sm:p-5 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-blue-50/50 to-indigo-50/30">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-xs">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-gray-900">Edit Jadwal Tanggal</h3>
-                  <p className="text-xs text-gray-500">Perbarui shift atau tipe kerja karyawan</p>
+                  <h3 className="text-base font-bold text-gray-900">{t.editModalTitle}</h3>
+                  <p className="text-xs text-gray-500">{t.editModalSub}</p>
                 </div>
               </div>
               <button 
@@ -2379,12 +2494,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="p-4 sm:p-5 space-y-3.5">
-              {/* 1. Date (Tidak dapat dirubah) */}
               <div>
                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
-                  1. Tanggal (Read-Only)
+                  1. {t.lblDate}
                 </label>
                 <input 
                   type="text"
@@ -2394,11 +2507,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 />
               </div>
 
-              {/* 2 & 3. Barcode Karyawan & Nama Karyawan (Tidak bisa dirubah) */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
-                    2. Barcode Karyawan
+                    2. {t.lblBarcode}
                   </label>
                   <input 
                     type="text"
@@ -2409,7 +2521,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
-                    3. Nama Karyawan
+                    3. {t.lblName}
                   </label>
                   <input 
                     type="text"
@@ -2420,29 +2532,27 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 </div>
               </div>
 
-              {/* 4. Type (Bisa dirubah Working Day atau Day Off) */}
               <div>
                 <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
-                  4. Tipe Hari (Working Day / Day Off)
+                  4. {t.lblType}
                 </label>
                 <select
                   value={singleScheduleEdit.type}
                   onChange={(e) => setSingleScheduleEdit({ ...singleScheduleEdit, type: e.target.value })}
                   className="w-full px-3 py-2 text-xs font-bold text-gray-800 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:outline-none cursor-pointer"
                 >
-                  <option value="Working Day">Working Day</option>
-                  <option value="Day Off">Day Off</option>
+                  <option value="Working Day">{t.bulkTypeWork}</option>
+                  <option value="Day Off">{t.bulkTypeOff}</option>
                 </select>
               </div>
 
-              {/* 5. Shift (Bisa dirubah dengan dropdown pilihan M1...E23) */}
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider">
-                    5. Shift Kerja
+                    5. {t.lblShift}
                   </label>
                   <span className="text-[10px] text-gray-400 italic">
-                    Angka belakang menunjukkan jam mulai
+                    {t.lblShiftHint}
                   </span>
                 </div>
                 <select
@@ -2453,46 +2563,38 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 >
                   {SHIFT_OPTIONS.map(opt => (
                     <option key={opt.value} value={opt.value}>
-                      {opt.label} — Mulai jam {opt.start}
+                      {opt.label} — Start {opt.start}
                     </option>
                   ))}
                 </select>
-                <p className="text-[10px] text-gray-500 mt-1">
-                  Keterangan: Kode awalan <strong>M</strong> (Morning), <strong>A</strong> (Afternoon), <strong>E</strong> (Evening). Angka menunjukkan jam (Contoh: M9 = 09:00).
-                </p>
               </div>
 
-              {/* 6 & 7. Kalkulasi Otomatis Start Time & End Time */}
               {singleScheduleEdit.type === 'Working Day' ? (() => {
                 const times = getShiftTimes(singleScheduleEdit.shift, singleScheduleEdit.standart_working_day);
                 return (
                   <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-xl">
                     <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block mb-1.5">
-                      6 & 7. Kalkulasi Jam Kerja Otomatis
+                      6 & 7. {t.lblAutoCalc}
                     </span>
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       <div className="bg-white p-2 rounded-lg border border-blue-100">
-                        <span className="text-[10px] text-gray-500 block">6. Start Time:</span>
+                        <span className="text-[10px] text-gray-500 block">{t.lblStart}</span>
                         <span className="font-extrabold text-blue-700 text-sm">{times.startTime}</span>
                       </div>
                       <div className="bg-white p-2 rounded-lg border border-blue-100">
-                        <span className="text-[10px] text-gray-500 block">7. End Time:</span>
+                        <span className="text-[10px] text-gray-500 block">{t.lblEnd}</span>
                         <span className="font-extrabold text-blue-700 text-sm">{times.endTime}</span>
                       </div>
-                    </div>
-                    <div className="text-[11px] text-blue-600 mt-2 font-medium">
-                      Aturan Durasi: <strong>{times.workingHours} Jam</strong> (Standart Working Day: <strong>{singleScheduleEdit.standart_working_day}</strong>)
                     </div>
                   </div>
                 );
               })() : (
                 <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-center text-xs text-gray-500 italic">
-                  Status <strong>Day Off</strong> tidak memerlukan jam kerja (Start & End Time diisi '-').
+                  {t.msgOffDay}
                 </div>
               )}
             </div>
 
-            {/* Modal Footer */}
             <div className="p-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-2.5">
               <button
                 type="button"
@@ -2500,7 +2602,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 onClick={() => setSingleScheduleEdit(null)}
                 className="px-4 py-2 bg-white hover:bg-gray-100 border border-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
               >
-                Batal
+                {t.btnCancel}
               </button>
               <button
                 type="button"
@@ -2511,12 +2613,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 {isSavingSingleSchedule ? (
                   <>
                     <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                    <span>Menyimpan...</span>
+                    <span>{t.btnSaving}</span>
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                    <span>Simpan Jadwal</span>
+                    <span>{t.btnSaveSchedule}</span>
                   </>
                 )}
               </button>
@@ -2539,9 +2641,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
             <div className="flex justify-between items-center pb-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
                 <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${selectedRequest._category === 'Attendance' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                  {selectedRequest._category}
+                  {selectedRequest._category === 'Attendance' ? t.tabAttendance : t.tabLeave}
                 </span>
-                <h3 className="text-base sm:text-lg font-bold text-gray-800">Request Detail</h3>
+                <h3 className="text-base sm:text-lg font-bold text-gray-800">{t.reqDetailTitle}</h3>
               </div>
               <button 
                 onClick={() => setIsDetailModalOpen(false)} 
@@ -2552,7 +2654,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
             </div>
 
             <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Employee Information</span>
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">{t.reqEmpInfo}</span>
               <div className="text-sm font-bold text-gray-800">
                 {getPropCaseInsensitive(selectedRequest, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'], '-')}
               </div>
@@ -2560,14 +2662,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 Email: {getPropCaseInsensitive(selectedRequest, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email'], '-')}
               </div>
               <div className="text-xs text-gray-500">
-                Line Manager: {getPropCaseInsensitive(selectedRequest, ['Line Manager', 'line_manager', 'Line Manager Email', 'manager_email', 'Approver'], '-')}
+                {t.manager} {getPropCaseInsensitive(selectedRequest, ['Line Manager', 'line_manager', 'Line Manager Email', 'manager_email', 'Approver'], '-')}
               </div>
             </div>
 
             <div className="mt-4 space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                  <span className="text-[10px] text-gray-400 font-semibold block">Request / Action</span>
+                  <span className="text-[10px] text-gray-400 font-semibold block">{t.colReq}</span>
                   {(() => {
                     const modalReqType = selectedRequest._category === 'Attendance' 
                       ? (getPropCaseInsensitive(selectedRequest, ['Are you checking out or Checking in?', 'Are you checking out or Checking in', 'Check In/Out', 'Check Type']) || 'Attendance') 
@@ -2580,7 +2682,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                   })()}
                 </div>
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                  <span className="text-[10px] text-gray-400 font-semibold block">Current Status</span>
+                  <span className="text-[10px] text-gray-400 font-semibold block">{t.reqCurrentStatus}</span>
                   <span className={`text-xs sm:text-sm font-bold ${isRejectedStatus(getRowStatus(selectedRequest)) || (getRowStatus(selectedRequest) || '').toLowerCase().replace(/[\s_-]/g, '') === 'cancelled' ? 'text-red-600' : isApprovedStatus(getRowStatus(selectedRequest)) ? 'text-green-700' : 'text-yellow-600'}`}>
                     {getRowStatus(selectedRequest) || 'Approved'}
                   </span>
@@ -2589,7 +2691,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                  <span className="text-[10px] text-gray-400 font-semibold block">{selectedRequest._category === 'Attendance' ? 'Attendance Time' : 'From Date'}</span>
+                  <span className="text-[10px] text-gray-400 font-semibold block">{selectedRequest._category === 'Attendance' ? t.reqAttTime : t.reqFromDate}</span>
                   <span className="text-xs sm:text-sm font-semibold text-gray-800">
                     {selectedRequest._category === 'Attendance'
                        ? formatDateTimeDisplay(getPropCaseInsensitive(selectedRequest, ['Time', 'time', 'created_at', 'CreatedDate', 'From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date']), lang)
@@ -2599,14 +2701,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 
                 {selectedRequest._category === 'Leave' ? (
                   <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                    <span className="text-[10px] text-gray-400 font-semibold block">To Date</span>
+                    <span className="text-[10px] text-gray-400 font-semibold block">{t.reqToDate}</span>
                     <span className="text-xs sm:text-sm font-semibold text-gray-800">
                       {formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['To Date', 'to_date', 'End Date', 'end_date']), lang)}
                     </span>
                   </div>
                 ) : (
                   <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                    <span className="text-[10px] text-gray-400 font-semibold block">Last Edit Date</span>
+                    <span className="text-[10px] text-gray-400 font-semibold block">{t.reqLastEdit}</span>
                     <span className="text-xs sm:text-sm font-semibold text-gray-800">
                       {formatDateTimeDisplay(getPropCaseInsensitive(selectedRequest, ['lasteditdate', 'last_edit_date', 'last_editdate', 'updated_at', 'Time', 'time', 'Time In', 'time_in', 'Clock In', 'Clock Out', 'Shift', 'shift']), lang)}
                     </span>
@@ -2617,13 +2719,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
               {selectedRequest._category === 'Leave' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                    <span className="text-[10px] text-gray-400 font-semibold block">Total Days Requested</span>
+                    <span className="text-[10px] text-gray-400 font-semibold block">{t.reqTotalDays}</span>
                     <span className="text-xs sm:text-sm font-black text-gray-800">
                       {getPropCaseInsensitive(selectedRequest, ['Total Days Count', 'total_days_count', 'Total Days', 'total_days', 'Duration'], '1')} Day(s)
                     </span>
                   </div>
                   <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                    <span className="text-[10px] text-gray-400 font-semibold block">Remaining / Final Balance</span>
+                    <span className="text-[10px] text-gray-400 font-semibold block">{t.reqFinalBal}</span>
                     <span className="text-xs sm:text-sm font-black text-gray-800">
                       {getPropCaseInsensitive(selectedRequest, ['Final balance', 'final_balance', 'Final Balance'], '-')}
                     </span>
@@ -2632,13 +2734,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
               )}
 
               <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                <span className="text-[10px] text-gray-400 font-semibold block">Reason / Request Notes</span>
+                <span className="text-[10px] text-gray-400 font-semibold block">{t.reqReason}</span>
                 <p className="text-xs text-gray-700 mt-1 whitespace-pre-wrap">
-                  {getPropCaseInsensitive(selectedRequest, ['Reason', 'reason', 'Description', 'description', 'notes', 'Notes', 'keterangan'], 'No additional notes provided.')}
+                  {getPropCaseInsensitive(selectedRequest, ['Reason', 'reason', 'Description', 'description', 'notes', 'Notes', 'keterangan'], '-')}
                 </p>
               </div>
 
-              {/* Attendance Location Map */}
               {selectedRequest._category === 'Attendance' && (() => {
                 const locData = getAttendanceLocation(selectedRequest);
                 return (
@@ -2649,7 +2750,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        Attendance Location / Map
+                        {t.reqAttLoc}
                       </span>
                       {locData && (
                         <a
@@ -2658,7 +2759,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                           rel="noopener noreferrer"
                           className="text-xs text-blue-600 hover:text-blue-700 hover:underline font-bold flex items-center gap-1"
                         >
-                          <span>Open in Google Maps</span>
+                          <span>{t.reqOpenMap}</span>
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                           </svg>
@@ -2690,17 +2791,16 @@ export default function Approval({ currentUser: propCurrentUser }) {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        <span className="text-xs">No location coordinates recorded for this attendance</span>
+                        <span className="text-xs">{t.reqNoLoc}</span>
                       </div>
                     )}
                   </div>
                 );
               })()}
 
-              {/* Attachment Preview with Link priority */}
               {getPropCaseInsensitive(selectedRequest, ['Link', 'link', 'Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo']) && (
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                  <span className="text-[10px] text-gray-400 font-semibold block mb-2">Attachment / Proof</span>
+                  <span className="text-[10px] text-gray-400 font-semibold block mb-2">{t.reqProof}</span>
                   <div className="flex items-center gap-3">
                     <img
                       src={getPropCaseInsensitive(selectedRequest, ['Link', 'link', 'Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'photo'])}
@@ -2720,9 +2820,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
                         }}
                         className="text-xs text-blue-600 hover:underline font-bold"
                       >
-                        Click to enlarge preview
+                        {t.reqClickEnlarge}
                       </button>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Attendance photo / document preview</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{t.reqProofDesc}</p>
                     </div>
                   </div>
                 </div>
@@ -2735,7 +2835,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 onClick={() => setIsDetailModalOpen(false)}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
               >
-                Close
+                {t.btnCancel}
               </button>
               {(() => {
                 const s = getRowStatus(selectedRequest);
@@ -2750,7 +2850,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                       onClick={() => handleCancelApproved(selectedRequest)}
                       className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition cursor-pointer"
                     >
-                      {s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel' ? 'Approve Cancellation' : 'Cancel Approval'}
+                      {s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel' ? t.btnApproveCancel : 'Cancel Approval'}
                     </button>
                   );
                 }
@@ -2762,19 +2862,19 @@ export default function Approval({ currentUser: propCurrentUser }) {
                       onClick={() => openRejectDialog(selectedRequest)}
                       className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition cursor-pointer"
                     >
-                      Reject
+                      {t.btnReject}
                     </button>
                     <button
                       type="button"
                       disabled={isProcessing}
                       onClick={() => {
-                        if (window.confirm('Are you sure you want to approve this request?')) {
+                        if (window.confirm(currentLang === 'id' ? 'Anda yakin ingin menyetujui permintaan ini?' : 'Are you sure you want to approve this request?')) {
                           handleUpdateStatus(selectedRequest, 'Approved');
                         }
                       }}
                       className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition cursor-pointer"
                     >
-                      {isProcessing ? 'Saving...' : 'Approve'}
+                      {isProcessing ? t.btnSaving : t.btnApprove}
                     </button>
                   </>
                 );
@@ -2789,20 +2889,20 @@ export default function Approval({ currentUser: propCurrentUser }) {
       {isRejectModalOpen && itemToReject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-5 border border-gray-100">
-            <h3 className="text-base font-bold text-gray-900 mb-1">Confirm Request Rejection</h3>
+            <h3 className="text-base font-bold text-gray-900 mb-1">{t.confRejectTitle}</h3>
             <p className="text-xs text-gray-500 mb-3">
-              You are about to reject the <strong>{itemToReject._category || 'Leave'}</strong> request from{' '}
+              {t.confRejectDesc} <strong>{itemToReject._category || 'Leave'}</strong> {t.confRejectFrom}{' '}
               <strong>{getPropCaseInsensitive(itemToReject, ['Name', 'name', 'nama', 'fullname'])}</strong>.
             </p>
 
             <label className="block text-xs font-semibold text-gray-700 mb-1">
-              Rejection Reason <span className="text-gray-400 font-normal">(optional)</span>
+              {t.confReasonLbl} <span className="text-gray-400 font-normal">{t.confReasonOpt}</span>
             </label>
             <textarea
               rows="3"
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="e.g. Incomplete proof / conflict with schedule..."
+              placeholder={t.confReasonPh}
               className="w-full p-2.5 text-xs border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-400 focus:outline-none mb-4"
             />
 
@@ -2815,14 +2915,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
               >
-                Cancel
+                {t.btnCancel}
               </button>
               <button
                 disabled={isProcessing}
                 onClick={handleConfirmReject}
                 className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition cursor-pointer"
               >
-                {isProcessing ? 'Processing...' : 'Reject Request'}
+                {isProcessing ? t.btnSaving : t.btnRejectReq}
               </button>
             </div>
           </div>
@@ -2840,7 +2940,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
             onClick={e => e.stopPropagation()}
           >
             <div className="flex justify-between items-center p-3 border-b border-gray-100">
-              <span className="text-xs font-bold text-gray-700">Attachment / Proof Preview</span>
+              <span className="text-xs font-bold text-gray-700">{t.previewTitle}</span>
               <button 
                 onClick={() => setIsPhotoModalOpen(false)} 
                 className="text-gray-400 hover:text-gray-600 p-1"

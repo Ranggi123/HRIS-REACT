@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { useOutletContext } from 'react-router-dom';
 
 const SUPABASE_URL = 'https://lfexpyqmjfkymvbacweo.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmZXhweXFtamZreW12YmFjd2VvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2MzA3OTEsImV4cCI6MjEwNjIwNjc5MX0._e53PLDxsbN0aYM1mqSxLkVGnS0X85D9FYBvb1sQIWY';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycby28F424Ikd21T4yf0MkGFXdQvgSBKJWXYO5-dQ582lOSxH-kxau6myCtGjulEUleo0RA/exec';
 
-// Format Helpers
 const parseFlexibleDate = (dateVal) => {
   if (!dateVal) return null;
   const str = String(dateVal).trim();
@@ -64,6 +64,141 @@ const resolveTableColumn = (knownCols, candidates) => {
 };
 
 export default function Leave() {
+  const context = useOutletContext() || {};
+  const currentLang = context.currentLang || localStorage.getItem('hris_lang') || 'en';
+
+  const t = currentLang === 'id' ? {
+    title: 'Catatan Cuti',
+    subtitle: 'Kelola dan lacak pengajuan cuti Anda',
+    btnReq: 'Ajukan Cuti',
+    btnRefresh: 'Muat Ulang',
+    btnLoading: 'Memuat...',
+    expTitle: 'Tindakan Diperlukan: Saldo Kedaluwarsa',
+    expDesc: 'Anda memiliki saldo yang akan kedaluwarsa dalam 15 hari:',
+    expOn: 'Kedaluwarsa pada',
+    sumTitle: 'Ringkasan Saldo',
+    sumAnn: 'Cuti Tahunan',
+    sumDop: 'Day Off Payment',
+    sumEo: 'Libur Ekstra',
+    clickDetail: 'Klik untuk detail',
+    filterAll: 'Semua',
+    filterPending: 'Menunggu',
+    filterApproved: 'Disetujui',
+    filterCancel: 'Dibatalkan',
+    colReqDate: 'Tanggal Pengajuan',
+    colType: 'Tipe Cuti',
+    colFrom: 'Dari Tanggal',
+    colTo: 'Sampai Tanggal',
+    colDays: 'Hari',
+    colStatus: 'Status',
+    colAction: 'Aksi',
+    noRecords: 'Tidak ada catatan cuti.',
+    loadRecords: 'Memuat catatan...',
+    btnReqCancel: 'Req. Batal',
+    btnCancel: 'Batal',
+    modHolList: 'Daftar',
+    modHolDesc: 'Detail saldo',
+    colExpDate: 'Tgl Kedaluwarsa',
+    colUsedDate: 'Tgl Digunakan',
+    colDesc: 'Deskripsi',
+    noHolRec: 'Tidak ada catatan.',
+    formTitle: 'Pengajuan Cuti',
+    lblLeaveType: 'Tipe Cuti',
+    lblFrom: 'Dari Tanggal',
+    lblTo: 'Sampai Tanggal',
+    lblTotal: 'Total Hari',
+    lblAttach: 'Lampiran (Surat Dokter / Bukti)',
+    lblAttachNote: 'Lampirkan dokumen gambar atau PDF.',
+    lblReason: 'Alasan',
+    phReason: 'Masukkan alasan (wajib)...',
+    btnSubmit: 'Kirim Pengajuan',
+    btnSubmitting: 'Mengirim...',
+    noteLimit: 'Catatan: Anda hanya dapat mengajukan 1 hari.',
+    noteSick: 'Catatan: Maksimal 3 hari berturut-turut.',
+    availBal: 'Saldo Tersedia:',
+    modDetTitle: 'Detail Pengajuan Cuti',
+    modDetId: 'ID:',
+    detType: 'Tipe Cuti',
+    detDur: 'Total Durasi',
+    detEmpName: 'Nama Karyawan',
+    detEmpAcc: 'Akun Karyawan',
+    detSubDate: 'Tanggal Pengajuan',
+    detManager: 'Atasan Langsung',
+    detRemBal: 'Sisa Saldo Setelah Cuti',
+    detProof: 'Bukti Lampiran:',
+    detMedNote: 'Surat dokter atau dokumen',
+    detEnlarge: 'Klik untuk memperbesar gambar',
+    detTitleHol: 'Detail Libur',
+    detHolBal: 'Saldo Libur Informasi',
+    detEarned: 'Tanggal Diperoleh',
+    previewTitle: 'Pratinjau Lampiran'
+  } : {
+    title: 'Leave Records',
+    subtitle: 'Manage and track your leave submissions',
+    btnReq: 'Request Leave',
+    btnRefresh: 'Refresh',
+    btnLoading: 'Loading...',
+    expTitle: 'Action Required: Expiring Balances',
+    expDesc: 'You have balances that will expire within 15 days:',
+    expOn: 'Expiring on',
+    sumTitle: 'Balance Summary',
+    sumAnn: 'Annual Leave',
+    sumDop: 'Day Off Payment',
+    sumEo: 'Extra Off',
+    clickDetail: 'Click for details',
+    filterAll: 'All',
+    filterPending: 'Pending',
+    filterApproved: 'Approved',
+    filterCancel: 'Cancel',
+    colReqDate: 'Request Date',
+    colType: 'Leave Type',
+    colFrom: 'From Date',
+    colTo: 'To Date',
+    colDays: 'Days',
+    colStatus: 'Status',
+    colAction: 'Action',
+    noRecords: 'No leave records found.',
+    loadRecords: 'Loading leave records...',
+    btnReqCancel: 'Req. Cancel',
+    btnCancel: 'Cancel',
+    modHolList: 'List',
+    modHolDesc: 'Details of your balances',
+    colExpDate: 'Expiration Date',
+    colUsedDate: 'Used Date',
+    colDesc: 'Description',
+    noHolRec: 'No records found.',
+    formTitle: 'Request Leave',
+    lblLeaveType: 'Leave Type',
+    lblFrom: 'From Date',
+    lblTo: 'To Date',
+    lblTotal: 'Total Days',
+    lblAttach: 'Attachment (Doctor Note / Proof)',
+    lblAttachNote: 'Images or PDF document to attach.',
+    lblReason: 'Reason',
+    phReason: 'Enter reason (required)...',
+    btnSubmit: 'Submit Request',
+    btnSubmitting: 'Submitting...',
+    noteLimit: 'Note: You can only request 1 day per submission.',
+    noteSick: 'Note: Maximum 3 consecutive days allowed.',
+    availBal: 'Available Balance:',
+    modDetTitle: 'Leave Request Details',
+    modDetId: 'ID:',
+    detType: 'Leave Type',
+    detDur: 'Total Duration',
+    detEmpName: 'Employee Name',
+    detEmpAcc: 'Employee Account',
+    detSubDate: 'Submission Date',
+    detManager: 'Line Manager',
+    detRemBal: 'Remaining Balance After Leave',
+    detProof: 'Supporting Attachment / Proof:',
+    detMedNote: 'Medical note or document attached',
+    detEnlarge: 'Click to enlarge preview',
+    detTitleHol: 'Holiday Details',
+    detHolBal: 'Holiday Balance Information',
+    detEarned: 'Earned Date',
+    previewTitle: 'Attachment Preview'
+  };
+
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('hris_session_data');
     if (saved) {
@@ -72,24 +207,21 @@ export default function Leave() {
     return null;
   });
 
-  const lang = localStorage.getItem('hris_lang') || 'en';
+  const lang = currentLang;
 
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Data States
   const [leaveRecords, setLeaveRecords] = useState([]);
   const [holidayRecords, setHolidayRecords] = useState([]);
   const [expiringHolidays, setExpiringHolidays] = useState([]);
   const [scheduleRecords, setScheduleRecords] = useState([]);
   const [nonWorkingError, setNonWorkingError] = useState('');
 
-  // Stats & Balances
   const [originalBalances, setOriginalBalances] = useState({ annual: 0, dayOff: 0, extraOff: 0 });
   const [balances, setBalances] = useState({ annual: 0, dayOff: 0, extraOff: 0 });
   const [stats, setStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0 });
 
-  // Modals
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
@@ -98,14 +230,11 @@ export default function Leave() {
   const [selectedHoliday, setSelectedHoliday] = useState(null);
   const [isHolidayDetailOpen, setIsHolidayDetailOpen] = useState(false);
   
-  // New States for Modal List
   const [isHolidayListModalOpen, setIsHolidayListModalOpen] = useState(false);
   const [holidayListType, setHolidayListType] = useState('');
 
-  // Status Filter State
   const [statusFilter, setStatusFilter] = useState('All');
 
-  // Form State
   const [formType, setFormType] = useState('');
   const [formStart, setFormStart] = useState('');
   const [formEnd, setFormEnd] = useState('');
@@ -120,7 +249,6 @@ export default function Leave() {
     return getPropCaseInsensitive(currentUser, ['Gender', 'gender', 'jenis_kelamin', 'Jenis Kelamin', 'sex', 'Sex'], '').trim().toLowerCase();
   }, [currentUser]);
 
-  // Profiles
   const profileName = getPropCaseInsensitive(currentUser, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name'], userEmail.split('@')[0] || 'User');
   const profileDept = getPropCaseInsensitive(currentUser, ['department', 'Department', 'dept', 'Departemen'], '-');
   const profileJobTitle = getPropCaseInsensitive(currentUser, ['job title', 'job_title', 'Job Title', 'jobtitle', 'position'], '-');
@@ -135,7 +263,6 @@ export default function Leave() {
     const validKeys = [userEmail, empId, empName].filter(Boolean).map(v => String(v).trim().toLowerCase());
 
     try {
-      // 1. Fetch Holidays
       const { data: holData, error: holError } = await supabase.from('holiday_balance').select('*').limit(1000);
       let myHolidays = [];
       let totalDayOff = 0;
@@ -183,12 +310,10 @@ export default function Leave() {
       setHolidayRecords(myHolidays);
       setExpiringHolidays(expiringList);
 
-      // 2. Original Balances
       const annBalRaw = getPropCaseInsensitive(currentUser, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave'], '0');
       const origAnn = parseFloat(annBalRaw) || 0;
       setOriginalBalances({ annual: origAnn, dayOff: totalDayOff, extraOff: totalExtraOff });
 
-      // 3. Fetch Leaves
       const { data: lvData, error: lvError } = await supabase.from('leave_requests').select('*').order('CreatedDate', { ascending: false }).limit(1000);
       let myLeaves = [];
       if (!lvError && lvData) {
@@ -206,7 +331,6 @@ export default function Leave() {
 
       setLeaveRecords(myLeaves);
 
-      // 4. Calculate Stats & Remaining Balances
       let app = 0, pend = 0, rej = 0;
       let pAnn = 0, pDay = 0, pExt = 0;
 
@@ -243,9 +367,6 @@ export default function Leave() {
         extraOff: Math.max(0, totalExtraOff - pExt)
       });
 
-      // 5. Fetch Schedule Aman dari Database (Menghindari 400 Bad Request)
-      // Karena nama kolom untuk email mungkin bukan tepat 'employee' (bisa email, user_uid, dll),
-      // kita fetch data (limit 3000) dan memfilternya di JavaScript seperti sebelumnya
       try {
         const { data, error } = await supabase.from('schedule').select('*').limit(3000);
           
@@ -255,11 +376,8 @@ export default function Leave() {
             return validKeys.some(key => empVal === key || empVal.includes(key) || key.includes(empVal));
           });
           setScheduleRecords(schedulesFound);
-        } else if (error) {
-          console.warn('Gagal memuat tabel schedule:', error);
         }
       } catch (e) {
-        console.warn('Schedule lookup skipped:', e);
       }
 
     } catch (err) {
@@ -272,7 +390,6 @@ export default function Leave() {
     refreshAllData();
   }, [refreshAllData]);
 
-  // Form Handlers
   const handleOpenModal = () => {
     const now = new Date();
     const y = now.getFullYear();
@@ -328,7 +445,6 @@ export default function Leave() {
     }
   };
 
-  // Validasi Jadwal Kerja (Working Day) berdasarkan Database (Hanya Kolom Type)
   useEffect(() => {
     let durationStr = 'Invalid';
     let errorMsg = '';
@@ -360,11 +476,7 @@ export default function Leave() {
 
             if (match) {
               let isWorking = true;
-              
-              // Only check the 'type' column to determine if it is a working day
               const rawType = (getPropCaseInsensitive(match, ['type', 'Type', 'tipe', 'Tipe']) || '').trim().toLowerCase();
-
-              // If type is not explicitly 'working day', block it
               if (rawType && rawType !== 'working day') {
                 isWorking = false;
               }
@@ -372,14 +484,14 @@ export default function Leave() {
               if (!isWorking) {
                 nonWorkingFound.push(formatDateDisplay(dateStr, lang));
               }
-            } else {
-              // Jika tidak ada di schedule, bisa diatur behaviornya (default = aman)
             }
             curr.setDate(curr.getDate() + 1);
           }
           
           if (nonWorkingFound.length > 0) {
-            errorMsg = `Tanggal ${nonWorkingFound.join(', ')} bukan merupakan working day (hari kerja) pada jadwal Anda.`;
+            errorMsg = currentLang === 'id' 
+              ? `Tanggal ${nonWorkingFound.join(', ')} bukan merupakan working day (hari kerja) pada jadwal Anda.`
+              : `Dates ${nonWorkingFound.join(', ')} are not your scheduled working days.`;
           }
         }
       }
@@ -387,17 +499,15 @@ export default function Leave() {
     
     setFormDuration(durationStr);
     setNonWorkingError(errorMsg);
-  }, [formStart, formEnd, scheduleRecords, lang, formType]);
+  }, [formStart, formEnd, scheduleRecords, lang, formType, currentLang]);
 
-  const { todayFormatted, minStartDate } = useMemo(() => {
+  const { minStartDate } = useMemo(() => {
     const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    
     const minStartObj = new Date(now);
     minStartObj.setDate(minStartObj.getDate() - 7);
     const minStart = `${minStartObj.getFullYear()}-${String(minStartObj.getMonth() + 1).padStart(2, '0')}-${String(minStartObj.getDate()).padStart(2, '0')}`;
     
-    return { todayFormatted: today, minStartDate: minStart };
+    return { minStartDate: minStart };
   }, []);
 
   const { minDate, maxDate } = useMemo(() => {
@@ -409,15 +519,10 @@ export default function Leave() {
       const startDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
       let maxDays = 0;
 
-      if (formType === 'Annual Leave') {
-        maxDays = balances.annual;
-      } else if (formType === 'Day Off Payment' || formType === 'Extra Off') {
-        maxDays = 1;
-      } else if (formType === 'Sick Leave' || formType === 'Compassionate Leave') {
-        maxDays = 3;
-      } else if (formType === 'Maternity Leave') {
-        maxDays = 90;
-      }
+      if (formType === 'Annual Leave') maxDays = balances.annual;
+      else if (formType === 'Day Off Payment' || formType === 'Extra Off') maxDays = 1;
+      else if (formType === 'Sick Leave' || formType === 'Compassionate Leave') maxDays = 3;
+      else if (formType === 'Maternity Leave') maxDays = 90;
 
       if (maxDays > 0) {
         const maxDateObj = new Date(startDate);
@@ -439,7 +544,6 @@ export default function Leave() {
     }
   }, [formEnd, minDate, maxDate]);
 
-  // Line manager resolver
   const getLineManagerEmail = async () => {
     if (!currentUser) return "ranggi@vivre-group.com";
     const rawMgr = getPropCaseInsensitive(currentUser, ['Line Manager Email', 'line_manager_email', 'Line Manager', 'line_manager', 'Manager Email', 'manager_email', 'Manager', 'manager', 'Reports To', 'reports_to', 'Atasan Email', 'atasan_email', 'Approver'], '').trim();
@@ -507,7 +611,7 @@ export default function Leave() {
     e.preventDefault();
     if (!formType) return alert('Please select a leave type.');
     if (new Date(formEnd) < new Date(formStart)) return alert('End date cannot be earlier than start date.');
-    if (nonWorkingError) return alert(`Pengajuan tidak dapat diproses: ${nonWorkingError}`);
+    if (nonWorkingError) return alert(currentLang === 'id' ? `Pengajuan tidak dapat diproses: ${nonWorkingError}` : `Cannot process: ${nonWorkingError}`);
 
     const dtStart = new Date(formStart);
     const dtEnd = new Date(formEnd);
@@ -523,15 +627,15 @@ export default function Leave() {
       return alert(`Total days (${totalDays}) exceeds your Annual Leave balance (${balances.annual}).`);
     }
     if ((formType === 'Sick Leave' || formType === 'Compassionate Leave') && totalDays > 3) {
-      return alert('This leave type can only be requested for a maximum of 3 consecutive days.');
+      return alert(currentLang === 'id' ? 'Tipe cuti ini maksimal 3 hari.' : 'This leave type can only be requested for a max of 3 days.');
     }
     if (formType === 'Maternity Leave' && totalDays !== 90) {
-      return alert('Maternity Leave must be exactly 90 days.');
+      return alert(currentLang === 'id' ? 'Cuti melahirkan harus tepat 90 hari.' : 'Maternity Leave must be exactly 90 days.');
     }
 
     const needsAttachment = ['Sick Leave', 'Maternity Leave', 'Compassionate Leave'].includes(formType);
     if (needsAttachment && !formFile) {
-      return alert('Attachment/Proof is required for this leave type.');
+      return alert(currentLang === 'id' ? 'Lampiran/Bukti wajib diunggah.' : 'Attachment/Proof is required for this leave type.');
     }
 
     setIsSubmitting(true);
@@ -610,7 +714,6 @@ export default function Leave() {
       const { error: insErr } = await supabase.from('leave_requests').insert([payload]);
       if (insErr) throw insErr;
 
-      // Send Submission Email
       const formattedStart = formatDateDisplay(formStart, 'en');
       const formattedEnd = formatDateDisplay(formEnd, 'en');
       const durLabel = `${totalDays} Day(s)`;
@@ -657,23 +760,21 @@ go to HRIS: https://hr.arratechs.com/approval`;
             fromEmail: userEmail
           })
         });
-      } catch (mailErr) {
-        console.warn("Notice email could not be sent:", mailErr);
-      }
+      } catch (mailErr) {}
 
-      alert('Leave request submitted successfully!');
+      alert(currentLang === 'id' ? 'Cuti berhasil diajukan!' : 'Leave request submitted successfully!');
       setIsLeaveModalOpen(false);
       refreshAllData();
 
     } catch (err) {
       console.error(err);
-      alert('Failed to submit: ' + err.message);
+      alert((currentLang === 'id' ? 'Gagal mengajukan: ' : 'Failed to submit: ') + err.message);
     }
     setIsSubmitting(false);
   };
 
   const cancelPendingLeave = async (record) => {
-    if (!window.confirm('Are you sure you want to cancel this request?')) return;
+    if (!window.confirm(currentLang === 'id' ? 'Batal ajukan permohonan ini?' : 'Are you sure you want to cancel this request?')) return;
     try {
       const cols = Object.keys(record);
       const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'no', '_id']);
@@ -721,19 +822,17 @@ No further action is required.`,
             fromEmail: userEmail
           })
         });
-      } catch (mailErr) {
-        console.warn("Notice email could not be sent:", mailErr);
-      }
+      } catch (mailErr) {}
 
-      alert('Request cancelled successfully.');
+      alert(currentLang === 'id' ? 'Permintaan berhasil dibatalkan.' : 'Request cancelled successfully.');
       refreshAllData();
     } catch (e) {
-      alert('Failed to cancel: ' + e.message);
+      alert((currentLang === 'id' ? 'Gagal membatalkan: ' : 'Failed to cancel: ') + e.message);
     }
   };
 
   const requestToCancelLeave = async (record) => {
-    if (!window.confirm('Request to cancel this approved leave?')) return;
+    if (!window.confirm(currentLang === 'id' ? 'Minta batalkan cuti yang sudah disetujui ini?' : 'Request to cancel this approved leave?')) return;
     try {
       const cols = Object.keys(record);
       const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'no', '_id']);
@@ -746,10 +845,10 @@ No further action is required.`,
         const colCreated = resolveTableColumn(cols, ['CreatedDate', 'created_date', 'Created Date']) || 'CreatedDate';
         await supabase.from('leave_requests').update({ [colStatus]: 'Request to Cancel' }).eq(colEmp, record[colEmp]).eq(colCreated, record[colCreated]);
       }
-      alert('Cancellation request sent successfully.');
+      alert(currentLang === 'id' ? 'Permintaan pembatalan terkirim.' : 'Cancellation request sent successfully.');
       refreshAllData();
     } catch (e) {
-      alert('Failed to send request: ' + e.message);
+      alert((currentLang === 'id' ? 'Gagal mengirim permintaan: ' : 'Failed to send request: ') + e.message);
     }
   };
 
@@ -778,8 +877,8 @@ No further action is required.`,
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-3 sm:p-6 relative mb-6">
         <div className="flex flex-row justify-between items-start sm:items-center pb-4 mb-3 sm:mb-5 border-b border-gray-200 gap-2 sm:gap-4">
           <div className="flex-1 pr-3">
-            <h3 className="text-base sm:text-lg font-bold text-gray-800 flex flex-wrap items-center gap-2">Leave Records</h3>
-            <p className="text-xs text-gray-500 mt-1 break-words">Manage and track your leave submissions</p>
+            <h3 className="text-base sm:text-lg font-bold text-gray-800 flex flex-wrap items-center gap-2">{t.title}</h3>
+            <p className="text-xs text-gray-500 mt-1 break-words">{t.subtitle}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0 sm:gap-3">
             <button 
@@ -787,32 +886,30 @@ No further action is required.`,
               className="hidden sm:flex px-3.5 py-2 rounded-xl text-xs font-bold transition items-center gap-1.5 shadow-sm bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-              <span>Request Leave</span>
+              <span>{t.btnReq}</span>
             </button>
             <button 
               onClick={refreshAllData} 
               disabled={loading}
               className="px-3.5 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold transition flex items-center gap-2 shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
-              title="Refresh Data"
+              title={t.btnRefresh}
             >
               <svg className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              <span>{loading ? 'Loading...' : 'Refresh'}</span>
+              <span>{loading ? t.btnLoading : t.btnRefresh}</span>
             </button>
           </div>
         </div>
 
-        {/* Mobile Request Leave Button (Matches reference image position) */}
         <button 
           onClick={handleOpenModal}
           className="sm:hidden w-full mb-5 px-4 py-3 rounded-xl text-sm font-bold transition flex justify-center items-center gap-2 shadow-sm bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-          <span>Request Leave</span>
+          <span>{t.btnReq}</span>
         </button>
 
-        {/* Expiring Warning */}
         {expiringHolidays.length > 0 && (
           <div className="mb-4 sm:mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-xl shadow-sm">
             <div className="flex items-start">
@@ -820,12 +917,12 @@ No further action is required.`,
                 <svg className="h-5 w-5 text-red-500 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-bold text-red-800">Action Required: Expiring Balances</h3>
+                <h3 className="text-sm font-bold text-red-800">{t.expTitle}</h3>
                 <div className="mt-1 text-xs text-red-700">
-                  <p className="mb-2 font-medium">You have balances that will expire within 15 days:</p>
+                  <p className="mb-2 font-medium">{t.expDesc}</p>
                   <ul className="list-disc pl-4 space-y-1">
                     {expiringHolidays.map((h, i) => (
-                      <li key={i}><strong>{h.type}</strong> ({h.desc}) - Expiring on <span className="font-bold underline">{h.expDateStr}</span></li>
+                      <li key={i}><strong>{h.type}</strong> ({h.desc}) - {t.expOn} <span className="font-bold underline">{h.expDateStr}</span></li>
                     ))}
                   </ul>
                 </div>
@@ -834,42 +931,41 @@ No further action is required.`,
           </div>
         )}
 
-        {/* Summaries */}
         <div className="flex flex-col gap-3 mb-4 sm:mb-6">
           <div>
-            <h4 className="text-xs sm:text-sm font-bold text-gray-500 uppercase tracking-wider mb-1.5 px-1">Balance Summary</h4>
+            <h4 className="text-xs sm:text-sm font-bold text-gray-500 uppercase tracking-wider mb-1.5 px-1">{t.sumTitle}</h4>
             <div className="flex gap-2 w-full overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
               <div className="flex-1 min-w-[30%] bg-blue-50 border border-blue-200 rounded-lg py-1.5 px-2.5 sm:p-3 shadow-sm flex flex-col justify-center">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs sm:text-sm font-bold text-blue-700 uppercase mr-2">Annual Leave</span>
+                  <span className="text-xs sm:text-sm font-bold text-blue-700 uppercase mr-2">{t.sumAnn}</span>
                   <span className="text-lg sm:text-xl font-black text-blue-900">{balances.annual}</span>
                 </div>
               </div>
               <div 
                 onClick={() => { setHolidayListType('Day Off Payment'); setIsHolidayListModalOpen(true); }}
                 className="flex-1 min-w-[30%] bg-purple-50 hover:bg-purple-100 cursor-pointer transition border border-purple-200 rounded-lg py-1.5 px-2.5 sm:p-3 shadow-sm flex flex-col justify-center"
-                title="Click to view Day Off Payment List"
+                title={t.clickDetail}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs sm:text-sm font-bold text-purple-700 uppercase mr-2">Day Off Payment</span>
+                  <span className="text-xs sm:text-sm font-bold text-purple-700 uppercase mr-2">{t.sumDop}</span>
                   <span className="text-lg sm:text-xl font-black text-purple-900">{balances.dayOff}</span>
                 </div>
                 <div className="mt-1 text-[10px] text-purple-600 font-semibold flex items-center justify-end">
-                  Click for details
+                  {t.clickDetail}
                   <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
                 </div>
               </div>
               <div 
                 onClick={() => { setHolidayListType('Extra Off'); setIsHolidayListModalOpen(true); }}
                 className="flex-1 min-w-[30%] bg-white hover:bg-gray-50 cursor-pointer transition border border-gray-200 rounded-lg py-1.5 px-2.5 sm:p-3 shadow-sm flex flex-col justify-center"
-                title="Click to view Extra Off List"
+                title={t.clickDetail}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs sm:text-sm font-bold text-gray-700 uppercase mr-2">Extra Off</span>
+                  <span className="text-xs sm:text-sm font-bold text-gray-700 uppercase mr-2">{t.sumEo}</span>
                   <span className="text-lg sm:text-xl font-black text-gray-900">{balances.extraOff}</span>
                 </div>
                 <div className="mt-1 text-[10px] text-gray-500 font-semibold flex items-center justify-end">
-                  Click for details
+                  {t.clickDetail}
                   <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
                 </div>
               </div>
@@ -882,49 +978,48 @@ No further action is required.`,
                 onClick={() => setStatusFilter('All')}
                 className={`hidden sm:block whitespace-nowrap flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm text-center transition-all ${statusFilter === 'All' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
               >
-                All ({stats.total})
+                {t.filterAll} ({stats.total})
               </button>
               <button
                 onClick={() => setStatusFilter('Pending')}
                 className={`whitespace-nowrap flex-1 sm:flex-none px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm text-center transition-all ${statusFilter === 'Pending' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
               >
-                Pending ({stats.pending})
+                {t.filterPending} ({stats.pending})
               </button>
               <button
                 onClick={() => setStatusFilter('Approved')}
                 className={`whitespace-nowrap flex-1 sm:flex-none px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm text-center transition-all ${statusFilter === 'Approved' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
               >
-                Approved
+                {t.filterApproved}
               </button>
               <button
                 onClick={() => setStatusFilter('Cancel')}
                 className={`whitespace-nowrap flex-1 sm:flex-none px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg text-xs sm:text-sm text-center transition-all ${statusFilter === 'Cancel' ? 'bg-white text-slate-900 font-bold shadow-sm' : 'text-blue-700 font-semibold hover:bg-slate-200/60'}`}
               >
-                Cancel
+                {t.filterCancel}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Leave Table */}
         <div className="overflow-x-auto rounded-xl border border-gray-200">
           <table className="w-full text-sm text-left text-gray-600 table-fixed min-w-[700px]">
             <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[14%]">Request Date</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[18%]">Leave Type</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[14%]">From Date</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[14%]">To Date</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[10%] text-center">Days</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[15%] text-center">Status</th>
-                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[15%] text-center">Action</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[14%]">{t.colReqDate}</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[18%]">{t.colType}</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[14%]">{t.colFrom}</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[14%]">{t.colTo}</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[10%] text-center">{t.colDays}</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[15%] text-center">{t.colStatus}</th>
+                <th className="px-2 py-2 sm:px-4 sm:py-3 w-[15%] text-center">{t.colAction}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan="7" className="px-5 py-8 text-center text-gray-400 italic">Loading leave records...</td></tr>
+                <tr><td colSpan="7" className="px-5 py-8 text-center text-gray-400 italic">{t.loadRecords}</td></tr>
               ) : filteredLeaveRecords.length === 0 ? (
-                <tr><td colSpan="7" className="px-5 py-8 text-center text-gray-400 italic">No leave records found.</td></tr>
+                <tr><td colSpan="7" className="px-5 py-8 text-center text-gray-400 italic">{t.noRecords}</td></tr>
               ) : (
                 filteredLeaveRecords.map((r, i) => {
                   const status = getPropCaseInsensitive(r, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval');
@@ -967,9 +1062,9 @@ No further action is required.`,
                       </td>
                       <td className="px-2 py-2 sm:px-4 sm:py-3 text-center" onClick={(e) => e.stopPropagation()}>
                         {sLower.includes('approve') || sLower.includes('setuju') ? (
-                          <button onClick={() => requestToCancelLeave(r)} className="text-[9px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1.5 rounded transition border border-gray-300 shadow-sm active:scale-95">Req. Cancel</button>
+                          <button onClick={() => requestToCancelLeave(r)} className="text-[9px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1.5 rounded transition border border-gray-300 shadow-sm active:scale-95">{t.btnReqCancel}</button>
                         ) : !sLower.includes('reject') && !sLower.includes('tolak') && !sLower.includes('cancel') ? (
-                          <button onClick={() => cancelPendingLeave(r)} className="text-[9px] font-bold bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1.5 rounded transition border border-red-200 shadow-sm active:scale-95">Cancel</button>
+                          <button onClick={() => cancelPendingLeave(r)} className="text-[9px] font-bold bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1.5 rounded transition border border-red-200 shadow-sm active:scale-95">{t.btnCancel}</button>
                         ) : <span className="text-gray-300">-</span>}
                       </td>
                     </tr>
@@ -994,9 +1089,9 @@ No further action is required.`,
             <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 shrink-0">
               <div>
                 <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                  {holidayListType} List
+                  {holidayListType} {t.modHolList}
                 </h3>
-                <p className="text-xs text-gray-500 mt-1">Details of your {holidayListType} balances</p>
+                <p className="text-xs text-gray-500 mt-1">{t.modHolDesc}</p>
               </div>
               <button onClick={() => setIsHolidayListModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg transition hover:bg-gray-100">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1007,25 +1102,25 @@ No further action is required.`,
               <table className="w-full text-sm text-left text-gray-600 table-fixed min-w-[700px]">
                 <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-2 py-2 sm:px-4 sm:py-3">Type Holiday</th>
-                    <th className="px-2 py-2 sm:px-4 sm:py-3">Date</th>
-                    <th className="px-2 py-2 sm:px-4 sm:py-3">Expiration Date</th>
-                    <th className="px-2 py-2 sm:px-4 sm:py-3">Used Date</th>
-                    <th className="px-2 py-2 sm:px-4 sm:py-3">Description</th>
-                    <th className="px-2 py-2 sm:px-4 sm:py-3 text-center">Status</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3">{t.colType}</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3">Tanggal</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3">{t.colExpDate}</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3">{t.colUsedDate}</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3">{t.colDesc}</th>
+                    <th className="px-2 py-2 sm:px-4 sm:py-3 text-center">{t.colStatus}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {(() => {
                     const filteredHolidays = holidayRecords.filter(r => {
-                      const t = getPropCaseInsensitive(r, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').toLowerCase();
-                      if (holidayListType === 'Day Off Payment') return t.includes('day off payment') || t === 'day off';
-                      if (holidayListType === 'Extra Off') return t.includes('extra off');
+                      const tType = getPropCaseInsensitive(r, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').toLowerCase();
+                      if (holidayListType === 'Day Off Payment') return tType.includes('day off payment') || tType === 'day off';
+                      if (holidayListType === 'Extra Off') return tType.includes('extra off');
                       return false;
                     });
                     
-                    if (loading) return <tr><td colSpan="6" className="px-5 py-8 text-center text-gray-400 italic">Loading records...</td></tr>;
-                    if (filteredHolidays.length === 0) return <tr><td colSpan="6" className="px-5 py-8 text-center text-gray-400 italic">No records found.</td></tr>;
+                    if (loading) return <tr><td colSpan="6" className="px-5 py-8 text-center text-gray-400 italic">{t.loadRecords}</td></tr>;
+                    if (filteredHolidays.length === 0) return <tr><td colSpan="6" className="px-5 py-8 text-center text-gray-400 italic">{t.noHolRec}</td></tr>;
 
                     return filteredHolidays.map((r, i) => {
                       const status = getPropCaseInsensitive(r, ['status', 'Status', 'STATUS'], '-');
@@ -1074,7 +1169,7 @@ No further action is required.`,
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 px-4">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-4 sm:p-6 border border-gray-100 max-h-[92vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100">
-              <h3 className="text-lg font-bold text-gray-800">Request Leave</h3>
+              <h3 className="text-lg font-bold text-gray-800">{t.formTitle}</h3>
               <button onClick={() => setIsLeaveModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
@@ -1082,9 +1177,9 @@ No further action is required.`,
             
             <form onSubmit={handleFormSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Leave Type <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">{t.lblLeaveType} <span className="text-red-500">*</span></label>
                 <select required value={formType} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">Select Leave Type</option>
+                  <option value="">-- Pilih --</option>
                   {balances.annual > 0 && <option value="Annual Leave">Annual Leave</option>}
                   <option value="Sick Leave">Sick Leave</option>
                   {(userGender === 'female' || userGender === 'wanita' || userGender === 'perempuan' || userGender === 'f') && <option value="Maternity Leave">Maternity Leave</option>}
@@ -1093,20 +1188,20 @@ No further action is required.`,
                   {balances.extraOff > 0 && <option value="Extra Off">Extra Off</option>}
                   <option value="Unpaid Leave">Unpaid Leave</option>
                 </select>
-                {formType === 'Annual Leave' && balances.annual > 0 && <p className="text-[10px] text-blue-600 mt-1 font-semibold bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit">Available Balance: {balances.annual} day(s)</p>}
-                {formType === 'Day Off Payment' && balances.dayOff > 0 && <p className="text-[10px] text-blue-600 mt-1 font-semibold bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit">Available Balance: {balances.dayOff} day(s)</p>}
-                {formType === 'Extra Off' && balances.extraOff > 0 && <p className="text-[10px] text-blue-600 mt-1 font-semibold bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit">Available Balance: {balances.extraOff} day(s)</p>}
-                {(formType === 'Day Off Payment' || formType === 'Extra Off') && <p className="text-[10px] text-orange-600 mt-1 font-semibold bg-orange-50 px-2 py-1 rounded border border-orange-100 w-fit">Note: You can only request 1 day per submission.</p>}
-                {(formType === 'Sick Leave' || formType === 'Compassionate Leave') && <p className="text-[10px] text-orange-600 mt-1 font-semibold bg-orange-50 px-2 py-1 rounded border border-orange-100 w-fit">Note: Maximum 3 consecutive days allowed.</p>}
+                {formType === 'Annual Leave' && balances.annual > 0 && <p className="text-[10px] text-blue-600 mt-1 font-semibold bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit">{t.availBal} {balances.annual} hari</p>}
+                {formType === 'Day Off Payment' && balances.dayOff > 0 && <p className="text-[10px] text-blue-600 mt-1 font-semibold bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit">{t.availBal} {balances.dayOff} hari</p>}
+                {formType === 'Extra Off' && balances.extraOff > 0 && <p className="text-[10px] text-blue-600 mt-1 font-semibold bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit">{t.availBal} {balances.extraOff} hari</p>}
+                {(formType === 'Day Off Payment' || formType === 'Extra Off') && <p className="text-[10px] text-orange-600 mt-1 font-semibold bg-orange-50 px-2 py-1 rounded border border-orange-100 w-fit">{t.noteLimit}</p>}
+                {(formType === 'Sick Leave' || formType === 'Compassionate Leave') && <p className="text-[10px] text-orange-600 mt-1 font-semibold bg-orange-50 px-2 py-1 rounded border border-orange-100 w-fit">{t.noteSick}</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">From Date <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">{t.lblFrom} <span className="text-red-500">*</span></label>
                   <input type="date" required min={minStartDate} value={formStart} onChange={handleStartChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">To Date <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">{t.lblTo} <span className="text-red-500">*</span></label>
                   <input type="date" required min={minDate} max={maxDate} value={formEnd} onChange={handleEndChange} readOnly={['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType)} className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${['Day Off Payment', 'Extra Off', 'Maternity Leave'].includes(formType) ? 'bg-gray-100' : 'bg-white'}`} />
                 </div>
               </div>
@@ -1115,28 +1210,28 @@ No further action is required.`,
                 <div className="bg-red-50 border border-red-200 p-2.5 rounded-lg mt-2 flex gap-2">
                   <svg className="w-4 h-4 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                   <p className="text-[10px] text-red-700 font-medium">
-                    Note: {nonWorkingError}
+                    {nonWorkingError}
                   </p>
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Total Days</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">{t.lblTotal}</label>
                 <input type="text" readOnly value={formDuration} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 font-semibold text-gray-700 cursor-default" />
               </div>
 
               {['Sick Leave', 'Maternity Leave', 'Compassionate Leave'].includes(formType) && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Attachment (Doctor Note / Proof) <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">{t.lblAttach} <span className="text-red-500">*</span></label>
                   <input type="file" required accept="image/*,application/pdf" onChange={(e) => setFormFile(e.target.files[0])} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white" />
-                  <p className="text-[10px] text-gray-500 mt-1">Images or PDF document to attach.</p>
+                  <p className="text-[10px] text-gray-500 mt-1">{t.lblAttachNote}</p>
                 </div>
               )}
               
               <div className="flex justify-end space-x-2 pt-3 border-t border-gray-100">
-                <button type="button" onClick={() => setIsLeaveModalOpen(false)} disabled={isSubmitting} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition">Cancel</button>
+                <button type="button" onClick={() => setIsLeaveModalOpen(false)} disabled={isSubmitting} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition">{t.btnCancel}</button>
                 <button type="submit" disabled={isSubmitting || !!nonWorkingError} className={`px-5 py-2 ${(isSubmitting || !!nonWorkingError) ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white text-xs font-semibold rounded-lg transition`}>
-                  {isSubmitting ? 'Submitting...' : 'Submit Request'}
+                  {isSubmitting ? t.btnSubmitting : t.btnSubmit}
                 </button>
               </div>
             </form>
@@ -1151,50 +1246,43 @@ No further action is required.`,
           onClick={() => setIsDetailModalOpen(false)}
         >
           <div 
-            className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-5 sm:p-6 border border-gray-100 max-h-[92vh] overflow-y-auto"
+            className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-4 sm:p-6 border border-gray-100 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
-            <div className="flex justify-between items-start mb-4 pb-3 border-b border-gray-100">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-bold text-gray-900">Leave Request Details</h3>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                    (() => {
-                      const st = (getPropCaseInsensitive(selectedRecord, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval')).toLowerCase();
-                      if (st.includes('approve') || st.includes('setuju')) return 'bg-green-100 text-green-700 border-green-200';
-                      if (st.includes('reject') || st.includes('tolak')) return 'bg-red-100 text-red-700 border-red-200';
-                      if (st.includes('cancel')) return 'bg-purple-100 text-purple-700 border-purple-200';
-                      return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-                    })()
-                  }`}>
-                    {getPropCaseInsensitive(selectedRecord, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval')}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  ID: <span className="font-mono font-semibold text-gray-700">{getPropCaseInsensitive(selectedRecord, ['Leave ID', 'leave_id', 'Leave_ID', 'ID', 'id', 'request_id'], '-')}</span>
-                </p>
+            
+            <div className="flex justify-between items-center pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold text-gray-800">{t.modDetTitle}</h3>
+                <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
+                  (() => {
+                    const st = (getPropCaseInsensitive(selectedRecord, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval')).toLowerCase();
+                    if (st.includes('approve') || st.includes('setuju')) return 'bg-green-100 text-green-700 border-green-200';
+                    if (st.includes('reject') || st.includes('tolak')) return 'bg-red-100 text-red-700 border-red-200';
+                    if (st.includes('cancel')) return 'bg-purple-100 text-purple-700 border-purple-200';
+                    return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+                  })()
+                }`}>
+                  {getPropCaseInsensitive(selectedRecord, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval')}
+                </span>
               </div>
               <button 
                 onClick={() => setIsDetailModalOpen(false)} 
-                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg transition hover:bg-gray-100"
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
 
-            {/* Modal Body / Information Grid */}
-            <div className="space-y-3.5 text-xs">
-              <div className="bg-blue-50/70 border border-blue-200/60 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">{t.modDetId} <span className="font-mono">{getPropCaseInsensitive(selectedRecord, ['Leave ID', 'leave_id', 'Leave_ID', 'ID', 'id', 'request_id'], '-')}</span></span>
+              <div className="grid grid-cols-2 gap-3 mt-2 text-xs">
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Leave Type</span>
-                  <p className="text-base font-extrabold text-blue-900 mt-0.5">
-                    {getPropCaseInsensitive(selectedRecord, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '-')}
-                  </p>
+                  <span className="text-gray-500 font-medium block">{t.detType}</span>
+                  <span className="font-bold text-blue-700">{getPropCaseInsensitive(selectedRecord, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '-')}</span>
                 </div>
-                <div className="sm:text-right">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Total Duration</span>
-                  <p className="text-base font-extrabold text-blue-900 mt-0.5">
+                <div>
+                  <span className="text-gray-500 font-medium block">{t.detDur}</span>
+                  <span className="font-bold text-gray-800">
                     {(() => {
                       let dur = getPropCaseInsensitive(selectedRecord, ['Total Days', 'total_days', 'Total Days Count', 'total_days_count', 'Duration', 'duration', 'Days', 'days'], '');
                       if (!dur) {
@@ -1203,61 +1291,49 @@ No further action is required.`,
                         if (dS && dE) dur = Math.ceil(Math.abs(dE - dS) / (1000 * 60 * 60 * 24)) + 1;
                         else dur = 1;
                       }
-                      return `${dur} Day(s)`;
+                      return `${dur} Hari`;
                     })()}
-                  </p>
+                  </span>
                 </div>
               </div>
+            </div>
 
-              <div className="bg-gray-50/70 rounded-xl border border-gray-200 divide-y divide-gray-200/70 p-3 space-y-2.5">
+            <div className="mt-4 space-y-3">
+              <div className="bg-gray-50/70 rounded-xl border border-gray-200 divide-y divide-gray-200/70 p-3 space-y-2.5 text-xs">
                 <div className="flex justify-between items-center pt-1">
-                  <span className="text-gray-500 font-medium">Employee Name</span>
-                  <strong className="text-gray-800 font-semibold">
-                    {getPropCaseInsensitive(selectedRecord, ['Name', 'name', 'nama', 'fullname'], profileName)}
-                  </strong>
+                  <span className="text-gray-500 font-medium">{t.detEmpName}</span>
+                  <strong className="text-gray-800 font-semibold">{getPropCaseInsensitive(selectedRecord, ['Name', 'name', 'nama', 'fullname'], profileName)}</strong>
                 </div>
 
                 <div className="flex justify-between items-center pt-2">
-                  <span className="text-gray-500 font-medium">Employee / Account</span>
-                  <span className="font-mono text-gray-800 font-medium">
-                    {getPropCaseInsensitive(selectedRecord, ['Employee', 'employee', 'USER_UID', 'user_uid', 'email'], userEmail)}
-                  </span>
+                  <span className="text-gray-500 font-medium">{t.detEmpAcc}</span>
+                  <span className="font-mono text-gray-800 font-medium">{getPropCaseInsensitive(selectedRecord, ['Employee', 'employee', 'USER_UID', 'user_uid', 'email'], userEmail)}</span>
                 </div>
 
                 <div className="flex justify-between items-center pt-2">
-                  <span className="text-gray-500 font-medium">From Date</span>
-                  <strong className="text-gray-800">
-                    {formatDateDisplay(getPropCaseInsensitive(selectedRecord, ['From Date', 'from_date', 'Start Date', 'start_date'], '-'), lang)}
-                  </strong>
+                  <span className="text-gray-500 font-medium">{t.colFrom}</span>
+                  <strong className="text-gray-800">{formatDateDisplay(getPropCaseInsensitive(selectedRecord, ['From Date', 'from_date', 'Start Date', 'start_date'], '-'), lang)}</strong>
                 </div>
 
                 <div className="flex justify-between items-center pt-2">
-                  <span className="text-gray-500 font-medium">To Date</span>
-                  <strong className="text-gray-800">
-                    {formatDateDisplay(getPropCaseInsensitive(selectedRecord, ['To Date', 'to_date', 'End Date', 'end_date'], '-'), lang)}
-                  </strong>
+                  <span className="text-gray-500 font-medium">{t.colTo}</span>
+                  <strong className="text-gray-800">{formatDateDisplay(getPropCaseInsensitive(selectedRecord, ['To Date', 'to_date', 'End Date', 'end_date'], '-'), lang)}</strong>
                 </div>
 
                 <div className="flex justify-between items-center pt-2">
-                  <span className="text-gray-500 font-medium">Request / Submission Date</span>
-                  <span className="text-gray-800">
-                    {formatDateDisplay(getPropCaseInsensitive(selectedRecord, ['CreatedDate', 'created_date', 'Request Date', 'Date', 'created_at'], '-'), lang)}
-                  </span>
+                  <span className="text-gray-500 font-medium">{t.detSubDate}</span>
+                  <span className="text-gray-800">{formatDateDisplay(getPropCaseInsensitive(selectedRecord, ['CreatedDate', 'created_date', 'Request Date', 'Date', 'created_at'], '-'), lang)}</span>
                 </div>
 
                 <div className="flex justify-between items-center pt-2">
-                  <span className="text-gray-500 font-medium">Line Manager / Approver</span>
-                  <span className="font-mono text-gray-800 text-[11px]">
-                    {getPropCaseInsensitive(selectedRecord, ['Line Manager', 'line_manager', 'line_manager_email', 'Approver'], '-')}
-                  </span>
+                  <span className="text-gray-500 font-medium">{t.detManager}</span>
+                  <span className="font-mono text-gray-800 text-[11px]">{getPropCaseInsensitive(selectedRecord, ['Line Manager', 'line_manager', 'line_manager_email', 'Approver'], '-')}</span>
                 </div>
 
                 {getPropCaseInsensitive(selectedRecord, ['Final balance', 'final_balance', 'Final Balance']) && (
                   <div className="flex justify-between items-center pt-2">
-                    <span className="text-gray-500 font-medium">Remaining Balance After Leave</span>
-                    <strong className="text-blue-700 font-bold">
-                      {getPropCaseInsensitive(selectedRecord, ['Final balance', 'final_balance', 'Final Balance'])} Day(s)
-                    </strong>
+                    <span className="text-gray-500 font-medium">{t.detRemBal}</span>
+                    <strong className="text-blue-700 font-bold">{getPropCaseInsensitive(selectedRecord, ['Final balance', 'final_balance', 'Final Balance'])} Hari</strong>
                   </div>
                 )}
               </div>
@@ -1266,8 +1342,8 @@ No further action is required.`,
                 const att = getPropCaseInsensitive(selectedRecord, ['Attachment', 'attachment', 'Proof', 'proof', 'Image', 'image', 'Link', 'link'], '');
                 if (att && att.startsWith('http')) {
                   return (
-                    <div className="bg-gray-50/70 rounded-xl border border-gray-200 p-3">
-                      <span className="text-gray-600 font-semibold block mb-2">Supporting Attachment / Proof:</span>
+                    <div className="bg-gray-50/70 rounded-xl border border-gray-200 p-3 text-xs">
+                      <span className="text-gray-600 font-semibold block mb-2">{t.detProof}</span>
                       <div className="flex items-center gap-3">
                         <img 
                           src={att} 
@@ -1278,13 +1354,13 @@ No further action is required.`,
                           onError={(e) => { e.target.onerror = null; e.target.src='https://cdn-icons-png.flaticon.com/128/337/337946.png'; }}
                         />
                         <div className="text-[11px] text-gray-500">
-                          <p className="font-medium text-gray-700">Medical note or document attached</p>
+                          <p className="font-medium text-gray-700">{t.detMedNote}</p>
                           <button 
                             type="button"
                             onClick={() => { setPhotoPreviewUrl(att); setIsPhotoModalOpen(true); }}
                             className="text-blue-600 font-bold hover:underline mt-1 inline-flex items-center gap-1"
                           >
-                            <span>Click to enlarge preview</span>
+                            <span>{t.detEnlarge}</span>
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                           </button>
                         </div>
@@ -1297,51 +1373,42 @@ No further action is required.`,
 
             </div>
 
-            <div className="mt-5 pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
-              <div>
-                {(() => {
-                  const s = (getPropCaseInsensitive(selectedRecord, ['Status', 'status', 'Approval Status', 'approval_status'], '')).toLowerCase();
-                  if (s.includes('approve') || s.includes('setuju')) {
-                    return (
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          const rec = selectedRecord;
-                          setIsDetailModalOpen(false);
-                          requestToCancelLeave(rec);
-                        }}
-                        className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition border border-gray-300 shadow-xs active:scale-95"
-                      >
-                        Request Cancel
-                      </button>
-                    );
-                  }
-                  if (!s.includes('reject') && !s.includes('tolak') && !s.includes('cancel')) {
-                    return (
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          const rec = selectedRecord;
-                          setIsDetailModalOpen(false);
-                          cancelPendingLeave(rec);
-                        }}
-                        className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-xl transition border border-red-200 shadow-xs active:scale-95"
-                      >
-                        Cancel Request
-                      </button>
-                    );
-                  }
-                  return null;
-                })()}
-              </div>
-
-              <button 
-                type="button" 
-                onClick={() => setIsDetailModalOpen(false)} 
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition shadow-xs active:scale-95"
+            <div className="flex justify-end gap-2.5 pt-4 mt-5 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setIsDetailModalOpen(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
               >
-                Close
+                {t.btnCancel}
               </button>
+              {(() => {
+                const s = getRowStatus(selectedRecord);
+                if (isRejectedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'cancelled') {
+                  return null;
+                }
+                if (isApprovedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel') {
+                  return (
+                    <button
+                      type="button"
+                      disabled={isProcessing}
+                      onClick={() => handleCancelApproved(selectedRecord)}
+                      className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition cursor-pointer"
+                    >
+                      {s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel' ? 'Approve Cancellation' : 'Cancel Approval'}
+                    </button>
+                  );
+                }
+                return (
+                  <button
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={() => cancelPendingLeave(selectedRecord)}
+                    className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition cursor-pointer"
+                  >
+                    Batalkan Pengajuan
+                  </button>
+                );
+              })()}
             </div>
 
           </div>
@@ -1361,7 +1428,7 @@ No further action is required.`,
             <div className="flex justify-between items-start mb-4 pb-3 border-b border-gray-100">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-bold text-gray-900">Holiday Details</h3>
+                  <h3 className="text-lg font-bold text-gray-900">{t.detTitleHol}</h3>
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                     (() => {
                       const st = (getPropCaseInsensitive(selectedHoliday, ['status', 'Status', 'STATUS'], '-')).toLowerCase();
@@ -1373,9 +1440,7 @@ No further action is required.`,
                     {getPropCaseInsensitive(selectedHoliday, ['status', 'Status', 'STATUS'], '-')}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Holiday Balance Information
-                </p>
+                <p className="text-xs text-gray-500 mt-0.5">{t.detHolBal}</p>
               </div>
               <button 
                 onClick={() => setIsHolidayDetailOpen(false)} 
@@ -1388,17 +1453,17 @@ No further action is required.`,
             <div className="space-y-3.5 text-xs">
               <div className="bg-purple-50/70 border border-purple-200/60 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600">Type Holiday</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600">{t.colType}</span>
                   <p className="text-base font-extrabold text-purple-900 mt-0.5">
                     {getPropCaseInsensitive(selectedHoliday, ['Type Holiday', 'type_holiday', 'Type', 'type'], '-')}
                   </p>
                 </div>
                 <div className="sm:text-right">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600">Holiday Balance</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600">Saldo Libur</span>
                   <p className="text-base font-extrabold text-purple-900 mt-0.5">
                     {(() => {
                       const d = getPropCaseInsensitive(selectedHoliday, ['Days', 'days', 'Amount', 'amount', 'Total', 'total'], '1');
-                      return `${d} Day(s)`;
+                      return `${d} Hari`;
                     })()}
                   </p>
                 </div>
@@ -1406,35 +1471,28 @@ No further action is required.`,
 
               <div className="bg-gray-50/70 rounded-xl border border-gray-200 divide-y divide-gray-200/70 p-3 space-y-2.5">
                 <div className="flex justify-between items-center pt-1">
-                  <span className="text-gray-500 font-medium">Earned Date</span>
+                  <span className="text-gray-500 font-medium">{t.detEarned}</span>
                   <strong className="text-gray-800">
                     {formatDateDisplay(getPropCaseInsensitive(selectedHoliday, ['Date', 'date', 'Tanggal'], '-'), lang)}
                   </strong>
                 </div>
 
                 <div className="flex justify-between items-center pt-2">
-                  <span className="text-gray-500 font-medium">Expiration Date</span>
+                  <span className="text-gray-500 font-medium">{t.colExpDate}</span>
                   <strong className="text-gray-800">
                     {formatDateDisplay(getPropCaseInsensitive(selectedHoliday, ['Expiration Date', 'expiration_date', 'exp_date', 'Expired', 'expired'], '-'), lang)}
                   </strong>
                 </div>
 
                 <div className="flex justify-between items-center pt-2">
-                  <span className="text-gray-500 font-medium">Used Date</span>
+                  <span className="text-gray-500 font-medium">{t.colUsedDate}</span>
                   <span className="text-gray-800 font-medium">
                     {formatDateDisplay(getPropCaseInsensitive(selectedHoliday, ['Used Date', 'used_date', 'tanggal_digunakan'], '-'), lang)}
                   </span>
                 </div>
 
-                <div className="flex justify-between items-center pt-2">
-                  <span className="text-gray-500 font-medium">Status</span>
-                  <span className="font-semibold text-gray-800">
-                    {getPropCaseInsensitive(selectedHoliday, ['status', 'Status', 'STATUS'], '-')}
-                  </span>
-                </div>
-
                 <div className="pt-2">
-                  <span className="text-gray-500 font-medium block mb-1">Description</span>
+                  <span className="text-gray-500 font-medium block mb-1">{t.colDesc}</span>
                   <p className="text-gray-800 bg-white p-2.5 rounded-lg border border-gray-200 font-medium text-xs whitespace-pre-wrap">
                     {getPropCaseInsensitive(selectedHoliday, ['Description', 'description', 'desc', 'keterangan'], '-') || '-'}
                   </p>
@@ -1449,7 +1507,7 @@ No further action is required.`,
                 onClick={() => setIsHolidayDetailOpen(false)} 
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition shadow-xs active:scale-95"
               >
-                Close
+                {t.btnCancel}
               </button>
             </div>
 
@@ -1462,7 +1520,7 @@ No further action is required.`,
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 p-4" onClick={() => setIsPhotoModalOpen(false)}>
           <div className="relative max-w-lg w-full bg-white rounded-2xl overflow-hidden shadow-2xl p-2" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center p-3 border-b border-gray-100">
-              <span className="text-xs font-bold text-gray-700">Attachment Preview</span>
+              <span className="text-xs font-bold text-gray-700">{t.previewTitle}</span>
               <button onClick={() => setIsPhotoModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
