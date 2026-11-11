@@ -325,6 +325,8 @@ export default function Dashboard() {
       let shiftToPass = '-';
       let checkinToPass = '-';
       let checkoutToPass = '-';
+      let lastEditByToPass = '-';
+      let lastEditTimeToPass = '-';
       let currentScheduleType = '';
 
       const matchedHoliday = publicHolidayRecords.find(item => {
@@ -353,9 +355,14 @@ export default function Dashboard() {
 
           const rawCheckin = getPropCaseInsensitive(matched, ['checked in at', 'checked_in_at', 'checkedinat', 'checked in', 'checkedin', 'check in at', 'checkin at', 'check_in', 'check in', 'checkin', 'masuk'], null);
           const rawCheckout = getPropCaseInsensitive(matched, ['checked out at', 'checked_out_at', 'checkedoutat', 'checked out', 'checkedout', 'check out at', 'checkout at', 'check_out', 'check out', 'checkout', 'pulang'], null);
-
+          
           if (rawCheckin) checkinToPass = formatIndoDateTime(rawCheckin);
           if (rawCheckout) checkoutToPass = formatIndoDateTime(rawCheckout);
+
+          const rawLastEditBy = getPropCaseInsensitive(matched, ['last_edit_by', 'last edit by', 'updated_by', 'updated by', 'modified_by', 'modified by'], '-');
+          const rawLastEditTime = getPropCaseInsensitive(matched, ['last_edit_time', 'last edit time', 'updated_at', 'updated at', 'modified_at', 'modified at'], null);
+          if (rawLastEditBy) lastEditByToPass = rawLastEditBy;
+          if (rawLastEditTime) lastEditTimeToPass = formatIndoDateTime(rawLastEditTime);
 
           const styleRes = getScheduleStyle(scheduleType);
           styleConfig = styleRes;
@@ -462,6 +469,8 @@ export default function Dashboard() {
         shiftToPass,
         checkinToPass,
         checkoutToPass,
+        lastEditByToPass,
+        lastEditTimeToPass,
         styleConfig,
         tooltipText,
         iconHtml,
@@ -485,7 +494,9 @@ export default function Dashboard() {
         type: dayData.typeToPass,
         shift: dayData.shiftToPass,
         checkin: dayData.checkinToPass,
-        checkout: dayData.checkoutToPass
+        checkout: dayData.checkoutToPass,
+        lastEditBy: dayData.lastEditByToPass,
+        lastEditTime: dayData.lastEditTimeToPass
       });
     }
   };
@@ -777,6 +788,14 @@ export default function Dashboard() {
                 ) : (
                   <strong className="text-blue-600 font-mono text-xs">{scheduleModalData.checkout}</strong>
                 )}
+              </div>
+              <div className="flex justify-between border-b border-gray-50 pb-2">
+                <span className="text-gray-500 font-medium">Last Edit By</span>
+                <strong className="text-gray-800 text-xs text-right break-words max-w-[150px]">{scheduleModalData.lastEditBy}</strong>
+              </div>
+              <div className="flex justify-between border-b border-gray-50 pb-2">
+                <span className="text-gray-500 font-medium">Last Edit Time</span>
+                <strong className="text-gray-800 font-mono text-xs">{scheduleModalData.lastEditTime}</strong>
               </div>
             </div>
 
