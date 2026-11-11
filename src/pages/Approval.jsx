@@ -638,8 +638,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const [statusTab, setStatusTab] = useState('pending');
   const [selectedEmployee, setSelectedEmployee] = useState('all');
 
-  const employeeDropdownRef = useRef(null); // Reference for the employee dropdown
-  const [showFilterAlert, setShowFilterAlert] = useState(false); // State for bulk edit notice
+  const employeeDropdownRef = useRef(null); 
+  const [showFilterAlert, setShowFilterAlert] = useState(false); 
 
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -654,6 +654,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const [bulkEditEmployee, setBulkEditEmployee] = useState(null);
   const [bulkEditData, setBulkEditData] = useState([]);
   const [isSavingBulk, setIsSavingBulk] = useState(false);
+
+  const [singleScheduleEdit, setSingleScheduleEdit] = useState(null);
+  const [isSavingSingleSchedule, setIsSavingSingleSchedule] = useState(false);
 
   const userWorkEmail = useMemo(() => {
     return (
