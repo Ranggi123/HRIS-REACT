@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { useOutletContext } from 'react-router-dom';
 
@@ -420,7 +420,7 @@ const SHIFT_OPTIONS = [
 export default function Approval({ currentUser: propCurrentUser }) {
   const context = useOutletContext() || {};
   const currentLang = context.currentLang || 'en';
-  const lang = currentLang; // Fix for ReferenceError: lang is not defined
+  const lang = currentLang;
 
   const t = currentLang === 'id' ? {
     title: 'Permintaan Persetujuan',
@@ -512,7 +512,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
     confReasonOpt: '(opsional)',
     confReasonPh: 'misal: Bukti tidak lengkap / konflik jadwal...',
     btnRejectReq: 'Tolak Permintaan',
-    previewTitle: 'Pratinjau Lampiran'
+    previewTitle: 'Pratinjau Lampiran',
+    errFilterFirst: 'Silakan pilih satu karyawan dari filter (bukan Semua Karyawan) untuk mengedit jadwal masal.'
   } : {
     title: 'Approval Requests',
     manager: 'Line Manager:',
@@ -603,7 +604,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
     confReasonOpt: '(optional)',
     confReasonPh: 'e.g. Incomplete proof / conflict with schedule...',
     btnRejectReq: 'Reject Request',
-    previewTitle: 'Attachment Preview'
+    previewTitle: 'Attachment Preview',
+    errFilterFirst: 'Please select a specific employee from the filter (not All Employees) to edit bulk schedule.'
   };
 
   const [sessionUser] = useState(() => {
@@ -636,6 +638,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const [statusTab, setStatusTab] = useState('pending');
   const [selectedEmployee, setSelectedEmployee] = useState('all');
 
+  const employeeDropdownRef = useRef(null); // Reference for the employee dropdown
+  const [showFilterAlert, setShowFilterAlert] = useState(false); // State for bulk edit notice
+
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -649,9 +654,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const [bulkEditEmployee, setBulkEditEmployee] = useState(null);
   const [bulkEditData, setBulkEditData] = useState([]);
   const [isSavingBulk, setIsSavingBulk] = useState(false);
-
-  const [singleScheduleEdit, setSingleScheduleEdit] = useState(null);
-  const [isSavingSingleSchedule, setIsSavingSingleSchedule] = useState(false);
 
   const userWorkEmail = useMemo(() => {
     return (
@@ -935,6 +937,42 @@ export default function Approval({ currentUser: propCurrentUser }) {
     refreshAllData();
   }, [refreshAllData]);
 
+  // Effect to handle automatic dropdown opening and focusing
+  useEffect(() => {
+      if (showFilterAlert && employeeDropdownRef.current) {
+          // Temporarily add a highlight to draw attention
+          employeeDropdownRef.current.classList.add('ring-2', 'ring-red-400', 'ring-offset-1');
+          
+          // Focus the dropdown so it's ready for interaction
+          employeeDropdownRef.current.focus();
+
+          // Try to programmatically open the dropdown (standard HTML select)
+          try {
+             // In standard HTML, you cannot reliably trigger the visual drop-down to open programmatically
+             // via JS for security/UX reasons across all browsers, but focusing it and simulating a click helps in some.
+             employeeDropdownRef.current.click();
+             
+             // Alternatively, dispatching events sometimes helps on specific browser implementations
+             const event = new MouseEvent('mousedown', {
+                 view: window,
+                 bubbles: true,
+                 cancelable: true
+             });
+             employeeDropdownRef.current.dispatchEvent(event);
+          } catch(e) {}
+          
+          // Remove the highlight after a short delay
+          const timer = setTimeout(() => {
+              if (employeeDropdownRef.current) {
+                  employeeDropdownRef.current.classList.remove('ring-2', 'ring-red-400', 'ring-offset-1');
+              }
+              setShowFilterAlert(false);
+          }, 2500);
+
+          return () => clearTimeout(timer);
+      }
+  }, [showFilterAlert]);
+
   const prevMonth = () => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1));
   const nextMonth = () => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1));
   const setThisMonth = () => setCalendarDate(new Date());
@@ -1121,7 +1159,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
   const openBulkEditModal = () => {
     if (!selectedEmployee || selectedEmployee === 'all') {
-      alert(currentLang === 'id' ? "Silakan pilih satu karyawan dari filter untuk mengedit jadwal." : "Please select a specific employee from the filter first to edit their schedule.");
+      setShowFilterAlert(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll up to make sure dropdown is visible
       return;
     }
     
@@ -1970,10 +2009,19 @@ export default function Approval({ currentUser: propCurrentUser }) {
           </div>
 
           <div className="relative w-full sm:w-[200px] shrink-0">
+            {showFilterAlert && (
+               <div className="absolute -top-10 left-0 right-0 bg-red-100 text-red-700 text-[10px] font-bold py-1 px-2 rounded shadow-sm text-center animate-bounce z-10 whitespace-nowrap">
+                  {t.errFilterFirst}
+               </div>
+            )}
             <select
+              ref={employeeDropdownRef}
               value={selectedEmployee}
-              onChange={(e) => setSelectedEmployee(e.target.value)}
-              className="w-full pl-3.5 pr-8 py-1.5 text-[13px] font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm cursor-pointer transition"
+              onChange={(e) => {
+                 setSelectedEmployee(e.target.value);
+                 if (showFilterAlert) setShowFilterAlert(false);
+              }}
+              className="w-full pl-3.5 pr-8 py-1.5 text-[13px] font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm cursor-pointer transition relative z-0"
               style={{
                 backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
                 backgroundRepeat: 'no-repeat',
