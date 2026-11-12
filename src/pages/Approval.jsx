@@ -341,9 +341,14 @@ const getRowStatus = (row) => {
   return '';
 };
 
-const matchesLineManager = (record, targetEmail, targetName = '', extraKeys = []) => {
+const matchesLineManagerWorkEmail = (record, targetWorkEmail) => {
   if (!record) return false;
-  const mgrVal = getPropCaseInsensitive(record, [
+  const cleanTarget = normalizeText(targetWorkEmail);
+  if (!cleanTarget || cleanTarget === '-' || cleanTarget === 'null' || cleanTarget === 'undefined') {
+    return false;
+  }
+
+  const mgrCandidateKeys = [
     'Line Manager work email',
     'line_manager_work_email',
     'Line Manager Email',
@@ -367,29 +372,27 @@ const matchesLineManager = (record, targetEmail, targetName = '', extraKeys = []
     'atasan_langsung',
     'Atasan Langsung',
     'approval_line_manager'
-  ], '').trim().toLowerCase();
+  ];
 
-  if (!mgrVal || mgrVal === '-' || mgrVal === 'null' || mgrVal === 'undefined') {
-    return false;
-  }
+  const keys = Object.keys(record);
+  for (const cand of mgrCandidateKeys) {
+    const normalizedCand = cand.toLowerCase().replace(/[\s_-]/g, '');
+    const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedCand);
+    if (found && record[found] !== null && record[found] !== undefined) {
+      const rawVal = String(record[found]).trim();
+      const normVal = normalizeText(rawVal);
+      if (!normVal || normVal === '-' || normVal === 'null' || normVal === 'undefined') {
+        continue;
+      }
+      const tokens = normVal
+        .split(/[,;]+/)
+        .map(part => {
+          const angleMatch = part.match(/<([^>]+)>/);
+          return normalizeText(angleMatch ? angleMatch[1] : part);
+        })
+        .filter(v => v && v !== '-' && v !== 'null' && v !== 'undefined');
 
-  const cleanMgrVal = mgrVal.replace(/<|>|\(|\)/g, ' ').trim();
-
-  const allKeys = new Set([
-    (targetEmail || '').trim().toLowerCase(),
-    (targetName || '').trim().toLowerCase(),
-    (targetEmail || '').includes('@') ? (targetEmail || '').split('@')[0].trim().toLowerCase() : '',
-    ...extraKeys.map(k => (k || '').trim().toLowerCase())
-  ]);
-
-  for (const key of allKeys) {
-    if (key && key.length >= 2) {
-      if (
-        cleanMgrVal === key ||
-        mgrVal === key ||
-        (key.includes('@') && cleanMgrVal.includes(key)) ||
-        (cleanMgrVal.includes('@') && key.includes(cleanMgrVal))
-      ) {
+      if (tokens.includes(cleanTarget)) {
         return true;
       }
     }
@@ -699,16 +702,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
   const userWorkEmail = useMemo(() => {
     return (
-      getPropCaseInsensitive(currentUser, [
+      getValidPropCaseInsensitive(currentUser, [
         'Employee work email',
         'employee_work_email',
         'work_email',
         'work email',
-        'Work Email',
-        'email',
-        'Email',
-        'user_uid',
-        'USER_UID'
+        'Work Email'
       ]) || ''
     ).trim().toLowerCase();
   }, [currentUser]);
@@ -792,13 +791,15 @@ export default function Approval({ currentUser: propCurrentUser }) {
     teamMembers,
     leaveRequests,
     attendanceRequests,
-    teamScheduleRecords
+    teamScheduleRecords,
+    resolvedUserWorkEmail,
+    resolvedUserName
   } = useMemo(() => {
-    const cleanUserWorkEmail = (userWorkEmail || topNavEmail || '').trim().toLowerCase();
-    const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
+    const cleanLoginEmail = (topNavEmail || userWorkEmail || '').trim().toLowerCase();
+    const loginPrefix = cleanLoginEmail.includes('@') ? cleanLoginEmail.split('@')[0] : cleanLoginEmail;
     const currentEmpId = normalizeText(getValidPropCaseInsensitive(currentUser, ['Employee ID', 'employee_id', 'Barcode', 'barcode'], ''));
 
-    let realWorkEmail = cleanUserWorkEmail;
+    let effectiveWorkEmail = userWorkEmail;
     let realName = userName;
     let profileDept = normalizeText(getValidPropCaseInsensitive(currentUser, ['Department', 'department', 'dept', 'Dept'], ''));
     let profileJobLevel = normalizeText(getValidPropCaseInsensitive(currentUser, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], ''));
@@ -825,9 +826,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const empEmailPrefix = empEmail.includes('@') ? empEmail.split('@')[0] : empEmail;
       const empWorkPrefix = empWorkEmail.includes('@') ? empWorkEmail.split('@')[0] : empWorkEmail;
 
-      if (cleanUserWorkEmail) {
-        if (empEmail === cleanUserWorkEmail || empWorkEmail === cleanUserWorkEmail) return true;
-        if (userPrefix && (empEmailPrefix === userPrefix || empWorkPrefix === userPrefix)) return true;
+      if (cleanLoginEmail) {
+        if (empEmail === cleanLoginEmail || empWorkEmail === cleanLoginEmail) return true;
+        if (loginPrefix && (empEmailPrefix === loginPrefix || empWorkPrefix === loginPrefix)) return true;
       }
       if (currentEmpId && empId && empId === currentEmpId) return true;
       if (userName && empName === normalizeText(userName)) return true;
@@ -836,7 +837,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
     if (myProfile) {
       const foundWorkEmail = getValidPropCaseInsensitive(myProfile, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']).trim().toLowerCase();
-      if (foundWorkEmail) realWorkEmail = foundWorkEmail;
+      effectiveWorkEmail = foundWorkEmail || '';
 
       const foundName = getValidPropCaseInsensitive(myProfile, ['Name', 'name', 'nama', 'fullname', 'full_name']);
       if (foundName) realName = foundName;
@@ -853,6 +854,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const foundCompany = getValidPropCaseInsensitive(myProfile, companyCandidateKeys, '').replace(/\s+/g, ' ').trim();
       if (foundCompany) profileCompany = foundCompany;
     }
+
+    const cleanEffectiveWorkEmail = normalizeText(effectiveWorkEmail);
+    const hasValidWorkEmail = Boolean(
+      cleanEffectiveWorkEmail &&
+      cleanEffectiveWorkEmail !== '-' &&
+      cleanEffectiveWorkEmail !== 'null' &&
+      cleanEffectiveWorkEmail !== 'undefined'
+    );
 
     const userCompanyKeys = new Set();
     if (profileCompany && profileCompany !== '-') {
@@ -877,45 +886,91 @@ export default function Approval({ currentUser: propCurrentUser }) {
     const isStatusActive = profileStatus === 'active';
     const isHrManagerActive = isHrDept && isManagerJobLevel && isStatusActive && userCompanyKeys.size > 0;
 
-    const rowMatchesCompany = (obj) => {
-      if (!obj || userCompanyKeys.size === 0) return false;
+    const getRowCompanyValues = (obj) => {
+      if (!obj) return [];
+      const vals = [];
       const keys = Object.keys(obj);
       for (const cand of companyCandidateKeys) {
         const normalizedCand = cand.toLowerCase().replace(/[\s_-]/g, '');
         const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedCand);
         if (found && obj[found] !== null && obj[found] !== undefined) {
           const normVal = normalizeText(obj[found]);
-          if (normVal && normVal !== '-' && normVal !== 'null' && userCompanyKeys.has(normVal)) {
-            return true;
+          if (normVal && normVal !== '-' && normVal !== 'null' && normVal !== 'undefined') {
+            vals.push(normVal);
           }
         }
       }
+      return vals;
+    };
+
+    const rowMatchesCompany = (obj) => {
+      if (!obj || userCompanyKeys.size === 0) return false;
+      const vals = getRowCompanyValues(obj);
+      return vals.some(v => userCompanyKeys.has(v));
+    };
+
+    const rowBelongsToUserCompany = (obj, fallbackMatchFn) => {
+      if (!obj || userCompanyKeys.size === 0) return false;
+      const vals = getRowCompanyValues(obj);
+      if (vals.length > 0) {
+        return vals.some(v => userCompanyKeys.has(v));
+      }
+      return typeof fallbackMatchFn === 'function' ? fallbackMatchFn(obj) : false;
+    };
+
+    // Track all Active employees in employee_directory
+    const activeDirEmailSet = new Set();
+    const activeDirIdentifierSet = new Set();
+    const nonActiveDirIdentifierSet = new Set();
+
+    rawDirEmployees.forEach(emp => {
+      const statusRaw = normalizeText(getValidPropCaseInsensitive(emp, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
+      const isEmpActive = statusRaw === 'active';
+
+      const wMail = (getValidPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'work email', 'Work Email']) || '').trim().toLowerCase();
+      const pMail = (getValidPropCaseInsensitive(emp, ['email', 'Email', 'Email Address', 'email_address', 'user_uid']) || '').trim().toLowerCase();
+      const bCode = normalizeText(getValidPropCaseInsensitive(emp, ['Barcode', 'barcode', 'Employee ID', 'employee_id', 'id', 'nik', 'nip'], ''));
+      const eName = normalizeText(getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], ''));
+
+      const keysToRegister = [wMail, pMail, bCode, eName].filter(Boolean);
+      if (isEmpActive) {
+        if (wMail) activeDirEmailSet.add(wMail);
+        if (pMail) activeDirEmailSet.add(pMail);
+        keysToRegister.forEach(k => activeDirIdentifierSet.add(k));
+      } else {
+        keysToRegister.forEach(k => nonActiveDirIdentifierSet.add(k));
+      }
+    });
+
+    const isRowEmployeeActive = (row) => {
+      if (rawDirEmployees.length === 0) return true;
+      const empVal = normalizeText(getValidPropCaseInsensitive(row, [
+        'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
+        'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email',
+        'Barcode', 'barcode', 'Employee ID', 'employee_id'
+      ]));
+      const rowNameVal = normalizeText(getValidPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name']));
+
+      if (empVal && (activeDirEmailSet.has(empVal) || activeDirIdentifierSet.has(empVal))) return true;
+      if (rowNameVal && activeDirIdentifierSet.has(rowNameVal)) return true;
+
+      if (empVal && nonActiveDirIdentifierSet.has(empVal)) return false;
+      if (rowNameVal && nonActiveDirIdentifierSet.has(rowNameVal)) return false;
+
       return false;
     };
 
-    const cleanRealWorkEmail = (realWorkEmail || '').trim().toLowerCase();
-    const realPrefix = cleanRealWorkEmail.includes('@') ? cleanRealWorkEmail.split('@')[0] : cleanRealWorkEmail;
-
-    const managerKeys = Array.from(new Set([
-      userWorkEmail,
-      topNavEmail,
-      realWorkEmail,
-      userPrefix,
-      realPrefix,
-      userName.toLowerCase(),
-      realName.toLowerCase()
-    ])).filter(k => k && k.length >= 2);
-
+    // Only employees with Status === 'active' AND (Company match for HR Manager OR Line Manager === userWorkEmail)
     const subordinates = rawDirEmployees.filter(row => {
-      const statusRaw = normalizeText(getValidPropCaseInsensitive(row, ['Status', 'status', 'STATUS', 'Account Status', 'account_status'], ''));
-      const isStatusValid = statusRaw === 'active' || statusRaw === 'off-boarding' || statusRaw === 'off boarding';
-      if (!isStatusValid) return false;
+      const statusRaw = normalizeText(getValidPropCaseInsensitive(row, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
+      if (statusRaw !== 'active') return false;
 
       if (isHrManagerActive) {
         return rowMatchesCompany(row);
       }
 
-      return matchesLineManager(row, realWorkEmail, realName, managerKeys);
+      if (!hasValidWorkEmail) return false;
+      return matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail);
     });
 
     const subordinateEmailSet = new Set();
@@ -982,7 +1037,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
       }
     });
 
-    const subordinateEmails = Array.from(subordinateEmailSet);
     const sortedTeamMembers = Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 
     const matchesScopedEmployee = (row) => {
@@ -1002,17 +1056,19 @@ export default function Approval({ currentUser: propCurrentUser }) {
         const status = getRowStatus(row);
         const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
         if (!isRelevant) return false;
+        if (!isRowEmployeeActive(row)) return false;
 
         if (isHrManagerActive) {
-          return rowMatchesCompany(row) || matchesScopedEmployee(row);
+          return rowBelongsToUserCompany(row, matchesScopedEmployee);
         }
 
+        if (!hasValidWorkEmail) return false;
         const empVal = normalizeText(getValidPropCaseInsensitive(row, [
           'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
           'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
         ]));
-        const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, managerKeys);
-        const isSelf = cleanUserWorkEmail && (empVal === cleanUserWorkEmail);
+        const hasDirectMgr = matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail);
+        const isSelf = empVal && (empVal === cleanEffectiveWorkEmail || (cleanLoginEmail && empVal === cleanLoginEmail));
         return hasDirectMgr && !isSelf;
       })
       .map(row => ({
@@ -1026,22 +1082,20 @@ export default function Approval({ currentUser: propCurrentUser }) {
         const status = getRowStatus(row);
         const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
         if (!isRelevant) return false;
+        if (!isRowEmployeeActive(row)) return false;
 
         if (isHrManagerActive) {
-          return rowMatchesCompany(row) || matchesScopedEmployee(row);
+          return rowBelongsToUserCompany(row, matchesScopedEmployee);
         }
 
+        if (!hasValidWorkEmail) return false;
         const empEmail = normalizeText(getValidPropCaseInsensitive(row, [
           'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
           'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
         ]));
-
-        const hasDirectMgr =
-          matchesLineManager(row, realWorkEmail, realName, managerKeys) ||
-          (empEmail && (subordinateEmailSet.has(empEmail) || subordinateEmails.includes(empEmail))) ||
-          (empEmail && subordinateEmails.some(sub => sub && (sub === empEmail || empEmail.includes(sub) || sub.includes(empEmail))));
-
-        return hasDirectMgr;
+        const hasDirectMgr = matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail);
+        const isSelf = empEmail && (empEmail === cleanEffectiveWorkEmail || (cleanLoginEmail && empEmail === cleanLoginEmail));
+        return hasDirectMgr && !isSelf;
       })
       .map(row => ({
         ...row,
@@ -1050,19 +1104,23 @@ export default function Approval({ currentUser: propCurrentUser }) {
       }));
 
     const filteredSchedules = rawSchedules.filter(row => {
+      if (!isRowEmployeeActive(row)) return false;
+
       if (isHrManagerActive) {
-        return rowMatchesCompany(row) || matchesScopedEmployee(row);
+        return rowBelongsToUserCompany(row, matchesScopedEmployee);
       }
 
-      const empEmail = normalizeText(getValidPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email']));
-      return subordinateEmailSet.has(empEmail) || subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => sub && empEmail.includes(sub));
+      if (!hasValidWorkEmail) return false;
+      return matchesScopedEmployee(row);
     });
 
     return {
       teamMembers: sortedTeamMembers,
       leaveRequests: filteredLeaves,
       attendanceRequests: filteredAttendance,
-      teamScheduleRecords: filteredSchedules
+      teamScheduleRecords: filteredSchedules,
+      resolvedUserWorkEmail: hasValidWorkEmail ? cleanEffectiveWorkEmail : '',
+      resolvedUserName: realName
     };
   }, [
     rawDirEmployees,
@@ -1078,27 +1136,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
   ]);
 
   useEffect(() => {
-    const cleanUserWorkEmail = (userWorkEmail || topNavEmail || '').trim().toLowerCase();
-    const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
-    const myProfile = rawDirEmployees.find(emp => {
-      const empEmail = (getValidPropCaseInsensitive(emp, ['Email', 'email', 'user_uid']) || '').trim().toLowerCase();
-      const empWorkEmail = (getValidPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
-      const empEmailPrefix = empEmail.includes('@') ? empEmail.split('@')[0] : empEmail;
-      const empWorkPrefix = empWorkEmail.includes('@') ? empWorkEmail.split('@')[0] : empWorkEmail;
-      return (cleanUserWorkEmail && (empEmail === cleanUserWorkEmail || empWorkEmail === cleanUserWorkEmail)) ||
-             (userPrefix && (empEmailPrefix === userPrefix || empWorkPrefix === userPrefix));
-    });
-
-    const foundWorkEmail = myProfile
-      ? getValidPropCaseInsensitive(myProfile, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']).trim().toLowerCase()
-      : '';
-    const foundName = myProfile
-      ? getValidPropCaseInsensitive(myProfile, ['Name', 'name', 'nama', 'fullname', 'full_name'])
-      : '';
-
-    setActualUserWorkEmail(foundWorkEmail || cleanUserWorkEmail);
-    setActualUserName(foundName || userName);
-  }, [rawDirEmployees, userWorkEmail, topNavEmail, userName]);
+    setActualUserWorkEmail(resolvedUserWorkEmail || '');
+    setActualUserName(resolvedUserName || userName);
+  }, [resolvedUserWorkEmail, resolvedUserName, userName]);
 
   // Effect to handle automatic dropdown opening and focusing
   useEffect(() => {
@@ -2163,7 +2203,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
           <div className="hidden sm:flex items-center gap-3">
             <div className="bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl text-xs">
               <span className="text-gray-400 mr-1.5 font-medium">{t.manager}</span>
-              <span className="font-semibold text-gray-700">{actualUserWorkEmail || topNavEmail || userWorkEmail || '-'}</span>
+              <span className="font-semibold text-gray-700">{actualUserWorkEmail || '-'}</span>
             </div>
             <button
               onClick={refreshAllData}
