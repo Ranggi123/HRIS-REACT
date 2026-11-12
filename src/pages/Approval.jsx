@@ -1527,9 +1527,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
               if (s !== 'unused') return false;
 
               const typ = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
-              const isTypeMatch = leaveType.toLowerCase().includes('extra')
-                ? (typ.includes('extra off') || typ.includes('extra'))
-                : (typ.includes('day off') || typ.includes('dayoff'));
+              let isTypeMatch = false;
+            if (leaveType === 'Day Off Payment') {
+              isTypeMatch = (typ === 'day off payment');
+            } else if (leaveType === 'Extra Off') {
+              isTypeMatch = (typ === 'extra off');
+            }
               if (!isTypeMatch) return false;
 
               const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
@@ -1587,9 +1590,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 const s = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
                 if (s !== 'unused') return false;
                 const typ = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
-                const isTypeMatch = leaveType.toLowerCase().includes('extra')
-                  ? (typ.includes('extra off') || typ.includes('extra'))
-                  : (typ.includes('day off') || typ.includes('dayoff'));
+                let isTypeMatch = false;
+            if (leaveType === 'Day Off Payment') {
+              isTypeMatch = (typ === 'day off payment');
+            } else if (leaveType === 'Extra Off') {
+              isTypeMatch = (typ === 'extra off');
+            }
                 if (!isTypeMatch) return false;
                 const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
                 return validKeys.some(k => empVal === k || empVal.includes(k) || k.includes(empVal));
@@ -1759,9 +1765,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
             if (s !== 'used') return false;
 
             const typ = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
-            const isTypeMatch = leaveType.toLowerCase().includes('extra')
-              ? (typ.includes('extra off') || typ.includes('extra'))
-              : (typ.includes('day off') || typ.includes('dayoff'));
+            let isTypeMatch = false;
+            if (leaveType === 'Day Off Payment') {
+              isTypeMatch = (typ === 'day off payment');
+            } else if (leaveType === 'Extra Off') {
+              isTypeMatch = (typ === 'extra off');
+            }
             if (!isTypeMatch) return false;
 
             const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
@@ -1820,9 +1829,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
               const s = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
               if (s !== 'unused') return false;
               const typ = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
-              const isTypeMatch = leaveType.toLowerCase().includes('extra')
-                ? (typ.includes('extra off') || typ.includes('extra'))
-                : (typ.includes('day off') || typ.includes('dayoff'));
+              let isTypeMatch = false;
+            if (leaveType === 'Day Off Payment') {
+              isTypeMatch = (typ === 'day off payment');
+            } else if (leaveType === 'Extra Off') {
+              isTypeMatch = (typ === 'extra off');
+            }
               if (!isTypeMatch) return false;
               const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
               return validKeys.some(k => empVal === k || empVal.includes(k) || k.includes(empVal));
