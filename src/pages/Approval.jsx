@@ -140,6 +140,43 @@ const getPropCaseInsensitive = (obj, candidateKeys, fallback = '') => {
   return fallback;
 };
 
+const getValidPropCaseInsensitive = (obj, candidateKeys, fallback = '') => {
+  if (!obj) return fallback;
+  const keys = Object.keys(obj);
+  for (const cand of candidateKeys) {
+    const normalizedCand = cand.toLowerCase().replace(/[\s_-]/g, '');
+    const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedCand);
+    if (found && obj[found] !== null && obj[found] !== undefined) {
+      const val = String(obj[found]).trim();
+      const lowerVal = val.toLowerCase();
+      if (val !== '' && lowerVal !== '-' && lowerVal !== 'null' && lowerVal !== 'undefined') {
+        return val;
+      }
+    }
+  }
+  return fallback;
+};
+
+const normalizeText = (val) => String(val || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+const fetchAllRows = async (tableName, maxRows = 10000) => {
+  const pageSize = 1000;
+  let allData = [];
+  let from = 0;
+  while (from < maxRows) {
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('*')
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return allData;
+};
+
 const resolveTableColumn = (knownCols, candidates) => {
   if (!knownCols || knownCols.length === 0) return candidates[0];
   for (const cand of candidates) {
@@ -420,8 +457,7 @@ const SHIFT_OPTIONS = [
 export default function Approval({ currentUser: propCurrentUser }) {
   const context = useOutletContext() || {};
   const currentLang = context.currentLang || 'en';
-  const isSuperAdminMode = context.isSuperAdminMode || false;
-  const lang = currentLang;
+  const lang = currentLang; // Fix for ReferenceError: lang is not defined
 
   const t = currentLang === 'id' ? {
     title: 'Permintaan Persetujuan',
@@ -434,7 +470,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
     filterApproved: 'Disetujui',
     filterRejected: 'Ditolak',
     filterAll: 'Semua Status',
-    empFilterAll: '-- Semua Karyawan --',
+    empFilterAll: 'Semua Karyawan',
     colEmp: 'Karyawan',
     colReq: 'Tipe Permintaan',
     colLeavePeriod: 'Periode Cuti',
@@ -514,8 +550,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
     confReasonPh: 'misal: Bukti tidak lengkap / konflik jadwal...',
     btnRejectReq: 'Tolak Permintaan',
     previewTitle: 'Pratinjau Lampiran',
-    errFilterFirst: 'Silakan pilih karyawan',
-    empSearchPh: 'Cari karyawan...'
+    errFilterFirst: 'Silakan pilih karyawan'
   } : {
     title: 'Approval Requests',
     manager: 'Line Manager:',
@@ -527,7 +562,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
     filterApproved: 'Approved',
     filterRejected: 'Rejected',
     filterAll: 'All Status',
-    empFilterAll: '-- All Employees --',
+    empFilterAll: 'All Employees',
     colEmp: 'Employee',
     colReq: 'Request Type',
     colLeavePeriod: 'Leave Period',
@@ -607,8 +642,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
     confReasonPh: 'e.g. Incomplete proof / conflict with schedule...',
     btnRejectReq: 'Reject Request',
     previewTitle: 'Attachment Preview',
-    errFilterFirst: 'Please select employee',
-    empSearchPh: 'Search employee...'
+    errFilterFirst: 'Please select employee'
   };
 
   const [sessionUser] = useState(() => {
@@ -625,7 +659,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
     return null;
   });
 
-  const currentUser = propCurrentUser || sessionUser;
+  const currentUser = propCurrentUser || context.currentUser || sessionUser;
 
   const [loading, setLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -639,11 +673,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const [teamScheduleModalData, setTeamScheduleModalData] = useState(null);
 
   const [statusTab, setStatusTab] = useState('pending');
-  const [selectedEmployee, setSelectedEmployee] = useState('');
-  
-  // Custom dropdown state
-  const [empDropdownOpen, setEmpDropdownOpen] = useState(false);
-  const [empSearchQuery, setEmpSearchQuery] = useState('');
+  const [selectedEmployee, setSelectedEmployee] = useState('all');
+
   const employeeDropdownRef = useRef(null); 
   const [showFilterAlert, setShowFilterAlert] = useState(false); 
 
@@ -663,11 +694,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
   const [singleScheduleEdit, setSingleScheduleEdit] = useState(null);
   const [isSavingSingleSchedule, setIsSavingSingleSchedule] = useState(false);
-
-  // -- Tambahan: State Data Perusahaan (Untuk Super Admin) --
-  const [companies, setCompanies] = useState([]);
-  const [selectedCompany, setSelectedCompany] = useState('');
-  // ---------------------------------------------------------
 
   const userWorkEmail = useMemo(() => {
     return (
@@ -709,43 +735,63 @@ export default function Approval({ currentUser: propCurrentUser }) {
     setLoading(true);
 
     try {
-      // -- Ambil daftar perusahaan jika mode super admin --
-      if (isSuperAdminMode && companies.length === 0) {
-        try {
-          const { data: compData } = await supabase.from('company').select('*').limit(100);
-          if (compData) {
-            const sortedComp = compData.sort((a,b) => {
-               const nameA = getPropCaseInsensitive(a, ['Company Name', 'company_name', 'name'], '');
-               const nameB = getPropCaseInsensitive(b, ['Company Name', 'company_name', 'name'], '');
-               return nameA.localeCompare(nameB);
-            });
-            setCompanies(sortedComp);
-          }
-        } catch(e) {}
-      }
-
       let subordinateEmails = [];
+      const subordinateEmailSet = new Set();
       const subordinateIdentifiers = new Set();
       const employeeDirectoryMap = new Map();
       let realWorkEmail = userWorkEmail || topNavEmail;
       let realName = userName;
+      let isHrManagerActive = false;
+      const userCompanyKeys = new Set();
+
+      const companyCandidateKeys = [
+        'Company',
+        'company',
+        'Company Name',
+        'company_name',
+        'companyname',
+        'CompanyUID',
+        'companyuid',
+        'company_uid',
+        'company_id',
+        'Company Code',
+        'company_code'
+      ];
+
+      const matchesUserCompany = (obj) => {
+        if (!obj || userCompanyKeys.size === 0) return false;
+        const keys = Object.keys(obj);
+        for (const cand of companyCandidateKeys) {
+          const normalizedCand = cand.toLowerCase().replace(/[\s_-]/g, '');
+          const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedCand);
+          if (found && obj[found] !== null && obj[found] !== undefined) {
+            const normVal = normalizeText(obj[found]);
+            if (normVal && normVal !== '-' && normVal !== 'null' && userCompanyKeys.has(normVal)) {
+              return true;
+            }
+          }
+        }
+        return false;
+      };
+
+      let profileDept = normalizeText(getValidPropCaseInsensitive(currentUser, ['Department', 'department', 'dept', 'Dept'], ''));
+      let profileJobLevel = normalizeText(getValidPropCaseInsensitive(currentUser, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], ''));
+      let profileStatus = normalizeText(getValidPropCaseInsensitive(currentUser, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
+      let profileCompany = getValidPropCaseInsensitive(currentUser, companyCandidateKeys, '').replace(/\s+/g, ' ').trim();
 
       try {
-        const { data: dirData, error: dirErr } = await supabase
-          .from('employee_directory')
-          .select('*')
-          .limit(2500);
+        const dirData = await fetchAllRows('employee_directory', 10000);
 
-        if (dirErr) {
-          console.warn("[Approval] Error fetching employee_directory:", dirErr.message);
-        } else if (dirData) {
+        if (dirData && dirData.length > 0) {
           const cleanUserWorkEmail = (userWorkEmail || topNavEmail || '').trim().toLowerCase();
           const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
+          const currentEmpId = normalizeText(getValidPropCaseInsensitive(currentUser, ['Employee ID', 'employee_id', 'Barcode', 'barcode'], ''));
 
           const myProfile = dirData.find(emp => {
-            const empEmail = (getPropCaseInsensitive(emp, ['Email', 'email', 'user_uid']) || '').trim().toLowerCase();
-            const empWorkEmail = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
-            const empName = (getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name']) || '').trim().toLowerCase();
+            const empEmail = (getValidPropCaseInsensitive(emp, ['Email', 'email', 'Email Address', 'email_address', 'user_uid']) || '').trim().toLowerCase();
+            const empWorkEmail = (getValidPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
+            const empName = normalizeText(getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name']));
+            const empId = normalizeText(getValidPropCaseInsensitive(emp, ['Employee ID', 'employee_id', 'Barcode', 'barcode']));
 
             const empEmailPrefix = empEmail.includes('@') ? empEmail.split('@')[0] : empEmail;
             const empWorkPrefix = empWorkEmail.includes('@') ? empWorkEmail.split('@')[0] : empWorkEmail;
@@ -754,16 +800,72 @@ export default function Approval({ currentUser: propCurrentUser }) {
               if (empEmail === cleanUserWorkEmail || empWorkEmail === cleanUserWorkEmail) return true;
               if (userPrefix && (empEmailPrefix === userPrefix || empWorkPrefix === userPrefix)) return true;
             }
-            if (userName && empName === userName.toLowerCase()) return true;
+            if (currentEmpId && empId && empId === currentEmpId) return true;
+            if (userName && empName === normalizeText(userName)) return true;
             return false;
           });
 
           if (myProfile) {
-            const foundWorkEmail = getPropCaseInsensitive(myProfile, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']).trim().toLowerCase();
+            const foundWorkEmail = getValidPropCaseInsensitive(myProfile, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']).trim().toLowerCase();
             if (foundWorkEmail) realWorkEmail = foundWorkEmail;
 
-            const foundName = getPropCaseInsensitive(myProfile, ['Name', 'name', 'nama', 'fullname', 'full_name']);
+            const foundName = getValidPropCaseInsensitive(myProfile, ['Name', 'name', 'nama', 'fullname', 'full_name']);
             if (foundName) realName = foundName;
+
+            const foundDept = normalizeText(getValidPropCaseInsensitive(myProfile, ['Department', 'department', 'dept', 'Dept'], ''));
+            if (foundDept) profileDept = foundDept;
+
+            const foundJobLevel = normalizeText(getValidPropCaseInsensitive(myProfile, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], ''));
+            if (foundJobLevel) profileJobLevel = foundJobLevel;
+
+            // "Account Status" merujuk pada kolom Status di employee_directory
+            const foundStatus = normalizeText(getValidPropCaseInsensitive(myProfile, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
+            if (foundStatus) profileStatus = foundStatus;
+
+            const foundCompany = getValidPropCaseInsensitive(myProfile, companyCandidateKeys, '').replace(/\s+/g, ' ').trim();
+            if (foundCompany) profileCompany = foundCompany;
+          }
+
+          if (profileCompany && profileCompany !== '-') {
+            userCompanyKeys.add(normalizeText(profileCompany));
+            try {
+              const compData = await fetchAllRows('company', 2000);
+              if (compData && compData.length > 0) {
+                const targetNorm = normalizeText(profileCompany);
+                const compLookupKeys = [
+                  'CompanyUID', 'companyuid', 'Company UID', 'company_uid',
+                  'Company ID', 'company_id', 'Company Code', 'company_code',
+                  'id', 'uid', 'Company Name', 'company_name', 'CompanyName',
+                  'Company', 'company', 'name', 'Name', 'Nama Perusahaan'
+                ];
+                const matchedComp = compData.find(c => {
+                  return compLookupKeys.some(k => {
+                    const val = normalizeText(getValidPropCaseInsensitive(c, [k], ''));
+                    return val && val === targetNorm;
+                  });
+                });
+                if (matchedComp) {
+                  compLookupKeys.forEach(k => {
+                    const val = normalizeText(getValidPropCaseInsensitive(matchedComp, [k], ''));
+                    if (val) userCompanyKeys.add(val);
+                  });
+                }
+              }
+            } catch (e) {}
+          }
+
+          const isHrDept = profileDept === 'human resources' || profileDept === 'human resource';
+          const isManagerJobLevel = profileJobLevel === 'manager';
+          const isStatusActive = profileStatus === 'active';
+          
+          // Memeriksa status Super Admin mode dari localStorage (seperti yang digunakan di komponen lain)
+          const isSuperAdminMode = localStorage.getItem('hris_super_admin_active') === 'true';
+
+          // Jika dalam mode Super Admin, akseskan ke seluruh karyawan di company tanpa perlu dept/job level spesifik
+          if (isSuperAdminMode) {
+              isHrManagerActive = true;
+          } else {
+              isHrManagerActive = isHrDept && isManagerJobLevel && isStatusActive && userCompanyKeys.size > 0;
           }
 
           setActualUserWorkEmail(realWorkEmail);
@@ -783,61 +885,68 @@ export default function Approval({ currentUser: propCurrentUser }) {
           ])).filter(k => k && k.length >= 2);
 
           dirData.forEach(emp => {
-            const email = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Email', 'email']) || '').trim().toLowerCase();
-            const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
+            const email = (getValidPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Email', 'email']) || '').trim().toLowerCase();
+            const name = getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
             if (email) employeeDirectoryMap.set(email, name);
           });
 
           const subordinates = dirData.filter(row => {
-            const statusRaw = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
+            const statusRaw = normalizeText(getValidPropCaseInsensitive(row, ['Status', 'status', 'STATUS', 'Account Status', 'account_status'], ''));
             const isStatusValid = statusRaw === 'active' || statusRaw === 'off-boarding' || statusRaw === 'off boarding';
             if (!isStatusValid) return false;
-            
-            if (isSuperAdminMode) return true;
+
+            if (isHrManagerActive) {
+              return matchesUserCompany(row);
+            }
+
             return matchesLineManager(row, realWorkEmail, realName, managerKeys);
           });
           
           let allHolidays = [];
           try {
-            const { data: hData } = await supabase.from('holiday_balance').select('*').limit(5000);
-            if (hData) allHolidays = hData;
+            allHolidays = await fetchAllRows('holiday_balance', 10000);
           } catch(e) {}
 
           const uniqueMap = new Map();
-          const defaultAvatar = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png';
-          
           subordinates.forEach(emp => {
-            const email = (getPropCaseInsensitive(emp, [
+            const workMail = (getValidPropCaseInsensitive(emp, [
               'Employee work email',
               'employee_work_email',
               'work_email',
               'work email',
-              'Work Email',
+              'Work Email'
+            ]) || '').trim().toLowerCase();
+
+            const personalMail = (getValidPropCaseInsensitive(emp, [
               'email',
               'Email',
+              'Email Address',
               'user_uid'
             ]) || '').trim().toLowerCase();
 
-            const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
-            const id = (getPropCaseInsensitive(emp, ['Employee ID', 'employee_id', 'id', 'Barcode', 'barcode', 'nik', 'nip']) || '').trim().toLowerCase();
-            const empCompany = getPropCaseInsensitive(emp, ['Company', 'company', 'companyuid', 'company_uid'], '').trim().toLowerCase();
-            const photo = getPropCaseInsensitive(emp, ['link', 'Link', 'photo', 'picture', 'avatar'], defaultAvatar) || defaultAvatar;
-            const jobTitle = getPropCaseInsensitive(emp, ['job title', 'job_title', 'Job Title', 'position'], '');
+            const email = workMail || personalMail;
+            const empAllEmails = Array.from(new Set([workMail, personalMail].filter(Boolean)));
+            const name = getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
+            const id = (getValidPropCaseInsensitive(emp, ['Employee ID', 'employee_id', 'id', 'Barcode', 'barcode', 'nik', 'nip']) || '').trim().toLowerCase();
+
+            empAllEmails.forEach(m => {
+              subordinateEmailSet.add(m);
+              subordinateIdentifiers.add(m);
+            });
 
             if (email) {
-              subordinateIdentifiers.add(email);
               if (!uniqueMap.has(email)) {
                 let empDayOff = 0;
                 let empExtraOff = 0;
-                const validKeys = [email, name.trim().toLowerCase(), id].filter(Boolean);
+                const validKeys = [...empAllEmails, name.trim().toLowerCase(), id].filter(Boolean);
                 
                 allHolidays.forEach(hRow => {
-                    const hStatus = getPropCaseInsensitive(hRow, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
+                    const hStatus = normalizeText(getValidPropCaseInsensitive(hRow, ['status', 'Status', 'STATUS'], ''));
                     if (hStatus === 'unused') {
-                        const hEmp = getPropCaseInsensitive(hRow, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
+                        const hEmp = normalizeText(getValidPropCaseInsensitive(hRow, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']));
                         if (validKeys.some(k => hEmp === k || hEmp.includes(k) || k.includes(hEmp))) {
-                            const typ = getPropCaseInsensitive(hRow, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
-                            let d = getPropCaseInsensitive(hRow, ['Days', 'days', 'Amount', 'amount', 'Total', 'total']);
+                            const typ = normalizeText(getValidPropCaseInsensitive(hRow, ['Type Holiday', 'type_holiday', 'Type', 'type'], ''));
+                            let d = getValidPropCaseInsensitive(hRow, ['Days', 'days', 'Amount', 'amount', 'Total', 'total']);
                             let val = (d && !isNaN(d)) ? parseFloat(d) : 1;
                             if (typ === 'day off payment') empDayOff += val;
                             else if (typ === 'extra off') empExtraOff += val;
@@ -847,21 +956,21 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
                 uniqueMap.set(email, { 
                   email, 
+                  emails: empAllEmails,
                   name,
-                  photo,
-                  jobTitle,
-                  company: empCompany,
-                  annual_leave_balance: getPropCaseInsensitive(emp, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave']) || '0',
+                  barcode: getValidPropCaseInsensitive(emp, ['Barcode', 'barcode', 'Employee ID', 'employee_id', 'id']) || '',
+                  standart_working_day: getValidPropCaseInsensitive(emp, ['Standart Working Day', 'standart_working_day', 'Standard Working Day', 'standard_working_day']) || 'BACKOFFICE52',
+                  annual_leave_balance: getValidPropCaseInsensitive(emp, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave']) || '0',
                   day_off_payment_balance: empDayOff,
                   extra_off_balance: empExtraOff
                 });
               }
             }
-            if (name) subordinateIdentifiers.add(name.trim().toLowerCase());
+            if (name) subordinateIdentifiers.add(normalizeText(name));
             if (id) subordinateIdentifiers.add(id);
           });
 
-          subordinateEmails = Array.from(uniqueMap.keys());
+          subordinateEmails = Array.from(subordinateEmailSet);
           setTeamMembers(Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
         }
       } catch (err) {
@@ -885,31 +994,30 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
       let myLeaves = [];
       try {
-        const { data: lvData, error: lvError } = await supabase
-          .from('leave_requests')
-          .select('*')
-          .limit(3000);
-
-        if (lvError) {
-          console.warn("[Approval] Error fetching leave_requests:", lvError.message);
-        } else if (lvData) {
+        const lvData = await fetchAllRows('leave_requests', 10000);
+        if (lvData) {
           myLeaves = lvData
             .filter(row => {
               const status = getRowStatus(row);
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
-              
-              const empVal = (getPropCaseInsensitive(row, [
+              if (!isRelevant) return false;
+
+              const empVal = normalizeText(getValidPropCaseInsensitive(row, [
                 'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
                 'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
-              ]) || '').trim().toLowerCase();
+              ]));
+
+              if (isHrManagerActive) {
+                return (
+                  matchesUserCompany(row) ||
+                  (empVal && (subordinateEmailSet.has(empVal) || subordinateIdentifiers.has(empVal)))
+                );
+              }
+
+              const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
               const isSelf = cleanUserWorkEmail && (empVal === cleanUserWorkEmail);
 
-              if (isSuperAdminMode) {
-                 return isRelevant && !isSelf;
-              } else {
-                 const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
-                 return isRelevant && hasDirectMgr && !isSelf;
-              }
+              return hasDirectMgr && !isSelf;
             })
             .map(row => ({
               ...row,
@@ -926,12 +1034,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
         let attData = [];
 
         try {
-          const { data: defAtt, error: attErr } = await supabase
-            .from('attendance')
-            .select('*')
-            .limit(3000);
-
-          if (!attErr && defAtt) {
+          const defAtt = await fetchAllRows('attendance', 10000);
+          if (defAtt) {
             attData = defAtt;
           }
         } catch (e) {
@@ -962,21 +1066,26 @@ export default function Approval({ currentUser: propCurrentUser }) {
             .filter(row => {
               const status = getRowStatus(row);
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
+              if (!isRelevant) return false;
 
-              const empEmail = (getPropCaseInsensitive(row, [
+              const empEmail = normalizeText(getValidPropCaseInsensitive(row, [
                 'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
                 'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
-              ]) || '').trim().toLowerCase();
+              ]));
 
-              if (isSuperAdminMode) {
-                 return isRelevant;
-              } else {
-                 const hasDirectMgr = 
-                   matchesLineManager(row, realWorkEmail, realName, allManagerKeys) ||
-                   (empEmail && subordinateEmails.includes(empEmail)) ||
-                   (empEmail && subordinateEmails.some(sub => sub && (sub === empEmail || empEmail.includes(sub) || sub.includes(empEmail))));
-                 return isRelevant && hasDirectMgr;
+              if (isHrManagerActive) {
+                return (
+                  matchesUserCompany(row) ||
+                  (empEmail && (subordinateEmailSet.has(empEmail) || subordinateIdentifiers.has(empEmail)))
+                );
               }
+
+              const hasDirectMgr = 
+                matchesLineManager(row, realWorkEmail, realName, allManagerKeys) ||
+                (empEmail && (subordinateEmailSet.has(empEmail) || subordinateEmails.includes(empEmail))) ||
+                (empEmail && subordinateEmails.some(sub => sub && (sub === empEmail || empEmail.includes(sub) || sub.includes(empEmail))));
+
+              return hasDirectMgr;
             })
             .map(row => ({
               ...row,
@@ -990,16 +1099,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
       let teamSched = [];
       try {
-        const { data: schedData, error: schedErr } = await supabase
-          .from('schedule')
-          .select('*')
-          .limit(5000);
-
-        if (!schedErr && schedData) {
+        const schedData = await fetchAllRows('schedule', 10000);
+        if (schedData) {
           teamSched = schedData.filter(row => {
-            if (isSuperAdminMode) return true;
-            const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email']) || '').trim().toLowerCase();
-            return subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => empEmail.includes(sub));
+            const empEmail = normalizeText(getValidPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email']));
+            if (isHrManagerActive) {
+              return matchesUserCompany(row) || (empEmail && (subordinateEmailSet.has(empEmail) || subordinateIdentifiers.has(empEmail)));
+            }
+            return subordinateEmailSet.has(empEmail) || subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => sub && empEmail.includes(sub));
           });
         }
       } catch (e) {
@@ -1013,7 +1120,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       console.error('[Approval] Error fetching approval records:', err);
     }
     setLoading(false);
-  }, [userWorkEmail, topNavEmail, userName, isSuperAdminMode, companies.length]);
+  }, [currentUser, userWorkEmail, topNavEmail, userName]);
 
   useEffect(() => {
     refreshAllData();
@@ -1021,23 +1128,29 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
   // Effect to handle automatic dropdown opening and focusing
   useEffect(() => {
-      const handleClickOutside = (event) => {
-          if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(event.target)) {
-              setEmpDropdownOpen(false);
-          }
-      };
-      if (empDropdownOpen) {
-          document.addEventListener('mousedown', handleClickOutside);
-      }
-      return () => {
-          document.removeEventListener('mousedown', handleClickOutside);
-      };
-  }, [empDropdownOpen]);
-
-  useEffect(() => {
       if (showFilterAlert && employeeDropdownRef.current) {
+          // Temporarily add a highlight to draw attention
           employeeDropdownRef.current.classList.add('ring-2', 'ring-red-400', 'ring-offset-1');
           
+          // Focus the dropdown so it's ready for interaction
+          employeeDropdownRef.current.focus();
+
+          // Try to programmatically open the dropdown (standard HTML select)
+          try {
+             // In standard HTML, you cannot reliably trigger the visual drop-down to open programmatically
+             // via JS for security/UX reasons across all browsers, but focusing it and simulating a click helps in some.
+             employeeDropdownRef.current.click();
+             
+             // Alternatively, dispatching events sometimes helps on specific browser implementations
+             const event = new MouseEvent('mousedown', {
+                 view: window,
+                 bubbles: true,
+                 cancelable: true
+             });
+             employeeDropdownRef.current.dispatchEvent(event);
+          } catch(e) {}
+          
+          // Remove the highlight after a short delay
           const timer = setTimeout(() => {
               if (employeeDropdownRef.current) {
                   employeeDropdownRef.current.classList.remove('ring-2', 'ring-red-400', 'ring-offset-1');
@@ -1059,49 +1172,36 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const totalDays = new Date(year, month + 1, 0).getDate();
   const today = new Date();
 
-  // Filter Team Members berdasarkan Company (Super Admin)
-  const filteredTeamMembers = useMemo(() => {
-    if (!isSuperAdminMode || !selectedCompany) return teamMembers;
-    const compObj = companies.find(c => getPropCaseInsensitive(c, ['CompanyUID', 'companyuid', 'id', 'uid']) === selectedCompany);
-    const compName = compObj ? getPropCaseInsensitive(compObj, ['Company Name', 'company_name', 'name'], '').toLowerCase().trim() : '';
-
-    return teamMembers.filter(m => {
-      return m.company === selectedCompany.toLowerCase() || m.company === compName;
-    });
-  }, [teamMembers, selectedCompany, isSuperAdminMode, companies]);
-
-  // Dropdown search filter
-  const dropdownFilteredMembers = useMemo(() => {
-    if (!empSearchQuery) return filteredTeamMembers;
-    const q = empSearchQuery.toLowerCase();
-    return filteredTeamMembers.filter(m => m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q));
-  }, [filteredTeamMembers, empSearchQuery]);
+  const selectedMemberObj = useMemo(() => {
+    if (!selectedEmployee || selectedEmployee === 'all') return null;
+    return teamMembers.find(m => m.email.toLowerCase() === selectedEmployee.toLowerCase()) || null;
+  }, [selectedEmployee, teamMembers]);
 
   const employeeSummary = useMemo(() => {
     if (!selectedEmployee || selectedEmployee === 'all') {
       return { annual: '-', dayOff: '-', extraOff: '-' };
     }
-    const profile = filteredTeamMembers.find(m => m.email.toLowerCase() === selectedEmployee.toLowerCase()) || {};
+    const profile = selectedMemberObj || {};
     return {
        annual: profile.annual_leave_balance !== undefined && profile.annual_leave_balance !== '' ? profile.annual_leave_balance : '0',
        dayOff: profile.day_off_payment_balance !== undefined ? profile.day_off_payment_balance : '0',
        extraOff: profile.extra_off_balance !== undefined ? profile.extra_off_balance : '0'
     };
-  }, [selectedEmployee, filteredTeamMembers]);
+  }, [selectedEmployee, selectedMemberObj]);
 
   const filteredScheduleRecords = useMemo(() => {
     if (!selectedEmployee || selectedEmployee === 'all') {
-      if (isSuperAdminMode && selectedCompany) {
-         const memberEmails = filteredTeamMembers.map(m => m.email.toLowerCase());
-         return teamScheduleRecords.filter(item => {
-           const email = (getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email']) || '').toLowerCase();
-           return memberEmails.includes(email);
-         });
-      }
       return teamScheduleRecords;
     }
+    const target = selectedEmployee.toLowerCase();
+    const validKeys = new Set([
+      target,
+      ...(selectedMemberObj?.emails || []),
+      selectedMemberObj?.name ? normalizeText(selectedMemberObj.name) : '',
+      selectedMemberObj?.barcode ? normalizeText(selectedMemberObj.barcode) : ''
+    ].filter(Boolean));
     return teamScheduleRecords.filter(item => {
-      const email = (getPropCaseInsensitive(item, [
+      const email = normalizeText(getPropCaseInsensitive(item, [
         'Employee',
         'employee',
         'email',
@@ -1109,10 +1209,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
         'employee_email',
         'work_email',
         'Employee work email'
-      ]) || '').toLowerCase();
-      return email === selectedEmployee.toLowerCase();
+      ]));
+      return validKeys.has(email);
     });
-  }, [teamScheduleRecords, selectedEmployee, isSuperAdminMode, selectedCompany, filteredTeamMembers]);
+  }, [teamScheduleRecords, selectedEmployee, selectedMemberObj]);
 
   const { calendarDays } = useMemo(() => {
     const days = [];
@@ -1161,7 +1261,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
   const openSingleScheduleEdit = (emp, dateStr) => {
     const empEmail = (getPropCaseInsensitive(emp, ['Employee', 'employee', 'email', 'user_uid', 'employee_email']) || '').trim().toLowerCase();
-    const memberProfile = filteredTeamMembers.find(m => m.email.toLowerCase() === empEmail) || {};
+    const memberProfile = teamMembers.find(m => m.email.toLowerCase() === empEmail || (m.emails && m.emails.includes(empEmail))) || {};
     
     const empName = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'employee_name'], memberProfile.name || empEmail);
     const barcode = memberProfile.barcode || getPropCaseInsensitive(emp, ['barcode', 'Barcode', 'nik', 'nip', 'id', 'employee_id']) || '-';
@@ -1265,14 +1365,16 @@ export default function Approval({ currentUser: propCurrentUser }) {
       return;
     }
     
-    const empData = filteredTeamMembers.find(m => m.email.toLowerCase() === selectedEmployee.toLowerCase());
+    const empData = teamMembers.find(m => m.email.toLowerCase() === selectedEmployee.toLowerCase());
     if (!empData) return;
     setBulkEditEmployee(empData);
+
+    const validEmails = empData.emails || [selectedEmployee.toLowerCase()];
 
     const newBulkData = calendarDays.map(d => {
       const existing = d.teamData.find(r => {
          const rEmail = (getPropCaseInsensitive(r, ['Employee', 'employee', 'email', 'user_uid', 'employee_email']) || '').toLowerCase();
-         return rEmail === selectedEmployee.toLowerCase();
+         return rEmail === selectedEmployee.toLowerCase() || validEmails.includes(rEmail);
       });
       
       const defaultShift = existing ? getPropCaseInsensitive(existing, ['shift', 'jam kerja'], 'M9') : 'M9';
@@ -1352,6 +1454,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
     
     const isLeave = item._category === 'Leave';
 
+    // Get formatted date strings
     let dateStr = '';
     if (isLeave) {
         const fromDateRaw = getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date']);
@@ -1387,6 +1490,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       </div>
     `;
 
+    // Only force "Leave Request" as subject if it's a leave request, otherwise default behavior
     const subjectTitle = isLeave ? `Leave Request - ${newStatus}` : `[${newStatus}] ${item._category} Request - ${empName}`;
 
     try {
@@ -1399,7 +1503,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
           subject: subjectTitle,
           body: emailHtml,
           htmlBody: emailHtml,
-          fromEmail: actualUserWorkEmail || topNavEmail || userWorkEmail
+          fromEmail: actualUserWorkEmail || topNavEmail || userWorkEmail // Use the correct user email as the sender
         })
       });
     } catch (e) {
@@ -2035,8 +2139,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
     if (selectedEmployee && selectedEmployee !== 'all') {
       const target = selectedEmployee.toLowerCase();
+      const validKeys = new Set([
+        target,
+        ...(selectedMemberObj?.emails || []),
+        selectedMemberObj?.name ? normalizeText(selectedMemberObj.name) : '',
+        selectedMemberObj?.barcode ? normalizeText(selectedMemberObj.barcode) : ''
+      ].filter(Boolean));
       list = list.filter(item => {
-        const empEmail = (getPropCaseInsensitive(item, [
+        const empEmail = normalizeText(getPropCaseInsensitive(item, [
           'Employee',
           'employee',
           'email',
@@ -2044,8 +2154,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
           'employee_email',
           'work_email',
           'Employee work email'
-        ]) || '').toLowerCase();
-        return empEmail === target;
+        ]));
+        return validKeys.has(empEmail);
       });
     }
 
@@ -2054,7 +2164,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'Time', 'time', 'created_at'])) || new Date(0);
       return dtB.getTime() - dtA.getTime();
     });
-  }, [activeCategoryList, activeCategoryTab, statusTab, selectedEmployee]);
+  }, [activeCategoryList, activeCategoryTab, statusTab, selectedEmployee, selectedMemberObj]);
 
   const pendingStatusCount = activeCategoryList.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   const approvedStatusCount = activeCategoryList.filter(r => isApprovedStatus(getRowStatus(r))).length;
@@ -2093,24 +2203,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
             </button>
           </div>
         </div>
-
-        {isSuperAdminMode && companies.length > 0 && (
-          <div className="px-4 py-3 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
-             <span className="text-xs font-bold text-indigo-700">Filter By Company (Super Admin):</span>
-             <select 
-                value={selectedCompany} 
-                onChange={(e) => setSelectedCompany(e.target.value)}
-                className="ml-2 px-3 py-1.5 text-xs text-indigo-900 bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-xs"
-             >
-                <option value="">-- All Companies --</option>
-                {companies.map(c => {
-                   const uid = getPropCaseInsensitive(c, ['CompanyUID', 'companyuid', 'id', 'uid']);
-                   const name = getPropCaseInsensitive(c, ['Company Name', 'company_name', 'name'], 'Company');
-                   return <option key={uid} value={uid}>{name}</option>;
-                })}
-             </select>
-          </div>
-        )}
 
         <div className="p-4 sm:px-5 sm:py-4 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100">
           
@@ -2160,97 +2252,34 @@ export default function Approval({ currentUser: propCurrentUser }) {
             )}
           </div>
 
-          <div className="relative w-full sm:w-[250px] shrink-0" ref={employeeDropdownRef}>
+          <div className="relative w-full sm:w-[200px] shrink-0">
             {showFilterAlert && (
                <div className="absolute -top-10 left-0 right-0 bg-red-100 text-red-700 text-[10px] font-bold py-1 px-2 rounded shadow-sm text-center animate-bounce z-10 whitespace-nowrap">
                   {t.errFilterFirst}
                </div>
             )}
-            
-            {/* Custom Dropdown for Employees with Photos */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setEmpDropdownOpen(!empDropdownOpen)}
-                className="w-full text-left bg-white border border-gray-200 rounded-xl text-xs text-gray-700 px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-sm hover:bg-gray-50 transition flex items-center justify-between"
-              >
-                {(() => {
-                  if (!selectedEmployee || selectedEmployee === 'all') {
-                    return <span className="font-semibold text-gray-600">{t.empFilterAll}</span>;
-                  }
-                  const emp = filteredTeamMembers.find(e => getPropCaseInsensitive(e, ['email', 'email address', 'user_uid'], '') === selectedEmployee);
-                  if (!emp) return <span>{selectedEmployee}</span>;
-                  
-                  const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Unknown');
-                  const photo = getPropCaseInsensitive(emp, ['link', 'Link', 'photo', 'avatar'], 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png');
-                  
-                  return (
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      <img src={photo} alt="" className="w-5 h-5 rounded-full object-cover shrink-0 bg-gray-100 border border-gray-200" onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }} />
-                      <span className="truncate font-semibold text-gray-800">{name}</span>
-                    </div>
-                  );
-                })()}
-                <svg className="w-4 h-4 text-gray-400 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-                </svg>
-              </button>
-              
-              {empDropdownOpen && (
-                <div className="absolute left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-xl z-50 py-1 divide-y divide-gray-50 animate-fadeIn">
-                  <div className="p-2 sticky top-0 bg-white border-b border-gray-100 z-10" onClick={(e) => e.stopPropagation()}>
-                    <input 
-                      type="text" 
-                      value={empSearchQuery}
-                      onChange={(e) => setEmpSearchQuery(e.target.value)}
-                      placeholder={t.empSearchPh} 
-                      className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none bg-gray-50"
-                    />
-                  </div>
-                  <div className="py-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedEmployee('all');
-                        setEmpDropdownOpen(false);
-                        setShowFilterAlert(false);
-                      }}
-                      className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-blue-50 transition border-b border-gray-50"
-                    >
-                      {t.empFilterAll}
-                    </button>
-                    {dropdownFilteredMembers.length === 0 ? (
-                      <div className="px-3 py-2 text-xs text-gray-400 text-center">{currentLang === 'id' ? 'Tidak ditemukan' : 'Not found'}</div>
-                    ) : (
-                      dropdownFilteredMembers.map((emp) => (
-                        <button 
-                          key={emp.email}
-                          type="button" 
-                          onClick={() => {
-                            setSelectedEmployee(emp.email);
-                            setEmpDropdownOpen(false);
-                            setShowFilterAlert(false);
-                          }}
-                          className="w-full px-3 py-2 flex items-center space-x-3 hover:bg-blue-50 text-left transition group border-b border-gray-50 last:border-b-0"
-                        >
-                          <img 
-                            src={emp.photo || 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'} 
-                            alt={emp.name} 
-                            className="w-8 h-8 rounded-full object-cover border border-gray-200 shrink-0 bg-gray-100" 
-                            onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-gray-800 group-hover:text-blue-600 truncate">{emp.name}</p>
-                            <p className="text-[10px] text-gray-400 truncate">{emp.jobTitle ? emp.jobTitle + ' • ' : ''}{emp.email}</p>
-                          </div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-            {/* End Custom Dropdown */}
+            <select
+              ref={employeeDropdownRef}
+              value={selectedEmployee}
+              onChange={(e) => {
+                 setSelectedEmployee(e.target.value);
+                 if (showFilterAlert) setShowFilterAlert(false);
+              }}
+              className="w-full pl-3.5 pr-8 py-1.5 text-[13px] font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm cursor-pointer transition relative z-0"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 0.75rem center',
+                backgroundSize: '1rem'
+              }}
+            >
+              <option value="all">{t.empFilterAll}</option>
+              {teamMembers.map((member) => (
+                <option key={member.email} value={member.email}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -2265,40 +2294,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 <th className="px-5 py-3.5 font-semibold text-center">{t.colAction}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
-              {loading ? (
-                <tr>
-                  <td colSpan="5" className="px-5 py-12 text-center text-gray-400">
-                    <div className="flex flex-col items-center justify-center">
-                      <svg className="w-8 h-8 animate-spin text-blue-500 mb-2" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                      </svg>
-                      <p className="text-xs">{t.loading}</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : displayList.length === 0 ? (
-                <tr>
-                  <td colSpan="5" className="px-5 py-12 text-center text-gray-400">
-                    <div className="flex flex-col items-center justify-center">
-                      <svg className="w-10 h-10 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <p className="font-semibold text-gray-600 text-sm">{t.noRequests}</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {t.noRecordsDesc}
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                displayList.map((item, idx) => {
+            {!loading && displayList.length > 0 && (
+              <tbody className="divide-y divide-gray-50">
+                {displayList.map((item, idx) => {
                   const employeeEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email'], '-');
                   const employeeName = getPropCaseInsensitive(
                     item, 
                     ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'], 
-                    teamMembers.find(m => m.email.toLowerCase() === employeeEmail.toLowerCase())?.name || employeeEmail
+                    teamMembers.find(m => m.email.toLowerCase() === employeeEmail.toLowerCase() || (m.emails && m.emails.includes(employeeEmail.toLowerCase())))?.name || employeeEmail
                   );
                   let reqType = getPropCaseInsensitive(
                     item, 
@@ -2425,11 +2428,31 @@ export default function Approval({ currentUser: propCurrentUser }) {
                       </td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
+                })}
+              </tbody>
+            )}
           </table>
         </div>
+
+        {loading ? (
+          <div className="px-5 py-12 text-center text-gray-400 w-full flex flex-col items-center justify-center">
+            <svg className="w-8 h-8 animate-spin text-blue-500 mb-2" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            <p className="text-xs">{t.loading}</p>
+          </div>
+        ) : displayList.length === 0 ? (
+          <div className="px-5 py-12 text-center text-gray-400 w-full flex flex-col items-center justify-center">
+            <svg className="w-10 h-10 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p className="font-semibold text-gray-600 text-sm">{t.noRequests}</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {t.noRecordsDesc}
+            </p>
+          </div>
+        ) : null}
       </div>
 
       
@@ -2447,7 +2470,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
               <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 break-words">
                 {selectedEmployee === 'all' 
                   ? t.calDescAll 
-                  : `${t.calDescOne} ${filteredTeamMembers.find(m => m.email === selectedEmployee)?.name || selectedEmployee}`}
+                  : `${t.calDescOne} ${teamMembers.find(m => m.email === selectedEmployee)?.name || selectedEmployee}`}
               </p>
             </div>
 
@@ -2506,7 +2529,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 if (d.teamData.length > 0) {
                   setTeamScheduleModalData({ date: d.dateToPass, records: d.teamData });
                 } else if (selectedEmployee && selectedEmployee !== 'all') {
-                  const empData = filteredTeamMembers.find(m => m.email.toLowerCase() === selectedEmployee.toLowerCase());
+                  const empData = teamMembers.find(m => m.email.toLowerCase() === selectedEmployee.toLowerCase());
                   if (empData) {
                     openSingleScheduleEdit({
                       Employee: empData.email,
