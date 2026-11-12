@@ -7,7 +7,7 @@ export default function TopNav({
   currentLang = 'en', 
   onLangChange = () => {}, 
   onOpenProfile = () => {},
-  approvalCount = 1,
+  approvalCount = 0,
   isSuperAdminMode = false,
   isSuperAdminEligible = false,
   onToggleSuperAdmin = () => {},
@@ -170,7 +170,15 @@ export default function TopNav({
     return false;
   };
 
-  const canShowApproval = checkDeptHead(currentUser);
+  const checkHrManagerActive = (user) => {
+    if (!user) return false;
+    const dept = getPropCaseInsensitiveTopNav(user, ['Department', 'department', 'dept'], '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const jobLevel = getPropCaseInsensitiveTopNav(user, ['Job Level', 'job_level', 'joblevel', 'level'], '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const status = getPropCaseInsensitiveTopNav(user, ['Status', 'status', 'Account Status', 'account_status'], '').replace(/\s+/g, ' ').trim().toLowerCase();
+    return (dept === 'human resources' || dept === 'human resource') && jobLevel === 'manager' && status === 'active';
+  };
+
+  const canShowApproval = checkDeptHead(currentUser) || checkHrManagerActive(currentUser);
 
   const handleLogout = async () => {
     try {

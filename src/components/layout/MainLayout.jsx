@@ -72,19 +72,69 @@ export default function MainLayout() {
     return isTrue;
   };
 
+  const normalizeText = (val) => String(val || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+  const getValidProp = (obj, targetNames, fallback = '') => {
+    if (!obj) return fallback;
+    const keys = Object.keys(obj);
+    for (const target of targetNames) {
+      const cleanTarget = target.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const foundKey = keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g, '') === cleanTarget);
+      if (foundKey && obj[foundKey] !== null && obj[foundKey] !== undefined) {
+        const val = String(obj[foundKey]).trim();
+        const lowerVal = val.toLowerCase();
+        if (val !== '' && lowerVal !== '-' && lowerVal !== 'null' && lowerVal !== 'undefined') {
+          return val;
+        }
+      }
+    }
+    return fallback;
+  };
+
+  const fetchAllRowsFromTable = async (tableName, maxRows = 10000) => {
+    const pageSize = 1000;
+    let allData = [];
+    let from = 0;
+    while (from < maxRows) {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      allData = allData.concat(data);
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    return allData;
+  };
+
   const checkDeptHead = (user) => {
     if (!user) return false;
     const rawVal = getCleanProp(user, ['department head', 'departmenthead', 'is department head']);
     return ['true', '1', 't', 'yes', 'y'].includes(String(rawVal).trim().toLowerCase());
   };
 
-  const checkIsApprovalEligible = (user) => {
-    return checkDeptHead(user);
+  const checkHrManagerProfile = (user) => {
+    if (!user) return false;
+    const dept = normalizeText(getValidProp(user, ['Department', 'department', 'dept', 'Dept'], ''));
+    const jobLevel = normalizeText(getValidProp(user, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], ''));
+    const status = normalizeText(getValidProp(user, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
+    return (dept === 'human resources' || dept === 'human resource') && jobLevel === 'manager' && status === 'active';
   };
 
-  const matchesLineManager = (record, targetEmail, targetName = '', extraKeys = []) => {
+  const checkIsApprovalEligible = (user) => {
+    return checkDeptHead(user) || checkHrManagerProfile(user);
+  };
+
+  const matchesLineManagerWorkEmail = (record, targetWorkEmail) => {
     if (!record) return false;
-    const mgrVal = getPropCaseInsensitive(record, [
+    const cleanTarget = normalizeText(targetWorkEmail);
+    if (!cleanTarget || cleanTarget === '-' || cleanTarget === 'null' || cleanTarget === 'undefined') {
+      return false;
+    }
+
+    const mgrCandidateKeys = [
       'Line Manager work email',
       'line_manager_work_email',
       'Line Manager Email',
@@ -108,35 +158,47 @@ export default function MainLayout() {
       'atasan_langsung',
       'Atasan Langsung',
       'approval_line_manager'
-    ], '').trim().toLowerCase();
-  
-    if (!mgrVal || mgrVal === '-' || mgrVal === 'null' || mgrVal === 'undefined') {
-      return false;
-    }
-  
-    const cleanMgrVal = mgrVal.replace(/<|>|\(|\)/g, ' ').trim();
-  
-    const allKeys = new Set([
-      (targetEmail || '').trim().toLowerCase(),
-      (targetName || '').trim().toLowerCase(),
-      (targetEmail || '').includes('@') ? (targetEmail || '').split('@')[0].trim().toLowerCase() : '',
-      ...extraKeys.map(k => (k || '').trim().toLowerCase())
-    ]);
-  
-    for (const key of allKeys) {
-      if (key && key.length >= 2) {
-        if (
-          cleanMgrVal === key ||
-          mgrVal === key ||
-          (key.includes('@') && cleanMgrVal.includes(key)) ||
-          (cleanMgrVal.includes('@') && key.includes(cleanMgrVal))
-        ) {
+    ];
+
+    const keys = Object.keys(record);
+    for (const cand of mgrCandidateKeys) {
+      const normalizedCand = cand.toLowerCase().replace(/[\s_-]/g, '');
+      const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedCand);
+      if (found && record[found] !== null && record[found] !== undefined) {
+        const rawVal = String(record[found]).trim();
+        const normVal = normalizeText(rawVal);
+        if (!normVal || normVal === '-' || normVal === 'null' || normVal === 'undefined') {
+          continue;
+        }
+        const tokens = normVal
+          .split(/[,;]+/)
+          .map(part => {
+            const angleMatch = part.match(/<([^>]+)>/);
+            return normalizeText(angleMatch ? angleMatch[1] : part);
+          })
+          .filter(v => v && v !== '-' && v !== 'null' && v !== 'undefined');
+
+        if (tokens.includes(cleanTarget)) {
           return true;
         }
       }
     }
-  
+
     return false;
+  };
+
+  const hasExplicitLineManager = (row) => {
+    if (!row) return false;
+    const val = getValidProp(row, [
+      'Line Manager work email', 'line_manager_work_email',
+      'Line Manager Email', 'line_manager_email',
+      'Line Manager', 'line_manager', 'Line_Manager', 'linemanager',
+      'manager_email', 'Manager Email', 'Manager', 'manager',
+      'Approver Email', 'approver_email', 'Approver', 'approver',
+      'Atasan Email', 'atasan_email', 'Atasan', 'atasan',
+      'atasan_langsung', 'Atasan Langsung', 'approval_line_manager'
+    ], '');
+    return Boolean(val);
   };
 
   const isPendingApprovalStatus = (status) => {
@@ -157,7 +219,7 @@ export default function MainLayout() {
       s.includes('menunggu')
     );
   };
-  
+
   const getRowStatus = (row) => {
     if (!row) return '';
     const candidateKeys = [
@@ -176,7 +238,7 @@ export default function MainLayout() {
       'attendance_status',
       'Attendance Status'
     ];
-  
+
     for (const k of candidateKeys) {
       const val = getPropCaseInsensitive(row, [k], '');
       if (val && val !== '-' && val !== 'null' && val !== 'undefined') {
@@ -185,38 +247,59 @@ export default function MainLayout() {
         }
       }
     }
-  
+
     for (const k of candidateKeys) {
       const val = getPropCaseInsensitive(row, [k], '');
       if (val && val !== '-' && val !== 'null' && val !== 'undefined') {
         return val;
       }
     }
-  
+
     return '';
   };
 
   const fetchApprovalCount = async (user) => {
     if (!user) return;
 
-    if (!checkIsApprovalEligible(user)) {
-      setApprovalCount(0);
-      return;
-    }
-
     try {
-      
+      const [dirRes, compRes, lvRes, attRes] = await Promise.allSettled([
+        fetchAllRowsFromTable('employee_directory', 10000),
+        fetchAllRowsFromTable('company', 2000),
+        fetchAllRowsFromTable('leave_requests', 10000),
+        fetchAllRowsFromTable('attendance', 10000)
+      ]);
+
+      const rawDirEmployees = dirRes.status === 'fulfilled' && Array.isArray(dirRes.value) ? dirRes.value : [];
+      const rawCompanies = compRes.status === 'fulfilled' && Array.isArray(compRes.value) ? compRes.value : [];
+      const rawLeaves = lvRes.status === 'fulfilled' && Array.isArray(lvRes.value) ? lvRes.value : [];
+      let rawAttendance = attRes.status === 'fulfilled' && Array.isArray(attRes.value) ? [...attRes.value] : [];
+
+      try {
+        const { data: pendingAttRows } = await supabase
+          .from('attendance')
+          .select('*')
+          .ilike('Status', '%Pending%')
+          .limit(1000);
+
+        if (pendingAttRows && pendingAttRows.length > 0) {
+          const existingIds = new Set(rawAttendance.map(r => r.id ?? `${r.Employee}_${r.Date}_${r.Status}`));
+          pendingAttRows.forEach(r => {
+            const rowKey = r.id ?? `${r.Employee}_${r.Date}_${r.Status}`;
+            if (!existingIds.has(rowKey)) {
+              rawAttendance.unshift(r);
+              existingIds.add(rowKey);
+            }
+          });
+        }
+      } catch (e) {}
+
       const userWorkEmail = (
-        getCleanProp(user, [
+        getValidProp(user, [
           'Employee work email',
           'employee_work_email',
           'work_email',
           'work email',
-          'Work Email',
-          'email',
-          'Email',
-          'user_uid',
-          'USER_UID'
+          'Work Email'
         ]) || ''
       ).trim().toLowerCase();
 
@@ -229,165 +312,278 @@ export default function MainLayout() {
         userWorkEmail ||
         ''
       ).trim().toLowerCase();
-      
-      const userNameRaw = getCleanProp(user, ['Name', 'name', 'nama', 'fullname', 'full_name'], userWorkEmail.split('@')[0] || 'Manager');
-      
-      let realWorkEmail = userWorkEmail || topNavEmail;
-      let realName = userNameRaw;
-      let subordinateEmails = [];
-      const employeeDirectoryMap = new Map();
-      
-      try {
-        const { data: dirData, error: dirErr } = await supabase
-          .from('employee_directory')
-          .select('*')
-          .limit(2500);
 
-        if (!dirErr && dirData) {
-          const cleanUserWorkEmail = (userWorkEmail || topNavEmail || '').trim().toLowerCase();
-          const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
+      const cleanLoginEmail = (topNavEmail || userWorkEmail || '').trim().toLowerCase();
+      const loginPrefix = cleanLoginEmail.includes('@') ? cleanLoginEmail.split('@')[0] : cleanLoginEmail;
+      const currentEmpId = normalizeText(getValidProp(user, ['Employee ID', 'employee_id', 'Barcode', 'barcode'], ''));
+      const userNameRaw = getValidProp(user, ['Name', 'name', 'nama', 'fullname', 'full_name'], '');
 
-          const myProfile = dirData.find(emp => {
-            const empEmail = (getCleanProp(emp, ['Email', 'email', 'user_uid']) || '').trim().toLowerCase();
-            const empWorkEmail = (getCleanProp(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
-            const empName = (getCleanProp(emp, ['Name', 'name', 'nama', 'fullname', 'full_name']) || '').trim().toLowerCase();
+      let effectiveWorkEmail = userWorkEmail;
+      let profileDept = normalizeText(getValidProp(user, ['Department', 'department', 'dept', 'Dept'], ''));
+      let profileJobLevel = normalizeText(getValidProp(user, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], ''));
+      let profileStatus = normalizeText(getValidProp(user, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
 
-            const empEmailPrefix = empEmail.includes('@') ? empEmail.split('@')[0] : empEmail;
-            const empWorkPrefix = empWorkEmail.includes('@') ? empWorkEmail.split('@')[0] : empWorkEmail;
+      const companyCandidateKeys = [
+        'Company', 'company', 'Company Name', 'company_name', 'companyname',
+        'CompanyUID', 'companyuid', 'company_uid', 'company_id', 'Company Code', 'company_code'
+      ];
+      const compLookupKeys = [
+        'CompanyUID', 'companyuid', 'Company UID', 'company_uid',
+        'Company ID', 'company_id', 'Company Code', 'company_code',
+        'id', 'uid', 'Company Name', 'company_name', 'CompanyName',
+        'Company', 'company', 'name', 'Name', 'Nama Perusahaan'
+      ];
+      let profileCompany = getValidProp(user, companyCandidateKeys, '').replace(/\s+/g, ' ').trim();
 
-            if (cleanUserWorkEmail) {
-              if (empEmail === cleanUserWorkEmail || empWorkEmail === cleanUserWorkEmail) return true;
-              if (userPrefix && (empEmailPrefix === userPrefix || empWorkPrefix === userPrefix)) return true;
-            }
-            if (userNameRaw && empName === userNameRaw.toLowerCase()) return true;
-            return false;
+      const myProfile = rawDirEmployees.find(emp => {
+        const empEmail = (getValidProp(emp, ['Email', 'email', 'Email Address', 'email_address', 'user_uid']) || '').trim().toLowerCase();
+        const empWorkEmail = (getValidProp(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
+        const empName = normalizeText(getValidProp(emp, ['Name', 'name', 'nama', 'fullname', 'full_name']));
+        const empId = normalizeText(getValidProp(emp, ['Employee ID', 'employee_id', 'Barcode', 'barcode']));
+
+        const empEmailPrefix = empEmail.includes('@') ? empEmail.split('@')[0] : empEmail;
+        const empWorkPrefix = empWorkEmail.includes('@') ? empWorkEmail.split('@')[0] : empWorkEmail;
+
+        if (cleanLoginEmail) {
+          if (empEmail === cleanLoginEmail || empWorkEmail === cleanLoginEmail) return true;
+          if (loginPrefix && (empEmailPrefix === loginPrefix || empWorkPrefix === loginPrefix)) return true;
+        }
+        if (currentEmpId && empId && empId === currentEmpId) return true;
+        if (userNameRaw && empName === normalizeText(userNameRaw)) return true;
+        return false;
+      });
+
+      if (myProfile) {
+        const foundWorkEmail = getValidProp(myProfile, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']).trim().toLowerCase();
+        effectiveWorkEmail = foundWorkEmail || '';
+
+        const foundDept = normalizeText(getValidProp(myProfile, ['Department', 'department', 'dept', 'Dept'], ''));
+        if (foundDept) profileDept = foundDept;
+
+        const foundJobLevel = normalizeText(getValidProp(myProfile, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], ''));
+        if (foundJobLevel) profileJobLevel = foundJobLevel;
+
+        const foundStatus = normalizeText(getValidProp(myProfile, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
+        if (foundStatus) profileStatus = foundStatus;
+
+        const foundCompany = getValidProp(myProfile, companyCandidateKeys, '').replace(/\s+/g, ' ').trim();
+        if (foundCompany) profileCompany = foundCompany;
+      }
+
+      const cleanEffectiveWorkEmail = normalizeText(effectiveWorkEmail);
+      const hasValidWorkEmail = Boolean(
+        cleanEffectiveWorkEmail &&
+        cleanEffectiveWorkEmail !== '-' &&
+        cleanEffectiveWorkEmail !== 'null' &&
+        cleanEffectiveWorkEmail !== 'undefined'
+      );
+
+      const userCompanyKeys = new Set();
+      if (profileCompany && profileCompany !== '-') {
+        const targetNorm = normalizeText(profileCompany);
+        userCompanyKeys.add(targetNorm);
+        const matchedComp = rawCompanies.find(c =>
+          compLookupKeys.some(k => {
+            const val = normalizeText(getValidProp(c, [k], ''));
+            return val && val === targetNorm;
+          })
+        );
+        if (matchedComp) {
+          compLookupKeys.forEach(k => {
+            const val = normalizeText(getValidProp(matchedComp, [k], ''));
+            if (val) userCompanyKeys.add(val);
           });
+        }
+      }
 
-          if (myProfile) {
-            const foundWorkEmail = getCleanProp(myProfile, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']).trim().toLowerCase();
-            if (foundWorkEmail) realWorkEmail = foundWorkEmail;
+      const isHrDept = profileDept === 'human resources' || profileDept === 'human resource';
+      const isManagerJobLevel = profileJobLevel === 'manager';
+      const isStatusActive = profileStatus === 'active';
+      const isHrManagerActive = isHrDept && isManagerJobLevel && isStatusActive && userCompanyKeys.size > 0;
 
-            const foundName = getCleanProp(myProfile, ['Name', 'name', 'nama', 'fullname', 'full_name']);
-            if (foundName) realName = foundName;
+      if (!checkDeptHead(myProfile || user) && !isHrManagerActive) {
+        setApprovalCount(0);
+        return;
+      }
+
+      const getRowCompanyValues = (obj) => {
+        if (!obj) return [];
+        const vals = [];
+        const keys = Object.keys(obj);
+        for (const cand of companyCandidateKeys) {
+          const normalizedCand = cand.toLowerCase().replace(/[\s_-]/g, '');
+          const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedCand);
+          if (found && obj[found] !== null && obj[found] !== undefined) {
+            const normVal = normalizeText(obj[found]);
+            if (normVal && normVal !== '-' && normVal !== 'null' && normVal !== 'undefined') {
+              vals.push(normVal);
+            }
           }
-
-          const cleanRealWorkEmail = (realWorkEmail || '').trim().toLowerCase();
-          const realPrefix = cleanRealWorkEmail.includes('@') ? cleanRealWorkEmail.split('@')[0] : cleanRealWorkEmail;
-
-          const managerKeys = Array.from(new Set([
-            userWorkEmail,
-            topNavEmail,
-            realWorkEmail,
-            userPrefix,
-            realPrefix,
-            userNameRaw.toLowerCase(),
-            realName.toLowerCase()
-          ])).filter(k => k && k.length >= 2);
-
-          const uniqueMap = new Map();
-          const subordinates = dirData.filter(row => matchesLineManager(row, realWorkEmail, realName, managerKeys));
-          
-          subordinates.forEach(emp => {
-            const email = (getCleanProp(emp, [
-              'Employee work email',
-              'employee_work_email',
-              'work_email',
-              'work email',
-              'Work Email',
-              'email',
-              'Email',
-              'user_uid'
-            ]) || '').trim().toLowerCase();
-
-            if (email) {
-              if (!uniqueMap.has(email)) {
-                uniqueMap.set(email, { email });
-              }
-            }
-          });
-
-          subordinateEmails = Array.from(uniqueMap.keys());
         }
-      } catch (err) {
-        console.warn("[MainLayout] Could not query employee_directory:", err);
-      }
+        return vals;
+      };
 
-      const cleanRealWorkEmail = (realWorkEmail || '').trim().toLowerCase();
-      const realPrefix = cleanRealWorkEmail.includes('@') ? cleanRealWorkEmail.split('@')[0] : cleanRealWorkEmail;
-      const cleanUserWorkEmail = (userWorkEmail || topNavEmail || '').trim().toLowerCase();
-      const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
+      const rowMatchesCompany = (obj) => {
+        if (!obj || userCompanyKeys.size === 0) return false;
+        const vals = getRowCompanyValues(obj);
+        return vals.some(v => userCompanyKeys.has(v));
+      };
 
-      const allManagerKeys = Array.from(new Set([
-        userWorkEmail,
-        topNavEmail,
-        realWorkEmail,
-        userPrefix,
-        realPrefix,
-        userNameRaw.toLowerCase(),
-        realName.toLowerCase()
-      ])).filter(k => k && k.length >= 2);
-
-      let pendingCount = 0;
-
-      const { data: leaveData } = await supabase.from('leave_requests').select('*').limit(3000);
-      if (leaveData) {
-          const myLeaves = leaveData.filter(row => {
-              const status = getRowStatus(row);
-              const isRelevant = isPendingApprovalStatus(status);
-              const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
-              const empVal = (getPropCaseInsensitive(row, [
-                'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
-                'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
-              ]) || '').trim().toLowerCase();
-              const isSelf = cleanUserWorkEmail && (empVal === cleanUserWorkEmail);
-              return isRelevant && hasDirectMgr && !isSelf;
-          });
-          pendingCount += myLeaves.length;
-      }
-      
-      let attData = [];
-      try {
-        const { data: defAtt, error: attErr } = await supabase.from('attendance').select('*').limit(3000);
-        if (!attErr && defAtt) {
-          attData = defAtt;
+      const rowBelongsToUserCompany = (obj, fallbackMatchFn) => {
+        if (!obj || userCompanyKeys.size === 0) return false;
+        const vals = getRowCompanyValues(obj);
+        if (vals.length > 0) {
+          return vals.some(v => userCompanyKeys.has(v));
         }
-      } catch (e) {
-        console.warn("Failed fetching attendance data:", e);
-      }
+        return typeof fallbackMatchFn === 'function' ? fallbackMatchFn(obj) : false;
+      };
 
-      try {
-        const { data: pendingAttRows } = await supabase.from('attendance').select('*').ilike('Status', '%Pending%').limit(1000);
-        if (pendingAttRows && pendingAttRows.length > 0) {
-          const existingIds = new Set(attData.map(r => r.id ?? `${r.Employee}_${r.Date}_${r.Status}`));
-          pendingAttRows.forEach(r => {
-            const rowKey = r.id ?? `${r.Employee}_${r.Date}_${r.Status}`;
-            if (!existingIds.has(rowKey)) {
-              attData.unshift(r);
-              existingIds.add(rowKey);
-            }
-          });
+      const activeDirEmailSet = new Set();
+      const activeDirIdentifierSet = new Set();
+      const nonActiveDirIdentifierSet = new Set();
+
+      rawDirEmployees.forEach(emp => {
+        const statusRaw = normalizeText(getValidProp(emp, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
+        const isEmpActive = statusRaw === 'active';
+
+        const wMail = (getValidProp(emp, ['Employee work email', 'employee_work_email', 'work_email', 'work email', 'Work Email']) || '').trim().toLowerCase();
+        const pMail = (getValidProp(emp, ['email', 'Email', 'Email Address', 'email_address', 'user_uid']) || '').trim().toLowerCase();
+        const bCode = normalizeText(getValidProp(emp, ['Barcode', 'barcode', 'Employee ID', 'employee_id', 'id', 'nik', 'nip'], ''));
+        const eName = normalizeText(getValidProp(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], ''));
+
+        const keysToRegister = [wMail, pMail, bCode, eName].filter(Boolean);
+        if (isEmpActive) {
+          if (wMail) activeDirEmailSet.add(wMail);
+          if (pMail) activeDirEmailSet.add(pMail);
+          keysToRegister.forEach(k => activeDirIdentifierSet.add(k));
+        } else {
+          keysToRegister.forEach(k => nonActiveDirIdentifierSet.add(k));
         }
-      } catch (e) {}
-      
-      if (attData && attData.length > 0) {
-          const myAttendance = attData.filter(row => {
-              const status = getRowStatus(row);
-              const isRelevant = isPendingApprovalStatus(status);
-              const empEmail = (getPropCaseInsensitive(row, [
-                'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
-                'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
-              ]) || '').trim().toLowerCase();
-              const hasDirectMgr = 
-                matchesLineManager(row, realWorkEmail, realName, allManagerKeys) ||
-                (empEmail && subordinateEmails.includes(empEmail)) ||
-                (empEmail && subordinateEmails.some(sub => sub && (sub === empEmail || empEmail.includes(sub) || sub.includes(empEmail))));
-              return isRelevant && hasDirectMgr;
-          });
-          pendingCount += myAttendance.length;
-      }
+      });
 
-      setApprovalCount(pendingCount);
+      const isRowEmployeeActive = (row) => {
+        if (rawDirEmployees.length === 0) return true;
+        const empVal = normalizeText(getValidProp(row, [
+          'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
+          'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email',
+          'Barcode', 'barcode', 'Employee ID', 'employee_id'
+        ]));
+        const rowNameVal = normalizeText(getValidProp(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name']));
 
+        if (empVal && (activeDirEmailSet.has(empVal) || activeDirIdentifierSet.has(empVal))) return true;
+        if (rowNameVal && activeDirIdentifierSet.has(rowNameVal)) return true;
+
+        if (empVal && nonActiveDirIdentifierSet.has(empVal)) return false;
+        if (rowNameVal && nonActiveDirIdentifierSet.has(rowNameVal)) return false;
+
+        return false;
+      };
+
+      const subordinates = rawDirEmployees.filter(row => {
+        const statusRaw = normalizeText(getValidProp(row, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
+        if (statusRaw !== 'active') return false;
+
+        if (isHrManagerActive) {
+          return rowMatchesCompany(row);
+        }
+
+        if (!hasValidWorkEmail) return false;
+        if (!hasExplicitLineManager(row)) return false;
+        return matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail);
+      });
+
+      const subordinateEmailSet = new Set();
+      const subordinateIdentifiers = new Set();
+
+      subordinates.forEach(emp => {
+        const workMail = (getValidProp(emp, [
+          'Employee work email',
+          'employee_work_email',
+          'work_email',
+          'work email',
+          'Work Email'
+        ]) || '').trim().toLowerCase();
+
+        const personalMail = (getValidProp(emp, [
+          'email',
+          'Email',
+          'Email Address',
+          'user_uid'
+        ]) || '').trim().toLowerCase();
+
+        const barcodeVal = (getValidProp(emp, ['Barcode', 'barcode', 'Employee ID', 'employee_id', 'id', 'nik', 'nip']) || '').trim();
+        const name = getValidProp(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], '');
+        const empAllEmails = Array.from(new Set([workMail, personalMail, barcodeVal.toLowerCase()].filter(Boolean)));
+
+        empAllEmails.forEach(m => {
+          subordinateEmailSet.add(m);
+          subordinateIdentifiers.add(m);
+        });
+        if (name) subordinateIdentifiers.add(normalizeText(name));
+        if (barcodeVal) subordinateIdentifiers.add(normalizeText(barcodeVal));
+      });
+
+      const matchesScopedEmployee = (row) => {
+        const empVal = normalizeText(getValidProp(row, [
+          'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
+          'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email',
+          'Barcode', 'barcode', 'Employee ID', 'employee_id'
+        ]));
+        const rowNameVal = normalizeText(getValidProp(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name']));
+        if (empVal && (subordinateEmailSet.has(empVal) || subordinateIdentifiers.has(empVal))) return true;
+        if (rowNameVal && subordinateIdentifiers.has(rowNameVal)) return true;
+        return false;
+      };
+
+      const pendingLeaves = rawLeaves.filter(row => {
+        const status = getRowStatus(row);
+        if (!isPendingApprovalStatus(status)) return false;
+        if (!isRowEmployeeActive(row)) return false;
+
+        if (isHrManagerActive) {
+          return rowBelongsToUserCompany(row, matchesScopedEmployee);
+        }
+
+        if (!hasValidWorkEmail) return false;
+        const empVal = normalizeText(getValidProp(row, [
+          'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
+          'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email',
+          'Barcode', 'barcode', 'Employee ID', 'employee_id'
+        ]));
+        const isSelf = empVal && (empVal === cleanEffectiveWorkEmail || (cleanLoginEmail && empVal === cleanLoginEmail));
+        if (isSelf) return false;
+
+        if (hasExplicitLineManager(row)) {
+          return matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail);
+        }
+        return matchesScopedEmployee(row);
+      });
+
+      const pendingAttendance = rawAttendance.filter(row => {
+        const status = getRowStatus(row);
+        if (!isPendingApprovalStatus(status)) return false;
+        if (!isRowEmployeeActive(row)) return false;
+
+        if (isHrManagerActive) {
+          return rowBelongsToUserCompany(row, matchesScopedEmployee);
+        }
+
+        if (!hasValidWorkEmail) return false;
+        const empEmail = normalizeText(getValidProp(row, [
+          'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
+          'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email',
+          'Barcode', 'barcode', 'Employee ID', 'employee_id'
+        ]));
+        const isSelf = empEmail && (empEmail === cleanEffectiveWorkEmail || (cleanLoginEmail && empEmail === cleanLoginEmail));
+        if (isSelf) return false;
+
+        if (hasExplicitLineManager(row)) {
+          return matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail);
+        }
+        return matchesScopedEmployee(row);
+      });
+
+      setApprovalCount(pendingLeaves.length + pendingAttendance.length);
     } catch (error) {
       console.warn("Error calculating approval count from database:", error);
     }
@@ -415,8 +611,8 @@ export default function MainLayout() {
       if (emailToMatch) {
         try {
           for (const tbl of TABLE_EMPLOYEES) {
-            const { data, error } = await supabase.from(tbl).select('*').limit(200);
-            if (!error && data && data.length > 0) {
+            const data = await fetchAllRowsFromTable(tbl, 10000);
+            if (data && data.length > 0) {
               const matched = data.find(row => {
                 const rowEmail = String(getCleanProp(row, ['email', 'email address', 'user_uid']) || '').trim().toLowerCase();
                 return rowEmail === emailToMatch;
@@ -866,7 +1062,7 @@ export default function MainLayout() {
           </div>
         </div>
 
-        <Outlet context={{ currentUser, currentLang, isSuperAdminMode }} />
+        <Outlet context={{ currentUser, currentLang, isSuperAdminMode, onApprovalCountChange: setApprovalCount }} />
 
       </main>
       
