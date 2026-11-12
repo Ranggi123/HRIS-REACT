@@ -19,6 +19,92 @@ export default function TopNav({
   const [weatherText, setWeatherText] = useState('⛅ 29°C');
   const dropdownRef = useRef(null);
 
+  // --- Tambahan untuk Quick Switch Account (Super Admin) ---
+  const [companies, setCompanies] = useState([]);
+  const [allEmployees, setAllEmployees] = useState([]);
+  const [filteredEmployees, setFilteredEmployees] = useState([]);
+  const [selectedCompany, setSelectedCompany] = useState('');
+  const [selectedSwitchEmp, setSelectedSwitchEmp] = useState('');
+
+  const getPropCaseInsensitiveTopNav = (obj, candidateNames, fallback = '') => {
+    if (!obj) return fallback;
+    const keys = Object.keys(obj);
+    for (const cand of candidateNames) {
+      const normalizedCand = cand.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const found = keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedCand);
+      if (found && obj[found] !== null && obj[found] !== undefined && String(obj[found]).trim() !== '') {
+        return String(obj[found]).trim();
+      }
+    }
+    return fallback;
+  };
+
+  useEffect(() => {
+    if (isSuperAdminMode && dropdownOpen && allEmployees.length === 0) {
+      const fetchSuperAdminData = async () => {
+        try {
+          const { data: compData } = await supabase.from('company').select('*').limit(100);
+          if (compData) setCompanies(compData);
+
+          let empData = [];
+          const TABLE_EMPLOYEES = ['employee_directory', 'employee directory', 'Employee Directory', 'employees'];
+          for (const tbl of TABLE_EMPLOYEES) {
+            const { data, error } = await supabase.from(tbl).select('*').limit(1000);
+            if (!error && data && data.length > 0) {
+              empData = data;
+              break;
+            }
+          }
+          if (empData.length > 0) {
+            const sorted = empData.sort((a,b) => {
+              const nameA = getPropCaseInsensitiveTopNav(a, ['Name', 'name', 'nama', 'fullname', 'full_name'], '');
+              const nameB = getPropCaseInsensitiveTopNav(b, ['Name', 'name', 'nama', 'fullname', 'full_name'], '');
+              return nameA.localeCompare(nameB);
+            });
+            setAllEmployees(sorted);
+            setFilteredEmployees(sorted);
+          }
+        } catch (e) {
+          console.warn("Error fetching for super admin dropdown", e);
+        }
+      };
+      fetchSuperAdminData();
+    }
+  }, [isSuperAdminMode, dropdownOpen]);
+
+  const handleCompanyChange = (e) => {
+    const comp = e.target.value;
+    setSelectedCompany(comp);
+    if (!comp) {
+      setFilteredEmployees(allEmployees);
+    } else {
+      setFilteredEmployees(allEmployees.filter(emp => {
+        const empComp = getPropCaseInsensitiveTopNav(emp, ['Company', 'company', 'companyuid', 'company_uid', 'company_id'], '').toLowerCase().trim();
+        const compObj = companies.find(c => getPropCaseInsensitiveTopNav(c, ['CompanyUID', 'companyuid', 'id', 'uid']) === comp);
+        const compName = compObj ? getPropCaseInsensitiveTopNav(compObj, ['Company Name', 'company_name', 'name'], '').toLowerCase().trim() : '';
+        return empComp === comp.toLowerCase() || empComp === compName;
+      }));
+    }
+    setSelectedSwitchEmp('');
+  };
+
+  const handleDirectSwitch = (e) => {
+    const email = e.target.value;
+    setSelectedSwitchEmp(email);
+    if (!email) return;
+    
+    const emp = allEmployees.find(emp => getPropCaseInsensitiveTopNav(emp, ['email', 'email address', 'user_uid'], '') === email);
+    if (emp) {
+      const existingOriginal = localStorage.getItem('hris_original_super_admin');
+      if (!existingOriginal && currentUser) {
+        localStorage.setItem('hris_original_super_admin', JSON.stringify(currentUser));
+      }
+      localStorage.setItem('hris_session_data', JSON.stringify(emp));
+      window.location.reload();
+    }
+  };
+  // --------------------------------------------------------
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -238,21 +324,55 @@ export default function TopNav({
                     </div>
 
                     {isSuperAdminMode && (
-                      <button 
-                        type="button" 
-                        onClick={() => {
-                          setDropdownOpen(false);
-                          if (typeof onSwitchAccount === 'function') {
-                            onSwitchAccount();
-                          }
-                        }}
-                        className="mt-2.5 w-full text-center py-1.5 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
-                        </svg>
-                        {currentLang === 'id' ? 'Ganti Akun' : 'Switch Account'}
-                      </button>
+                      <>
+                        <button 
+                          type="button" 
+                          onClick={() => {
+                            setDropdownOpen(false);
+                            if (typeof onSwitchAccount === 'function') {
+                              onSwitchAccount();
+                            }
+                          }}
+                          className="mt-2.5 w-full text-center py-1.5 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                          </svg>
+                          {currentLang === 'id' ? 'Ganti Akun (Login)' : 'Switch Account (Login)'}
+                        </button>
+
+                        <div className="mt-2 flex flex-col gap-1.5 border-t border-indigo-100 pt-2">
+                          <span className="text-[10px] font-bold text-indigo-500 uppercase px-1">
+                            {currentLang === 'id' ? 'Ganti Akun Cepat' : 'Quick Switch'}
+                          </span>
+                          <select 
+                            value={selectedCompany} 
+                            onChange={handleCompanyChange}
+                            className="w-full px-2 py-1.5 text-xs text-gray-700 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                          >
+                            <option value="">{currentLang === 'id' ? '-- Semua Perusahaan --' : '-- All Companies --'}</option>
+                            {companies.map(c => {
+                              const uid = getPropCaseInsensitiveTopNav(c, ['CompanyUID', 'companyuid', 'id', 'uid']);
+                              const name = getPropCaseInsensitiveTopNav(c, ['Company Name', 'company_name', 'name'], 'Company');
+                              return <option key={uid} value={uid}>{name}</option>;
+                            })}
+                          </select>
+
+                          <select 
+                            value={selectedSwitchEmp} 
+                            onChange={handleDirectSwitch}
+                            className="w-full px-2 py-1.5 text-xs text-gray-700 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                          >
+                            <option value="">{currentLang === 'id' ? '-- Pilih Karyawan --' : '-- Select Employee --'}</option>
+                            {filteredEmployees.map(emp => {
+                              const email = getPropCaseInsensitiveTopNav(emp, ['email', 'email address', 'user_uid'], '');
+                              const name = getPropCaseInsensitiveTopNav(emp, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Unknown');
+                              if (!email) return null;
+                              return <option key={email} value={email}>{name}</option>;
+                            })}
+                          </select>
+                        </div>
+                      </>
                     )}
                   </div>
                 )}
