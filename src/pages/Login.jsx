@@ -304,6 +304,13 @@ export default function Login() {
   }, []);
 
   useEffect(() => {
+    const isOAuthReturn =
+      window.location.hash.includes('access_token') ||
+      window.location.search.includes('code') ||
+      sessionStorage.getItem('hris_oauth_active') === 'true';
+
+    if (isOAuthReturn) return;
+
     const existing = localStorage.getItem('hris_session_data');
     const isSuperAdminActive = localStorage.getItem('hris_super_admin_active') === 'true';
     
@@ -322,14 +329,25 @@ export default function Login() {
       return;
     }
 
+    let isHandled = false;
+
+    const processOAuthSession = async (session) => {
+      if (isHandled || !session?.user?.email) return;
+      isHandled = true;
+      sessionStorage.removeItem('hris_oauth_active');
+      await validateAndLoginOAuth(session.user.email);
+    };
+
+    // Tangkap sesi jika Supabase SDK sudah memproses callback sebelum listener terpasang (sering terjadi di browser HP)
+    supabase.auth.getSession().then(({ data }) => {
+      if (data?.session) {
+        processOAuthSession(data.session);
+      }
+    });
+
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // PERBAIKAN: Menangkap event INITIAL_SESSION dan SIGNED_IN
-      // Serta tidak memedulikan currentSession lokal yang mungkin nyangkut
       if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user?.email) {
-        sessionStorage.removeItem('hris_oauth_active');
-        
-        // Selalu proses email baru yang masuk dari Google
-        await validateAndLoginOAuth(session.user.email);
+        await processOAuthSession(session);
       }
     });
 
@@ -470,8 +488,8 @@ export default function Login() {
       );
       if (!target) throw new Error(`${t.emailNotRegistered} (${targetEmail})`);
 
-      const status = (target.STATUS || target.Status || target.status || '').toLowerCase();
-      if (status && status !== 'active') throw new Error(t.accountInactive);
+      const status = String(target.STATUS || target.Status || target.status || '').trim();
+      if (!status) throw new Error(t.accountInactive);
 
       if (isDeviceVerifiedForEmail(targetEmail)) {
         localStorage.setItem('hris_session_data', JSON.stringify(target));
@@ -558,13 +576,22 @@ export default function Login() {
   const handleGoogleLogin = async () => {
     setAlert(null);
     try {
-      // PERBAIKAN: Hapus sesi lama (cache email ranggiit yang nyangkut) sebelum mulai OAuth
-      await supabase.auth.signOut();
+      // Bersihkan token Supabase lokal (tanpa menghapus hris_original_super_admin) agar tidak auto-login ke akun lama di HP
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch (e) {}
+
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+          localStorage.removeItem(key);
+        }
+      });
+      localStorage.removeItem('hris_session_data');
 
       sessionStorage.setItem('hris_oauth_active', 'true');
-      let redirectTarget = window.location.origin;
+      let redirectTarget = `${window.location.origin}/login`;
       if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        redirectTarget = 'http://localhost:5173';
+        redirectTarget = 'http://localhost:5173/login';
       }
       
       const { error } = await supabase.auth.signInWithOAuth({
@@ -572,7 +599,8 @@ export default function Login() {
         options: {
           redirectTo: redirectTarget,
           queryParams: {
-            prompt: 'select_account'
+            prompt: 'select_account consent',
+            access_type: 'offline'
           }
         }
       });
@@ -591,14 +619,18 @@ export default function Login() {
       );
 
       if (!target) {
-        await supabase.auth.signOut();
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch (e) {}
         setAlert({ message: `${t.emailNotRegistered} (${email})`, type: 'error' });
         return;
       }
 
-      const status = (target.STATUS || target.Status || target.status || '').toLowerCase();
-      if (status && status !== 'active') {
-        await supabase.auth.signOut();
+      const status = String(target.STATUS || target.Status || target.status || '').trim();
+      if (!status) {
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch (e) {}
         setAlert({ message: t.accountInactive, type: 'error' });
         return;
       }
