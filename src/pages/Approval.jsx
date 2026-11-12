@@ -2291,37 +2291,41 @@ export default function Approval({ currentUser: propCurrentUser }) {
       </div>
 
       
-      {/* 1.5 Summary Balance Cards */}
-      <div className="mb-6 flex overflow-x-auto">
-        <div className="flex bg-gray-100 rounded-xl p-1 gap-1 shrink-0">
-          <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg bg-white shadow-sm border border-gray-200/50">
-             <span className="text-xs sm:text-[13px] font-bold text-gray-500">{t.sumAnn}</span>
-             <span className="text-xs sm:text-[13px] font-black text-blue-700">{employeeSummary.annual}</span>
-          </div>
-          <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg bg-white shadow-sm border border-gray-200/50">
-             <span className="text-xs sm:text-[13px] font-bold text-gray-500">{t.sumDop}</span>
-             <span className="text-xs sm:text-[13px] font-black text-blue-700">{employeeSummary.dayOff}</span>
-          </div>
-          <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-lg bg-white shadow-sm border border-gray-200/50">
-             <span className="text-xs sm:text-[13px] font-bold text-gray-500">{t.sumEo}</span>
-             <span className="text-xs sm:text-[13px] font-black text-blue-700">{employeeSummary.extraOff}</span>
-          </div>
-        </div>
-      </div>
+      
 
       {/* 2. Team Working Calendar Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 w-full">
         <div className="flex flex-row justify-between items-start sm:items-center pb-4 mb-4 border-b border-gray-100 gap-2 sm:gap-3">
-          <div className="flex-1 pr-2 sm:pr-3">
-            <h3 className="text-sm sm:text-lg font-bold text-gray-900 flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <svg className="w-5 h-5 text-blue-600 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-              {t.calTitle}
-            </h3>
-            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 break-words">
-              {selectedEmployee === 'all' 
-                ? t.calDescAll 
-                : `${t.calDescOne} ${teamMembers.find(m => m.email === selectedEmployee)?.name || selectedEmployee}`}
-            </p>
+          <div className="flex-1 pr-2 sm:pr-3 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div>
+              <h3 className="text-sm sm:text-lg font-bold text-gray-900 flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <svg className="w-5 h-5 text-blue-600 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                {t.calTitle}
+              </h3>
+              <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 break-words">
+                {selectedEmployee === 'all' 
+                  ? t.calDescAll 
+                  : `${t.calDescOne} ${teamMembers.find(m => m.email === selectedEmployee)?.name || selectedEmployee}`}
+              </p>
+            </div>
+            
+            {/* Inline Summary Balance Cards */}
+            {selectedEmployee !== 'all' && (
+              <div className="flex bg-gray-100 rounded-xl p-1 gap-1 shrink-0 self-start sm:self-auto mt-2 sm:mt-0">
+                <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white shadow-sm border border-gray-200/50">
+                  <span className="text-[11px] font-bold text-gray-500">{t.sumAnn}</span>
+                  <span className="text-[11px] font-black text-blue-700">{employeeSummary.annual}</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white shadow-sm border border-gray-200/50">
+                  <span className="text-[11px] font-bold text-gray-500">{t.sumDop}</span>
+                  <span className="text-[11px] font-black text-blue-700">{employeeSummary.dayOff}</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white shadow-sm border border-gray-200/50">
+                  <span className="text-[11px] font-bold text-gray-500">{t.sumEo}</span>
+                  <span className="text-[11px] font-black text-blue-700">{employeeSummary.extraOff}</span>
+                </div>
+              </div>
+            )}
           </div>
           
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
