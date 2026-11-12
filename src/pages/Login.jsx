@@ -170,6 +170,25 @@ export default function Login() {
     } catch (e) {}
   };
 
+  const findEmployeeByEmail = async (email) => {
+    const cleanEmail = String(email || '').trim();
+    if (!cleanEmail) return null;
+
+    const { data, error } = await supabase
+      .from('employee_directory')
+      .select('*')
+      .ilike('Email', cleanEmail)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error membaca employee_directory:', error.message);
+      return null;
+    }
+
+    return data;
+  };
+
   const fetchDirectory = async () => {
     for (const tbl of TABLE_EMPLOYEES) {
       try {
@@ -469,10 +488,7 @@ export default function Login() {
 
     if (isSuperAdminMode) {
       try {
-        const data = await fetchDirectory();
-        const target = data.find(row => 
-          Object.values(row).some(v => typeof v === 'string' && v.trim().toLowerCase() === targetEmail.toLowerCase())
-        );
+        const target = await findEmployeeByEmail(targetEmail);
         if (!target) throw new Error(`${t.emailNotRegistered} (${targetEmail})`);
 
         localStorage.setItem('hris_session_data', JSON.stringify(target));
@@ -487,10 +503,7 @@ export default function Login() {
     }
 
     try {
-      const data = await fetchDirectory();
-      const target = data.find(row => 
-        Object.values(row).some(v => typeof v === 'string' && v.trim().toLowerCase() === targetEmail.toLowerCase())
-      );
+      const target = await findEmployeeByEmail(targetEmail);
       if (!target) throw new Error(`${t.emailNotRegistered} (${targetEmail})`);
 
       const status = (target.STATUS || target.Status || target.status || '').toLowerCase();
@@ -557,10 +570,7 @@ export default function Login() {
 
       if (error) throw new Error(t.invalidOtp);
 
-      const data = await fetchDirectory();
-      const target = data.find(row => 
-        Object.values(row).some(v => typeof v === 'string' && v.trim().toLowerCase() === activeEmail.toLowerCase())
-      );
+      const target = await findEmployeeByEmail(activeEmail);
 
       if (target) {
         localStorage.setItem('hris_session_data', JSON.stringify(target));
@@ -603,10 +613,7 @@ export default function Login() {
 
   const validateAndLoginOAuth = async (email) => {
     try {
-      const data = await fetchDirectory();
-      const target = data.find(row => 
-        Object.values(row).some(v => typeof v === 'string' && v.trim().toLowerCase() === email.toLowerCase())
-      );
+      const target = await findEmployeeByEmail(email);
 
       if (!target) {
         await supabase.auth.signOut();
