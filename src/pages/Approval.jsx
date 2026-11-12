@@ -140,6 +140,43 @@ const getPropCaseInsensitive = (obj, candidateKeys, fallback = '') => {
   return fallback;
 };
 
+const getValidPropCaseInsensitive = (obj, candidateKeys, fallback = '') => {
+  if (!obj) return fallback;
+  const keys = Object.keys(obj);
+  for (const cand of candidateKeys) {
+    const normalizedCand = cand.toLowerCase().replace(/[\s_-]/g, '');
+    const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedCand);
+    if (found && obj[found] !== null && obj[found] !== undefined) {
+      const val = String(obj[found]).trim();
+      const lowerVal = val.toLowerCase();
+      if (val !== '' && lowerVal !== '-' && lowerVal !== 'null' && lowerVal !== 'undefined') {
+        return val;
+      }
+    }
+  }
+  return fallback;
+};
+
+const normalizeText = (val) => String(val || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+const fetchAllRows = async (tableName, maxRows = 10000) => {
+  const pageSize = 1000;
+  let allData = [];
+  let from = 0;
+  while (from < maxRows) {
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('*')
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return allData;
+};
+
 const resolveTableColumn = (knownCols, candidates) => {
   if (!knownCols || knownCols.length === 0) return candidates[0];
   for (const cand of candidates) {
@@ -716,36 +753,45 @@ export default function Approval({ currentUser: propCurrentUser }) {
         'CompanyUID',
         'companyuid',
         'company_uid',
-        'company_id'
+        'company_id',
+        'Company Code',
+        'company_code'
       ];
 
       const matchesUserCompany = (obj) => {
         if (!obj || userCompanyKeys.size === 0) return false;
-        const val = (getPropCaseInsensitive(obj, companyCandidateKeys, '') || '').trim().toLowerCase();
-        return Boolean(val) && userCompanyKeys.has(val);
+        const keys = Object.keys(obj);
+        for (const cand of companyCandidateKeys) {
+          const normalizedCand = cand.toLowerCase().replace(/[\s_-]/g, '');
+          const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedCand);
+          if (found && obj[found] !== null && obj[found] !== undefined) {
+            const normVal = normalizeText(obj[found]);
+            if (normVal && normVal !== '-' && normVal !== 'null' && userCompanyKeys.has(normVal)) {
+              return true;
+            }
+          }
+        }
+        return false;
       };
 
-      let profileDept = (getPropCaseInsensitive(currentUser, ['Department', 'department', 'dept', 'Dept'], '') || '').trim().toLowerCase();
-      let profileJobLevel = (getPropCaseInsensitive(currentUser, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], '') || '').trim().toLowerCase();
-      let profileAccountStatus = (getPropCaseInsensitive(currentUser, ['Account Status', 'account_status', 'accountstatus', 'Status', 'status', 'STATUS'], '') || '').trim().toLowerCase();
-      let profileCompany = (getPropCaseInsensitive(currentUser, companyCandidateKeys, '') || '').trim();
+      let profileDept = normalizeText(getValidPropCaseInsensitive(currentUser, ['Department', 'department', 'dept', 'Dept'], ''));
+      let profileJobLevel = normalizeText(getValidPropCaseInsensitive(currentUser, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], ''));
+      let profileStatus = normalizeText(getValidPropCaseInsensitive(currentUser, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
+      let profileCompany = getValidPropCaseInsensitive(currentUser, companyCandidateKeys, '').replace(/\s+/g, ' ').trim();
 
       try {
-        const { data: dirData, error: dirErr } = await supabase
-          .from('employee_directory')
-          .select('*')
-          .limit(2500);
+        const dirData = await fetchAllRows('employee_directory', 10000);
 
-        if (dirErr) {
-          console.warn("[Approval] Error fetching employee_directory:", dirErr.message);
-        } else if (dirData) {
+        if (dirData && dirData.length > 0) {
           const cleanUserWorkEmail = (userWorkEmail || topNavEmail || '').trim().toLowerCase();
           const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
+          const currentEmpId = normalizeText(getValidPropCaseInsensitive(currentUser, ['Employee ID', 'employee_id', 'Barcode', 'barcode'], ''));
 
           const myProfile = dirData.find(emp => {
-            const empEmail = (getPropCaseInsensitive(emp, ['Email', 'email', 'user_uid']) || '').trim().toLowerCase();
-            const empWorkEmail = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
-            const empName = (getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name']) || '').trim().toLowerCase();
+            const empEmail = (getValidPropCaseInsensitive(emp, ['Email', 'email', 'Email Address', 'email_address', 'user_uid']) || '').trim().toLowerCase();
+            const empWorkEmail = (getValidPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
+            const empName = normalizeText(getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name']));
+            const empId = normalizeText(getValidPropCaseInsensitive(emp, ['Employee ID', 'employee_id', 'Barcode', 'barcode']));
 
             const empEmailPrefix = empEmail.includes('@') ? empEmail.split('@')[0] : empEmail;
             const empWorkPrefix = empWorkEmail.includes('@') ? empWorkEmail.split('@')[0] : empWorkEmail;
@@ -754,56 +800,65 @@ export default function Approval({ currentUser: propCurrentUser }) {
               if (empEmail === cleanUserWorkEmail || empWorkEmail === cleanUserWorkEmail) return true;
               if (userPrefix && (empEmailPrefix === userPrefix || empWorkPrefix === userPrefix)) return true;
             }
-            if (userName && empName === userName.toLowerCase()) return true;
+            if (currentEmpId && empId && empId === currentEmpId) return true;
+            if (userName && empName === normalizeText(userName)) return true;
             return false;
           });
 
           if (myProfile) {
-            const foundWorkEmail = getPropCaseInsensitive(myProfile, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']).trim().toLowerCase();
+            const foundWorkEmail = getValidPropCaseInsensitive(myProfile, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']).trim().toLowerCase();
             if (foundWorkEmail) realWorkEmail = foundWorkEmail;
 
-            const foundName = getPropCaseInsensitive(myProfile, ['Name', 'name', 'nama', 'fullname', 'full_name']);
+            const foundName = getValidPropCaseInsensitive(myProfile, ['Name', 'name', 'nama', 'fullname', 'full_name']);
             if (foundName) realName = foundName;
 
-            const foundDept = getPropCaseInsensitive(myProfile, ['Department', 'department', 'dept', 'Dept'], '').trim().toLowerCase();
+            const foundDept = normalizeText(getValidPropCaseInsensitive(myProfile, ['Department', 'department', 'dept', 'Dept'], ''));
             if (foundDept) profileDept = foundDept;
 
-            const foundJobLevel = getPropCaseInsensitive(myProfile, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], '').trim().toLowerCase();
+            const foundJobLevel = normalizeText(getValidPropCaseInsensitive(myProfile, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], ''));
             if (foundJobLevel) profileJobLevel = foundJobLevel;
 
-            const foundAccountStatus = getPropCaseInsensitive(myProfile, ['Account Status', 'account_status', 'accountstatus', 'Status', 'status', 'STATUS'], '').trim().toLowerCase();
-            if (foundAccountStatus) profileAccountStatus = foundAccountStatus;
+            // "Account Status" merujuk pada kolom Status di employee_directory
+            const foundStatus = normalizeText(getValidPropCaseInsensitive(myProfile, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
+            if (foundStatus) profileStatus = foundStatus;
 
-            const foundCompany = getPropCaseInsensitive(myProfile, companyCandidateKeys, '').trim();
+            const foundCompany = getValidPropCaseInsensitive(myProfile, companyCandidateKeys, '').replace(/\s+/g, ' ').trim();
             if (foundCompany) profileCompany = foundCompany;
           }
 
-          if (profileCompany) {
-            userCompanyKeys.add(profileCompany.toLowerCase());
+          if (profileCompany && profileCompany !== '-') {
+            userCompanyKeys.add(normalizeText(profileCompany));
             try {
-              const { data: compData } = await supabase.from('company').select('*').limit(200);
+              const compData = await fetchAllRows('company', 2000);
               if (compData && compData.length > 0) {
+                const targetNorm = normalizeText(profileCompany);
+                const compLookupKeys = [
+                  'CompanyUID', 'companyuid', 'Company UID', 'company_uid',
+                  'Company ID', 'company_id', 'Company Code', 'company_code',
+                  'id', 'uid', 'Company Name', 'company_name', 'CompanyName',
+                  'Company', 'company', 'name', 'Name', 'Nama Perusahaan'
+                ];
                 const matchedComp = compData.find(c => {
-                  const uid = (getPropCaseInsensitive(c, ['CompanyUID', 'companyuid', 'id', 'uid'], '') || '').trim().toLowerCase();
-                  const cname = (getPropCaseInsensitive(c, ['Company Name', 'company_name', 'name'], '') || '').trim().toLowerCase();
-                  const target = profileCompany.toLowerCase();
-                  return (uid && uid === target) || (cname && cname === target);
+                  return compLookupKeys.some(k => {
+                    const val = normalizeText(getValidPropCaseInsensitive(c, [k], ''));
+                    return val && val === targetNorm;
+                  });
                 });
                 if (matchedComp) {
-                  const uid = (getPropCaseInsensitive(matchedComp, ['CompanyUID', 'companyuid', 'id', 'uid'], '') || '').trim().toLowerCase();
-                  const cname = (getPropCaseInsensitive(matchedComp, ['Company Name', 'company_name', 'name'], '') || '').trim().toLowerCase();
-                  if (uid) userCompanyKeys.add(uid);
-                  if (cname) userCompanyKeys.add(cname);
+                  compLookupKeys.forEach(k => {
+                    const val = normalizeText(getValidPropCaseInsensitive(matchedComp, [k], ''));
+                    if (val) userCompanyKeys.add(val);
+                  });
                 }
               }
             } catch (e) {}
           }
 
-          isHrManagerActive =
-            profileDept === 'human resources' &&
-            profileJobLevel === 'manager' &&
-            profileAccountStatus === 'active' &&
-            userCompanyKeys.size > 0;
+          const isHrDept = profileDept === 'human resources' || profileDept === 'human resource';
+          const isManagerJobLevel = profileJobLevel === 'manager';
+          const isStatusActive = profileStatus === 'active';
+
+          isHrManagerActive = isHrDept && isManagerJobLevel && isStatusActive && userCompanyKeys.size > 0;
 
           setActualUserWorkEmail(realWorkEmail);
           setActualUserName(realName);
@@ -822,13 +877,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
           ])).filter(k => k && k.length >= 2);
 
           dirData.forEach(emp => {
-            const email = (getPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Email', 'email']) || '').trim().toLowerCase();
-            const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
+            const email = (getValidPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Email', 'email']) || '').trim().toLowerCase();
+            const name = getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
             if (email) employeeDirectoryMap.set(email, name);
           });
 
           const subordinates = dirData.filter(row => {
-            const statusRaw = getPropCaseInsensitive(row, ['Account Status', 'account_status', 'status', 'Status', 'STATUS'], '').trim().toLowerCase();
+            const statusRaw = normalizeText(getValidPropCaseInsensitive(row, ['Status', 'status', 'STATUS', 'Account Status', 'account_status'], ''));
             const isStatusValid = statusRaw === 'active' || statusRaw === 'off-boarding' || statusRaw === 'off boarding';
             if (!isStatusValid) return false;
 
@@ -836,19 +891,17 @@ export default function Approval({ currentUser: propCurrentUser }) {
               return matchesUserCompany(row);
             }
 
-            const isManagerMatch = matchesLineManager(row, realWorkEmail, realName, managerKeys);
-            return isManagerMatch;
+            return matchesLineManager(row, realWorkEmail, realName, managerKeys);
           });
           
           let allHolidays = [];
           try {
-            const { data: hData } = await supabase.from('holiday_balance').select('*').limit(5000);
-            if (hData) allHolidays = hData;
+            allHolidays = await fetchAllRows('holiday_balance', 10000);
           } catch(e) {}
 
           const uniqueMap = new Map();
           subordinates.forEach(emp => {
-            const workMail = (getPropCaseInsensitive(emp, [
+            const workMail = (getValidPropCaseInsensitive(emp, [
               'Employee work email',
               'employee_work_email',
               'work_email',
@@ -856,16 +909,17 @@ export default function Approval({ currentUser: propCurrentUser }) {
               'Work Email'
             ]) || '').trim().toLowerCase();
 
-            const personalMail = (getPropCaseInsensitive(emp, [
+            const personalMail = (getValidPropCaseInsensitive(emp, [
               'email',
               'Email',
+              'Email Address',
               'user_uid'
             ]) || '').trim().toLowerCase();
 
             const email = workMail || personalMail;
             const empAllEmails = Array.from(new Set([workMail, personalMail].filter(Boolean)));
-            const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
-            const id = (getPropCaseInsensitive(emp, ['Employee ID', 'employee_id', 'id', 'Barcode', 'barcode', 'nik', 'nip']) || '').trim().toLowerCase();
+            const name = getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
+            const id = (getValidPropCaseInsensitive(emp, ['Employee ID', 'employee_id', 'id', 'Barcode', 'barcode', 'nik', 'nip']) || '').trim().toLowerCase();
 
             empAllEmails.forEach(m => {
               subordinateEmailSet.add(m);
@@ -879,12 +933,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 const validKeys = [...empAllEmails, name.trim().toLowerCase(), id].filter(Boolean);
                 
                 allHolidays.forEach(hRow => {
-                    const hStatus = getPropCaseInsensitive(hRow, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
+                    const hStatus = normalizeText(getValidPropCaseInsensitive(hRow, ['status', 'Status', 'STATUS'], ''));
                     if (hStatus === 'unused') {
-                        const hEmp = getPropCaseInsensitive(hRow, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
+                        const hEmp = normalizeText(getValidPropCaseInsensitive(hRow, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']));
                         if (validKeys.some(k => hEmp === k || hEmp.includes(k) || k.includes(hEmp))) {
-                            const typ = getPropCaseInsensitive(hRow, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
-                            let d = getPropCaseInsensitive(hRow, ['Days', 'days', 'Amount', 'amount', 'Total', 'total']);
+                            const typ = normalizeText(getValidPropCaseInsensitive(hRow, ['Type Holiday', 'type_holiday', 'Type', 'type'], ''));
+                            let d = getValidPropCaseInsensitive(hRow, ['Days', 'days', 'Amount', 'amount', 'Total', 'total']);
                             let val = (d && !isNaN(d)) ? parseFloat(d) : 1;
                             if (typ === 'day off payment') empDayOff += val;
                             else if (typ === 'extra off') empExtraOff += val;
@@ -896,15 +950,15 @@ export default function Approval({ currentUser: propCurrentUser }) {
                   email, 
                   emails: empAllEmails,
                   name,
-                  barcode: getPropCaseInsensitive(emp, ['Barcode', 'barcode', 'Employee ID', 'employee_id', 'id']) || '',
-                  standart_working_day: getPropCaseInsensitive(emp, ['Standart Working Day', 'standart_working_day', 'Standard Working Day', 'standard_working_day']) || 'BACKOFFICE52',
-                  annual_leave_balance: getPropCaseInsensitive(emp, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave']) || '0',
+                  barcode: getValidPropCaseInsensitive(emp, ['Barcode', 'barcode', 'Employee ID', 'employee_id', 'id']) || '',
+                  standart_working_day: getValidPropCaseInsensitive(emp, ['Standart Working Day', 'standart_working_day', 'Standard Working Day', 'standard_working_day']) || 'BACKOFFICE52',
+                  annual_leave_balance: getValidPropCaseInsensitive(emp, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave']) || '0',
                   day_off_payment_balance: empDayOff,
                   extra_off_balance: empExtraOff
                 });
               }
             }
-            if (name) subordinateIdentifiers.add(name.trim().toLowerCase());
+            if (name) subordinateIdentifiers.add(normalizeText(name));
             if (id) subordinateIdentifiers.add(id);
           });
 
@@ -932,30 +986,23 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
       let myLeaves = [];
       try {
-        const { data: lvData, error: lvError } = await supabase
-          .from('leave_requests')
-          .select('*')
-          .limit(3000);
-
-        if (lvError) {
-          console.warn("[Approval] Error fetching leave_requests:", lvError.message);
-        } else if (lvData) {
+        const lvData = await fetchAllRows('leave_requests', 10000);
+        if (lvData) {
           myLeaves = lvData
             .filter(row => {
               const status = getRowStatus(row);
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
               if (!isRelevant) return false;
 
-              const empVal = (getPropCaseInsensitive(row, [
+              const empVal = normalizeText(getValidPropCaseInsensitive(row, [
                 'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
                 'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
-              ]) || '').trim().toLowerCase();
+              ]));
 
               if (isHrManagerActive) {
                 return (
                   matchesUserCompany(row) ||
-                  (empVal && (subordinateEmailSet.has(empVal) || subordinateIdentifiers.has(empVal))) ||
-                  (empVal && subordinateEmails.some(sub => sub && (sub === empVal || empVal.includes(sub) || sub.includes(empVal))))
+                  (empVal && (subordinateEmailSet.has(empVal) || subordinateIdentifiers.has(empVal)))
                 );
               }
 
@@ -979,12 +1026,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
         let attData = [];
 
         try {
-          const { data: defAtt, error: attErr } = await supabase
-            .from('attendance')
-            .select('*')
-            .limit(3000);
-
-          if (!attErr && defAtt) {
+          const defAtt = await fetchAllRows('attendance', 10000);
+          if (defAtt) {
             attData = defAtt;
           }
         } catch (e) {
@@ -1017,16 +1060,15 @@ export default function Approval({ currentUser: propCurrentUser }) {
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
               if (!isRelevant) return false;
 
-              const empEmail = (getPropCaseInsensitive(row, [
+              const empEmail = normalizeText(getValidPropCaseInsensitive(row, [
                 'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
                 'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
-              ]) || '').trim().toLowerCase();
+              ]));
 
               if (isHrManagerActive) {
                 return (
                   matchesUserCompany(row) ||
-                  (empEmail && (subordinateEmailSet.has(empEmail) || subordinateIdentifiers.has(empEmail))) ||
-                  (empEmail && subordinateEmails.some(sub => sub && (sub === empEmail || empEmail.includes(sub) || sub.includes(empEmail))))
+                  (empEmail && (subordinateEmailSet.has(empEmail) || subordinateIdentifiers.has(empEmail)))
                 );
               }
 
@@ -1049,15 +1091,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
       let teamSched = [];
       try {
-        const { data: schedData, error: schedErr } = await supabase
-          .from('schedule')
-          .select('*')
-          .limit(5000);
-
-        if (!schedErr && schedData) {
+        const schedData = await fetchAllRows('schedule', 10000);
+        if (schedData) {
           teamSched = schedData.filter(row => {
-            const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email']) || '').trim().toLowerCase();
-            if (isHrManagerActive && matchesUserCompany(row)) return true;
+            const empEmail = normalizeText(getValidPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email']));
+            if (isHrManagerActive) {
+              return matchesUserCompany(row) || (empEmail && (subordinateEmailSet.has(empEmail) || subordinateIdentifiers.has(empEmail)));
+            }
             return subordinateEmailSet.has(empEmail) || subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => sub && empEmail.includes(sub));
           });
         }
@@ -1146,9 +1186,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
       return teamScheduleRecords;
     }
     const target = selectedEmployee.toLowerCase();
-    const validEmails = selectedMemberObj?.emails || [target];
+    const validKeys = new Set([
+      target,
+      ...(selectedMemberObj?.emails || []),
+      selectedMemberObj?.name ? normalizeText(selectedMemberObj.name) : '',
+      selectedMemberObj?.barcode ? normalizeText(selectedMemberObj.barcode) : ''
+    ].filter(Boolean));
     return teamScheduleRecords.filter(item => {
-      const email = (getPropCaseInsensitive(item, [
+      const email = normalizeText(getPropCaseInsensitive(item, [
         'Employee',
         'employee',
         'email',
@@ -1156,8 +1201,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
         'employee_email',
         'work_email',
         'Employee work email'
-      ]) || '').toLowerCase();
-      return email === target || validEmails.includes(email);
+      ]));
+      return validKeys.has(email);
     });
   }, [teamScheduleRecords, selectedEmployee, selectedMemberObj]);
 
@@ -2086,9 +2131,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
     if (selectedEmployee && selectedEmployee !== 'all') {
       const target = selectedEmployee.toLowerCase();
-      const validEmails = selectedMemberObj?.emails || [target];
+      const validKeys = new Set([
+        target,
+        ...(selectedMemberObj?.emails || []),
+        selectedMemberObj?.name ? normalizeText(selectedMemberObj.name) : '',
+        selectedMemberObj?.barcode ? normalizeText(selectedMemberObj.barcode) : ''
+      ].filter(Boolean));
       list = list.filter(item => {
-        const empEmail = (getPropCaseInsensitive(item, [
+        const empEmail = normalizeText(getPropCaseInsensitive(item, [
           'Employee',
           'employee',
           'email',
@@ -2096,8 +2146,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
           'employee_email',
           'work_email',
           'Employee work email'
-        ]) || '').toLowerCase();
-        return empEmail === target || validEmails.includes(empEmail);
+        ]));
+        return validKeys.has(empEmail);
       });
     }
 
@@ -2236,35 +2286,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 <th className="px-5 py-3.5 font-semibold text-center">{t.colAction}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
-              {loading ? (
-                <tr>
-                  <td colSpan="5" className="px-5 py-12 text-center text-gray-400">
-                    <div className="flex flex-col items-center justify-center">
-                      <svg className="w-8 h-8 animate-spin text-blue-500 mb-2" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                      </svg>
-                      <p className="text-xs">{t.loading}</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : displayList.length === 0 ? (
-                <tr>
-                  <td colSpan="5" className="px-5 py-12 text-center text-gray-400">
-                    <div className="flex flex-col items-center justify-center">
-                      <svg className="w-10 h-10 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <p className="font-semibold text-gray-600 text-sm">{t.noRequests}</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {t.noRecordsDesc}
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                displayList.map((item, idx) => {
+            {!loading && displayList.length > 0 && (
+              <tbody className="divide-y divide-gray-50">
+                {displayList.map((item, idx) => {
                   const employeeEmail = getPropCaseInsensitive(item, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email'], '-');
                   const employeeName = getPropCaseInsensitive(
                     item, 
@@ -2396,11 +2420,31 @@ export default function Approval({ currentUser: propCurrentUser }) {
                       </td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
+                })}
+              </tbody>
+            )}
           </table>
         </div>
+
+        {loading ? (
+          <div className="px-5 py-12 text-center text-gray-400 w-full flex flex-col items-center justify-center">
+            <svg className="w-8 h-8 animate-spin text-blue-500 mb-2" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            <p className="text-xs">{t.loading}</p>
+          </div>
+        ) : displayList.length === 0 ? (
+          <div className="px-5 py-12 text-center text-gray-400 w-full flex flex-col items-center justify-center">
+            <svg className="w-10 h-10 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p className="font-semibold text-gray-600 text-sm">{t.noRequests}</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {t.noRecordsDesc}
+            </p>
+          </div>
+        ) : null}
       </div>
 
       
