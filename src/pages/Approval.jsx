@@ -769,6 +769,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
             return isManagerMatch && isStatusValid;
           });
           
+          let allHolidays = [];
+          try {
+            const { data: hData } = await supabase.from('holiday_balance').select('*').limit(5000);
+            if (hData) allHolidays = hData;
+          } catch(e) {}
+
           const uniqueMap = new Map();
           subordinates.forEach(emp => {
             const email = (getPropCaseInsensitive(emp, [
@@ -787,13 +793,31 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
             if (email) {
               subordinateIdentifiers.add(email);
-                            if (!uniqueMap.has(email)) {
+              if (!uniqueMap.has(email)) {
+                let empDayOff = 0;
+                let empExtraOff = 0;
+                const validKeys = [email, name.trim().toLowerCase(), id].filter(Boolean);
+                
+                allHolidays.forEach(hRow => {
+                    const hStatus = getPropCaseInsensitive(hRow, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
+                    if (hStatus === 'unused') {
+                        const hEmp = getPropCaseInsensitive(hRow, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
+                        if (validKeys.some(k => hEmp === k || hEmp.includes(k) || k.includes(hEmp))) {
+                            const typ = getPropCaseInsensitive(hRow, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
+                            let d = getPropCaseInsensitive(hRow, ['Days', 'days', 'Amount', 'amount', 'Total', 'total']);
+                            let val = (d && !isNaN(d)) ? parseFloat(d) : 1;
+                            if (typ === 'day off payment') empDayOff += val;
+                            else if (typ === 'extra off') empExtraOff += val;
+                        }
+                    }
+                });
+
                 uniqueMap.set(email, { 
                   email, 
                   name,
-                  annual_leave_balance: getPropCaseInsensitive(emp, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave']),
-                  day_off_payment_balance: getPropCaseInsensitive(emp, ['Day Off Payment Balance', 'day_off_payment_balance', 'Day Off Payment', 'dayoffbalance']),
-                  extra_off_balance: getPropCaseInsensitive(emp, ['Extra Off Balance', 'extra_off_balance', 'Extra Off', 'extraoffbalance'])
+                  annual_leave_balance: getPropCaseInsensitive(emp, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave']) || '0',
+                  day_off_payment_balance: empDayOff,
+                  extra_off_balance: empExtraOff
                 });
               }
             }
@@ -1003,9 +1027,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
     }
     const profile = teamMembers.find(m => m.email.toLowerCase() === selectedEmployee.toLowerCase()) || {};
     return {
-       annual: profile.annual_leave_balance || '0',
-       dayOff: profile.day_off_payment_balance || '0',
-       extraOff: profile.extra_off_balance || '0'
+       annual: profile.annual_leave_balance !== undefined && profile.annual_leave_balance !== '' ? profile.annual_leave_balance : '0',
+       dayOff: profile.day_off_payment_balance !== undefined ? profile.day_off_payment_balance : '0',
+       extraOff: profile.extra_off_balance !== undefined ? profile.extra_off_balance : '0'
     };
   }, [selectedEmployee, teamMembers]);
 
