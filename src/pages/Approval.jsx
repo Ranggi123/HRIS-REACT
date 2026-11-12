@@ -458,6 +458,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const context = useOutletContext() || {};
   const currentLang = context.currentLang || 'en';
   const lang = currentLang; // Fix for ReferenceError: lang is not defined
+  const isSuperAdminMode = Boolean(context.isSuperAdminMode) || localStorage.getItem('hris_super_admin_active') === 'true';
 
   const t = currentLang === 'id' ? {
     title: 'Permintaan Persetujuan',
@@ -550,7 +551,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
     confReasonPh: 'misal: Bukti tidak lengkap / konflik jadwal...',
     btnRejectReq: 'Tolak Permintaan',
     previewTitle: 'Pratinjau Lampiran',
-    errFilterFirst: 'Silakan pilih karyawan'
+    errFilterFirst: 'Silakan pilih karyawan',
+    superAdminCompanyFilter: 'Filter Berdasarkan Perusahaan (Super Admin):',
+    allCompanies: '-- Semua Perusahaan --'
   } : {
     title: 'Approval Requests',
     manager: 'Line Manager:',
@@ -642,7 +645,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
     confReasonPh: 'e.g. Incomplete proof / conflict with schedule...',
     btnRejectReq: 'Reject Request',
     previewTitle: 'Attachment Preview',
-    errFilterFirst: 'Please select employee'
+    errFilterFirst: 'Please select employee',
+    superAdminCompanyFilter: 'Filter By Company (Super Admin):',
+    allCompanies: '-- All Companies --'
   };
 
   const [sessionUser] = useState(() => {
@@ -663,16 +668,19 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
   const [loading, setLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [leaveRequests, setLeaveRequests] = useState([]);
-  const [attendanceRequests, setAttendanceRequests] = useState([]);
+  const [rawDirEmployees, setRawDirEmployees] = useState([]);
+  const [rawCompanies, setRawCompanies] = useState([]);
+  const [rawHolidays, setRawHolidays] = useState([]);
+  const [rawLeaves, setRawLeaves] = useState([]);
+  const [rawAttendance, setRawAttendance] = useState([]);
+  const [rawSchedules, setRawSchedules] = useState([]);
   const [activeCategoryTab, setActiveCategoryTab] = useState('leave');
 
-  const [teamMembers, setTeamMembers] = useState([]);
-  const [teamScheduleRecords, setTeamScheduleRecords] = useState([]);
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [teamScheduleModalData, setTeamScheduleModalData] = useState(null);
 
   const [statusTab, setStatusTab] = useState('pending');
+  const [selectedCompany, setSelectedCompany] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState('all');
 
   const employeeDropdownRef = useRef(null); 
@@ -730,401 +738,467 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const [actualUserWorkEmail, setActualUserWorkEmail] = useState('');
   const [actualUserName, setActualUserName] = useState('');
 
+  const companyCandidateKeys = useMemo(() => [
+    'Company',
+    'company',
+    'Company Name',
+    'company_name',
+    'companyname',
+    'CompanyUID',
+    'companyuid',
+    'company_uid',
+    'company_id',
+    'Company Code',
+    'company_code'
+  ], []);
+
+  const compLookupKeys = useMemo(() => [
+    'CompanyUID', 'companyuid', 'Company UID', 'company_uid',
+    'Company ID', 'company_id', 'Company Code', 'company_code',
+    'id', 'uid', 'Company Name', 'company_name', 'CompanyName',
+    'Company', 'company', 'name', 'Name', 'Nama Perusahaan'
+  ], []);
+
   const refreshAllData = useCallback(async () => {
-    if (!userWorkEmail && !topNavEmail && !userName) return;
+    if (!userWorkEmail && !topNavEmail && !userName && !isSuperAdminMode) return;
     setLoading(true);
 
     try {
-      let subordinateEmails = [];
-      const subordinateEmailSet = new Set();
-      const subordinateIdentifiers = new Set();
-      const employeeDirectoryMap = new Map();
-      let realWorkEmail = userWorkEmail || topNavEmail;
-      let realName = userName;
-      let isHrManagerActive = false;
-      const userCompanyKeys = new Set();
+      const [dirRes, compRes, holRes, lvRes, attRes, schedRes] = await Promise.allSettled([
+        fetchAllRows('employee_directory', 10000),
+        fetchAllRows('company', 2000),
+        fetchAllRows('holiday_balance', 10000),
+        fetchAllRows('leave_requests', 10000),
+        fetchAllRows('attendance', 10000),
+        fetchAllRows('schedule', 10000)
+      ]);
 
-      const companyCandidateKeys = [
-        'Company',
-        'company',
-        'Company Name',
-        'company_name',
-        'companyname',
-        'CompanyUID',
-        'companyuid',
-        'company_uid',
-        'company_id',
-        'Company Code',
-        'company_code'
-      ];
-
-      const matchesUserCompany = (obj) => {
-        if (!obj || userCompanyKeys.size === 0) return false;
-        const keys = Object.keys(obj);
-        for (const cand of companyCandidateKeys) {
-          const normalizedCand = cand.toLowerCase().replace(/[\s_-]/g, '');
-          const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedCand);
-          if (found && obj[found] !== null && obj[found] !== undefined) {
-            const normVal = normalizeText(obj[found]);
-            if (normVal && normVal !== '-' && normVal !== 'null' && userCompanyKeys.has(normVal)) {
-              return true;
-            }
-          }
-        }
-        return false;
-      };
-
-      let profileDept = normalizeText(getValidPropCaseInsensitive(currentUser, ['Department', 'department', 'dept', 'Dept'], ''));
-      let profileJobLevel = normalizeText(getValidPropCaseInsensitive(currentUser, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], ''));
-      let profileStatus = normalizeText(getValidPropCaseInsensitive(currentUser, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
-      let profileCompany = getValidPropCaseInsensitive(currentUser, companyCandidateKeys, '').replace(/\s+/g, ' ').trim();
+      const dirData = dirRes.status === 'fulfilled' && Array.isArray(dirRes.value) ? dirRes.value : [];
+      const compData = compRes.status === 'fulfilled' && Array.isArray(compRes.value) ? compRes.value : [];
+      const holData = holRes.status === 'fulfilled' && Array.isArray(holRes.value) ? holRes.value : [];
+      const lvData = lvRes.status === 'fulfilled' && Array.isArray(lvRes.value) ? lvRes.value : [];
+      let attData = attRes.status === 'fulfilled' && Array.isArray(attRes.value) ? [...attRes.value] : [];
+      const schedData = schedRes.status === 'fulfilled' && Array.isArray(schedRes.value) ? schedRes.value : [];
 
       try {
-        const dirData = await fetchAllRows('employee_directory', 10000);
+        const { data: pendingAttRows } = await supabase
+          .from('attendance')
+          .select('*')
+          .ilike('Status', '%Pending%')
+          .limit(1000);
 
-        if (dirData && dirData.length > 0) {
-          const cleanUserWorkEmail = (userWorkEmail || topNavEmail || '').trim().toLowerCase();
-          const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
-          const currentEmpId = normalizeText(getValidPropCaseInsensitive(currentUser, ['Employee ID', 'employee_id', 'Barcode', 'barcode'], ''));
-
-          const myProfile = dirData.find(emp => {
-            const empEmail = (getValidPropCaseInsensitive(emp, ['Email', 'email', 'Email Address', 'email_address', 'user_uid']) || '').trim().toLowerCase();
-            const empWorkEmail = (getValidPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
-            const empName = normalizeText(getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name']));
-            const empId = normalizeText(getValidPropCaseInsensitive(emp, ['Employee ID', 'employee_id', 'Barcode', 'barcode']));
-
-            const empEmailPrefix = empEmail.includes('@') ? empEmail.split('@')[0] : empEmail;
-            const empWorkPrefix = empWorkEmail.includes('@') ? empWorkEmail.split('@')[0] : empWorkEmail;
-
-            if (cleanUserWorkEmail) {
-              if (empEmail === cleanUserWorkEmail || empWorkEmail === cleanUserWorkEmail) return true;
-              if (userPrefix && (empEmailPrefix === userPrefix || empWorkPrefix === userPrefix)) return true;
+        if (pendingAttRows && pendingAttRows.length > 0) {
+          const existingIds = new Set(attData.map(r => r.id ?? `${r.Employee}_${r.Date}_${r.Status}`));
+          pendingAttRows.forEach(r => {
+            const rowKey = r.id ?? `${r.Employee}_${r.Date}_${r.Status}`;
+            if (!existingIds.has(rowKey)) {
+              attData.unshift(r);
+              existingIds.add(rowKey);
             }
-            if (currentEmpId && empId && empId === currentEmpId) return true;
-            if (userName && empName === normalizeText(userName)) return true;
-            return false;
-          });
-
-          if (myProfile) {
-            const foundWorkEmail = getValidPropCaseInsensitive(myProfile, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']).trim().toLowerCase();
-            if (foundWorkEmail) realWorkEmail = foundWorkEmail;
-
-            const foundName = getValidPropCaseInsensitive(myProfile, ['Name', 'name', 'nama', 'fullname', 'full_name']);
-            if (foundName) realName = foundName;
-
-            const foundDept = normalizeText(getValidPropCaseInsensitive(myProfile, ['Department', 'department', 'dept', 'Dept'], ''));
-            if (foundDept) profileDept = foundDept;
-
-            const foundJobLevel = normalizeText(getValidPropCaseInsensitive(myProfile, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], ''));
-            if (foundJobLevel) profileJobLevel = foundJobLevel;
-
-            // "Account Status" merujuk pada kolom Status di employee_directory
-            const foundStatus = normalizeText(getValidPropCaseInsensitive(myProfile, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
-            if (foundStatus) profileStatus = foundStatus;
-
-            const foundCompany = getValidPropCaseInsensitive(myProfile, companyCandidateKeys, '').replace(/\s+/g, ' ').trim();
-            if (foundCompany) profileCompany = foundCompany;
-          }
-
-          if (profileCompany && profileCompany !== '-') {
-            userCompanyKeys.add(normalizeText(profileCompany));
-            try {
-              const compData = await fetchAllRows('company', 2000);
-              if (compData && compData.length > 0) {
-                const targetNorm = normalizeText(profileCompany);
-                const compLookupKeys = [
-                  'CompanyUID', 'companyuid', 'Company UID', 'company_uid',
-                  'Company ID', 'company_id', 'Company Code', 'company_code',
-                  'id', 'uid', 'Company Name', 'company_name', 'CompanyName',
-                  'Company', 'company', 'name', 'Name', 'Nama Perusahaan'
-                ];
-                const matchedComp = compData.find(c => {
-                  return compLookupKeys.some(k => {
-                    const val = normalizeText(getValidPropCaseInsensitive(c, [k], ''));
-                    return val && val === targetNorm;
-                  });
-                });
-                if (matchedComp) {
-                  compLookupKeys.forEach(k => {
-                    const val = normalizeText(getValidPropCaseInsensitive(matchedComp, [k], ''));
-                    if (val) userCompanyKeys.add(val);
-                  });
-                }
-              }
-            } catch (e) {}
-          }
-
-          const isHrDept = profileDept === 'human resources' || profileDept === 'human resource';
-          const isManagerJobLevel = profileJobLevel === 'manager';
-          const isStatusActive = profileStatus === 'active';
-          
-          // Memeriksa status Super Admin mode dari localStorage (seperti yang digunakan di komponen lain)
-          const isSuperAdminMode = localStorage.getItem('hris_super_admin_active') === 'true';
-
-          // Jika dalam mode Super Admin, akseskan ke seluruh karyawan di company tanpa perlu dept/job level spesifik
-          if (isSuperAdminMode) {
-              isHrManagerActive = true;
-          } else {
-              isHrManagerActive = isHrDept && isManagerJobLevel && isStatusActive && userCompanyKeys.size > 0;
-          }
-
-          setActualUserWorkEmail(realWorkEmail);
-          setActualUserName(realName);
-
-          const cleanRealWorkEmail = (realWorkEmail || '').trim().toLowerCase();
-          const realPrefix = cleanRealWorkEmail.includes('@') ? cleanRealWorkEmail.split('@')[0] : cleanRealWorkEmail;
-
-          const managerKeys = Array.from(new Set([
-            userWorkEmail,
-            topNavEmail,
-            realWorkEmail,
-            userPrefix,
-            realPrefix,
-            userName.toLowerCase(),
-            realName.toLowerCase()
-          ])).filter(k => k && k.length >= 2);
-
-          dirData.forEach(emp => {
-            const email = (getValidPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Email', 'email']) || '').trim().toLowerCase();
-            const name = getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
-            if (email) employeeDirectoryMap.set(email, name);
-          });
-
-          const subordinates = dirData.filter(row => {
-            const statusRaw = normalizeText(getValidPropCaseInsensitive(row, ['Status', 'status', 'STATUS', 'Account Status', 'account_status'], ''));
-            const isStatusValid = statusRaw === 'active' || statusRaw === 'off-boarding' || statusRaw === 'off boarding';
-            if (!isStatusValid) return false;
-
-            if (isHrManagerActive) {
-              return matchesUserCompany(row);
-            }
-
-            return matchesLineManager(row, realWorkEmail, realName, managerKeys);
-          });
-          
-          let allHolidays = [];
-          try {
-            allHolidays = await fetchAllRows('holiday_balance', 10000);
-          } catch(e) {}
-
-          const uniqueMap = new Map();
-          subordinates.forEach(emp => {
-            const workMail = (getValidPropCaseInsensitive(emp, [
-              'Employee work email',
-              'employee_work_email',
-              'work_email',
-              'work email',
-              'Work Email'
-            ]) || '').trim().toLowerCase();
-
-            const personalMail = (getValidPropCaseInsensitive(emp, [
-              'email',
-              'Email',
-              'Email Address',
-              'user_uid'
-            ]) || '').trim().toLowerCase();
-
-            const email = workMail || personalMail;
-            const empAllEmails = Array.from(new Set([workMail, personalMail].filter(Boolean)));
-            const name = getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
-            const id = (getValidPropCaseInsensitive(emp, ['Employee ID', 'employee_id', 'id', 'Barcode', 'barcode', 'nik', 'nip']) || '').trim().toLowerCase();
-
-            empAllEmails.forEach(m => {
-              subordinateEmailSet.add(m);
-              subordinateIdentifiers.add(m);
-            });
-
-            if (email) {
-              if (!uniqueMap.has(email)) {
-                let empDayOff = 0;
-                let empExtraOff = 0;
-                const validKeys = [...empAllEmails, name.trim().toLowerCase(), id].filter(Boolean);
-                
-                allHolidays.forEach(hRow => {
-                    const hStatus = normalizeText(getValidPropCaseInsensitive(hRow, ['status', 'Status', 'STATUS'], ''));
-                    if (hStatus === 'unused') {
-                        const hEmp = normalizeText(getValidPropCaseInsensitive(hRow, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']));
-                        if (validKeys.some(k => hEmp === k || hEmp.includes(k) || k.includes(hEmp))) {
-                            const typ = normalizeText(getValidPropCaseInsensitive(hRow, ['Type Holiday', 'type_holiday', 'Type', 'type'], ''));
-                            let d = getValidPropCaseInsensitive(hRow, ['Days', 'days', 'Amount', 'amount', 'Total', 'total']);
-                            let val = (d && !isNaN(d)) ? parseFloat(d) : 1;
-                            if (typ === 'day off payment') empDayOff += val;
-                            else if (typ === 'extra off') empExtraOff += val;
-                        }
-                    }
-                });
-
-                uniqueMap.set(email, { 
-                  email, 
-                  emails: empAllEmails,
-                  name,
-                  barcode: getValidPropCaseInsensitive(emp, ['Barcode', 'barcode', 'Employee ID', 'employee_id', 'id']) || '',
-                  standart_working_day: getValidPropCaseInsensitive(emp, ['Standart Working Day', 'standart_working_day', 'Standard Working Day', 'standard_working_day']) || 'BACKOFFICE52',
-                  annual_leave_balance: getValidPropCaseInsensitive(emp, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave']) || '0',
-                  day_off_payment_balance: empDayOff,
-                  extra_off_balance: empExtraOff
-                });
-              }
-            }
-            if (name) subordinateIdentifiers.add(normalizeText(name));
-            if (id) subordinateIdentifiers.add(id);
-          });
-
-          subordinateEmails = Array.from(subordinateEmailSet);
-          setTeamMembers(Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
-        }
-      } catch (err) {
-        console.warn("[Approval] Could not query employee_directory:", err);
-      }
-
-      const cleanRealWorkEmail = (realWorkEmail || '').trim().toLowerCase();
-      const realPrefix = cleanRealWorkEmail.includes('@') ? cleanRealWorkEmail.split('@')[0] : cleanRealWorkEmail;
-      const cleanUserWorkEmail = (userWorkEmail || topNavEmail || '').trim().toLowerCase();
-      const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
-
-      const allManagerKeys = Array.from(new Set([
-        userWorkEmail,
-        topNavEmail,
-        realWorkEmail,
-        userPrefix,
-        realPrefix,
-        userName.toLowerCase(),
-        realName.toLowerCase()
-      ])).filter(k => k && k.length >= 2);
-
-      let myLeaves = [];
-      try {
-        const lvData = await fetchAllRows('leave_requests', 10000);
-        if (lvData) {
-          myLeaves = lvData
-            .filter(row => {
-              const status = getRowStatus(row);
-              const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
-              if (!isRelevant) return false;
-
-              const empVal = normalizeText(getValidPropCaseInsensitive(row, [
-                'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
-                'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
-              ]));
-
-              if (isHrManagerActive) {
-                return (
-                  matchesUserCompany(row) ||
-                  (empVal && (subordinateEmailSet.has(empVal) || subordinateIdentifiers.has(empVal)))
-                );
-              }
-
-              const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
-              const isSelf = cleanUserWorkEmail && (empVal === cleanUserWorkEmail);
-
-              return hasDirectMgr && !isSelf;
-            })
-            .map(row => ({
-              ...row,
-              _category: 'Leave',
-              _sourceTable: 'leave_requests'
-            }));
-        }
-      } catch (e) {
-        console.warn("[Approval] Failed fetching leave_requests:", e);
-      }
-
-      let myAttendance = [];
-      try {
-        let attData = [];
-
-        try {
-          const defAtt = await fetchAllRows('attendance', 10000);
-          if (defAtt) {
-            attData = defAtt;
-          }
-        } catch (e) {
-          console.warn("Failed fetching attendance data:", e);
-        }
-
-        try {
-          const { data: pendingAttRows } = await supabase
-            .from('attendance')
-            .select('*')
-            .ilike('Status', '%Pending%')
-            .limit(1000);
-
-          if (pendingAttRows && pendingAttRows.length > 0) {
-            const existingIds = new Set(attData.map(r => r.id ?? `${r.Employee}_${r.Date}_${r.Status}`));
-            pendingAttRows.forEach(r => {
-              const rowKey = r.id ?? `${r.Employee}_${r.Date}_${r.Status}`;
-              if (!existingIds.has(rowKey)) {
-                attData.unshift(r);
-                existingIds.add(rowKey);
-              }
-            });
-          }
-        } catch (e) {}
-
-        if (attData && attData.length > 0) {
-          myAttendance = attData
-            .filter(row => {
-              const status = getRowStatus(row);
-              const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
-              if (!isRelevant) return false;
-
-              const empEmail = normalizeText(getValidPropCaseInsensitive(row, [
-                'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
-                'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
-              ]));
-
-              if (isHrManagerActive) {
-                return (
-                  matchesUserCompany(row) ||
-                  (empEmail && (subordinateEmailSet.has(empEmail) || subordinateIdentifiers.has(empEmail)))
-                );
-              }
-
-              const hasDirectMgr = 
-                matchesLineManager(row, realWorkEmail, realName, allManagerKeys) ||
-                (empEmail && (subordinateEmailSet.has(empEmail) || subordinateEmails.includes(empEmail))) ||
-                (empEmail && subordinateEmails.some(sub => sub && (sub === empEmail || empEmail.includes(sub) || sub.includes(empEmail))));
-
-              return hasDirectMgr;
-            })
-            .map(row => ({
-              ...row,
-              _category: 'Attendance',
-              _sourceTable: 'attendance'
-            }));
-        }
-      } catch (e) {
-        console.warn("[Approval] Failed fetching attendance:", e);
-      }
-
-      let teamSched = [];
-      try {
-        const schedData = await fetchAllRows('schedule', 10000);
-        if (schedData) {
-          teamSched = schedData.filter(row => {
-            const empEmail = normalizeText(getValidPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email']));
-            if (isHrManagerActive) {
-              return matchesUserCompany(row) || (empEmail && (subordinateEmailSet.has(empEmail) || subordinateIdentifiers.has(empEmail)));
-            }
-            return subordinateEmailSet.has(empEmail) || subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => sub && empEmail.includes(sub));
           });
         }
-      } catch (e) {
-        console.warn("[Approval] Could not query schedule table:", e);
-      }
+      } catch (e) {}
 
-      setLeaveRequests(myLeaves);
-      setAttendanceRequests(myAttendance);
-      setTeamScheduleRecords(teamSched);
+      setRawDirEmployees(dirData);
+      setRawCompanies(compData);
+      setRawHolidays(holData);
+      setRawLeaves(lvData);
+      setRawAttendance(attData);
+      setRawSchedules(schedData);
     } catch (err) {
       console.error('[Approval] Error fetching approval records:', err);
     }
     setLoading(false);
-  }, [currentUser, userWorkEmail, topNavEmail, userName]);
+  }, [userWorkEmail, topNavEmail, userName, isSuperAdminMode]);
 
   useEffect(() => {
     refreshAllData();
   }, [refreshAllData]);
+
+  // Build normalized company options for Super Admin dropdown
+  const companyOptions = useMemo(() => {
+    const optionsMap = new Map();
+
+    rawCompanies.forEach(c => {
+      const uid = getValidPropCaseInsensitive(c, ['CompanyUID', 'companyuid', 'Company UID', 'company_uid', 'Company ID', 'company_id', 'id', 'uid'], '');
+      const cname = getValidPropCaseInsensitive(c, ['Company Name', 'company_name', 'CompanyName', 'Company', 'company', 'name', 'Name', 'Nama Perusahaan'], uid);
+      const val = uid || cname;
+      if (!val) return;
+      const normKey = normalizeText(val);
+      const keys = new Set();
+      compLookupKeys.forEach(k => {
+        const v = normalizeText(getValidPropCaseInsensitive(c, [k], ''));
+        if (v) keys.add(v);
+      });
+      if (!optionsMap.has(normKey)) {
+        optionsMap.set(normKey, { value: val, label: cname || val, keys });
+      } else {
+        keys.forEach(k => optionsMap.get(normKey).keys.add(k));
+      }
+    });
+
+    // Also include any company names from employee_directory not already in company table
+    rawDirEmployees.forEach(emp => {
+      const empComp = getValidPropCaseInsensitive(emp, companyCandidateKeys, '');
+      if (!empComp) return;
+      const normComp = normalizeText(empComp);
+      let alreadyExists = false;
+      for (const opt of optionsMap.values()) {
+        if (opt.keys.has(normComp)) {
+          alreadyExists = true;
+          break;
+        }
+      }
+      if (!alreadyExists && !optionsMap.has(normComp)) {
+        optionsMap.set(normComp, {
+          value: empComp,
+          label: empComp,
+          keys: new Set([normComp])
+        });
+      }
+    });
+
+    return Array.from(optionsMap.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [rawCompanies, rawDirEmployees, compLookupKeys, companyCandidateKeys]);
+
+  // Compute scoped employees, leaves, attendance, and schedules reactively based on role & selectedCompany
+  const {
+    teamMembers,
+    leaveRequests,
+    attendanceRequests,
+    teamScheduleRecords
+  } = useMemo(() => {
+    const cleanUserWorkEmail = (userWorkEmail || topNavEmail || '').trim().toLowerCase();
+    const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
+    const currentEmpId = normalizeText(getValidPropCaseInsensitive(currentUser, ['Employee ID', 'employee_id', 'Barcode', 'barcode'], ''));
+
+    let realWorkEmail = cleanUserWorkEmail;
+    let realName = userName;
+    let profileDept = normalizeText(getValidPropCaseInsensitive(currentUser, ['Department', 'department', 'dept', 'Dept'], ''));
+    let profileJobLevel = normalizeText(getValidPropCaseInsensitive(currentUser, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], ''));
+    let profileStatus = normalizeText(getValidPropCaseInsensitive(currentUser, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
+    let profileCompany = getValidPropCaseInsensitive(currentUser, companyCandidateKeys, '').replace(/\s+/g, ' ').trim();
+
+    const myProfile = rawDirEmployees.find(emp => {
+      const empEmail = (getValidPropCaseInsensitive(emp, ['Email', 'email', 'Email Address', 'email_address', 'user_uid']) || '').trim().toLowerCase();
+      const empWorkEmail = (getValidPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
+      const empName = normalizeText(getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name']));
+      const empId = normalizeText(getValidPropCaseInsensitive(emp, ['Employee ID', 'employee_id', 'Barcode', 'barcode']));
+
+      const empEmailPrefix = empEmail.includes('@') ? empEmail.split('@')[0] : empEmail;
+      const empWorkPrefix = empWorkEmail.includes('@') ? empWorkEmail.split('@')[0] : empWorkEmail;
+
+      if (cleanUserWorkEmail) {
+        if (empEmail === cleanUserWorkEmail || empWorkEmail === cleanUserWorkEmail) return true;
+        if (userPrefix && (empEmailPrefix === userPrefix || empWorkPrefix === userPrefix)) return true;
+      }
+      if (currentEmpId && empId && empId === currentEmpId) return true;
+      if (userName && empName === normalizeText(userName)) return true;
+      return false;
+    });
+
+    if (myProfile) {
+      const foundWorkEmail = getValidPropCaseInsensitive(myProfile, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']).trim().toLowerCase();
+      if (foundWorkEmail) realWorkEmail = foundWorkEmail;
+
+      const foundName = getValidPropCaseInsensitive(myProfile, ['Name', 'name', 'nama', 'fullname', 'full_name']);
+      if (foundName) realName = foundName;
+
+      const foundDept = normalizeText(getValidPropCaseInsensitive(myProfile, ['Department', 'department', 'dept', 'Dept'], ''));
+      if (foundDept) profileDept = foundDept;
+
+      const foundJobLevel = normalizeText(getValidPropCaseInsensitive(myProfile, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], ''));
+      if (foundJobLevel) profileJobLevel = foundJobLevel;
+
+      const foundStatus = normalizeText(getValidPropCaseInsensitive(myProfile, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
+      if (foundStatus) profileStatus = foundStatus;
+
+      const foundCompany = getValidPropCaseInsensitive(myProfile, companyCandidateKeys, '').replace(/\s+/g, ' ').trim();
+      if (foundCompany) profileCompany = foundCompany;
+    }
+
+    const resolveCompanyKeys = (companyVal) => {
+      const keys = new Set();
+      if (!companyVal || companyVal === '-') return keys;
+      const targetNorm = normalizeText(companyVal);
+      keys.add(targetNorm);
+
+      const matchedComp = rawCompanies.find(c => {
+        return compLookupKeys.some(k => {
+          const val = normalizeText(getValidPropCaseInsensitive(c, [k], ''));
+          return val && val === targetNorm;
+        });
+      });
+
+      if (matchedComp) {
+        compLookupKeys.forEach(k => {
+          const val = normalizeText(getValidPropCaseInsensitive(matchedComp, [k], ''));
+          if (val) keys.add(val);
+        });
+      }
+      return keys;
+    };
+
+    const rowMatchesCompanyKeys = (obj, keysSet) => {
+      if (!obj || !keysSet || keysSet.size === 0) return false;
+      const keys = Object.keys(obj);
+      for (const cand of companyCandidateKeys) {
+        const normalizedCand = cand.toLowerCase().replace(/[\s_-]/g, '');
+        const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === normalizedCand);
+        if (found && obj[found] !== null && obj[found] !== undefined) {
+          const normVal = normalizeText(obj[found]);
+          if (normVal && normVal !== '-' && normVal !== 'null' && keysSet.has(normVal)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    const userCompanyKeys = resolveCompanyKeys(profileCompany);
+    const isHrDept = profileDept === 'human resources' || profileDept === 'human resource';
+    const isManagerJobLevel = profileJobLevel === 'manager';
+    const isStatusActive = profileStatus === 'active';
+    const isHrManagerActive = isHrDept && isManagerJobLevel && isStatusActive && userCompanyKeys.size > 0;
+
+    // Determine active company keys for Super Admin filter
+    let activeSuperAdminCompanyKeys = null;
+    if (isSuperAdminMode && selectedCompany && selectedCompany !== 'all') {
+      const foundOpt = companyOptions.find(o => normalizeText(o.value) === normalizeText(selectedCompany) || o.keys.has(normalizeText(selectedCompany)));
+      activeSuperAdminCompanyKeys = foundOpt ? foundOpt.keys : resolveCompanyKeys(selectedCompany);
+    }
+
+    const cleanRealWorkEmail = (realWorkEmail || '').trim().toLowerCase();
+    const realPrefix = cleanRealWorkEmail.includes('@') ? cleanRealWorkEmail.split('@')[0] : cleanRealWorkEmail;
+
+    const managerKeys = Array.from(new Set([
+      userWorkEmail,
+      topNavEmail,
+      realWorkEmail,
+      userPrefix,
+      realPrefix,
+      userName.toLowerCase(),
+      realName.toLowerCase()
+    ])).filter(k => k && k.length >= 2);
+
+    const subordinates = rawDirEmployees.filter(row => {
+      const statusRaw = normalizeText(getValidPropCaseInsensitive(row, ['Status', 'status', 'STATUS', 'Account Status', 'account_status'], ''));
+      const isStatusValid = statusRaw === 'active' || statusRaw === 'off-boarding' || statusRaw === 'off boarding';
+      if (!isStatusValid) return false;
+
+      if (isSuperAdminMode) {
+        if (!activeSuperAdminCompanyKeys) return true; // All Companies
+        return rowMatchesCompanyKeys(row, activeSuperAdminCompanyKeys);
+      }
+
+      if (isHrManagerActive) {
+        return rowMatchesCompanyKeys(row, userCompanyKeys);
+      }
+
+      return matchesLineManager(row, realWorkEmail, realName, managerKeys);
+    });
+
+    const subordinateEmailSet = new Set();
+    const subordinateIdentifiers = new Set();
+    const uniqueMap = new Map();
+
+    subordinates.forEach(emp => {
+      const workMail = (getValidPropCaseInsensitive(emp, [
+        'Employee work email',
+        'employee_work_email',
+        'work_email',
+        'work email',
+        'Work Email'
+      ]) || '').trim().toLowerCase();
+
+      const personalMail = (getValidPropCaseInsensitive(emp, [
+        'email',
+        'Email',
+        'Email Address',
+        'user_uid'
+      ]) || '').trim().toLowerCase();
+
+      const barcodeVal = (getValidPropCaseInsensitive(emp, ['Barcode', 'barcode', 'Employee ID', 'employee_id', 'id', 'nik', 'nip']) || '').trim();
+      const name = getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], workMail || personalMail || barcodeVal);
+      const email = workMail || personalMail || barcodeVal.toLowerCase();
+      const empAllEmails = Array.from(new Set([workMail, personalMail, barcodeVal.toLowerCase()].filter(Boolean)));
+
+      empAllEmails.forEach(m => {
+        subordinateEmailSet.add(m);
+        subordinateIdentifiers.add(m);
+      });
+      if (name) subordinateIdentifiers.add(normalizeText(name));
+      if (barcodeVal) subordinateIdentifiers.add(normalizeText(barcodeVal));
+
+      if (email && !uniqueMap.has(email)) {
+        let empDayOff = 0;
+        let empExtraOff = 0;
+        const validKeys = [...empAllEmails, normalizeText(name), normalizeText(barcodeVal)].filter(Boolean);
+
+        rawHolidays.forEach(hRow => {
+          const hStatus = normalizeText(getValidPropCaseInsensitive(hRow, ['status', 'Status', 'STATUS'], ''));
+          if (hStatus === 'unused') {
+            const hEmp = normalizeText(getValidPropCaseInsensitive(hRow, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']));
+            if (validKeys.some(k => hEmp === k || hEmp.includes(k) || k.includes(hEmp))) {
+              const typ = normalizeText(getValidPropCaseInsensitive(hRow, ['Type Holiday', 'type_holiday', 'Type', 'type'], ''));
+              let d = getValidPropCaseInsensitive(hRow, ['Days', 'days', 'Amount', 'amount', 'Total', 'total']);
+              let val = (d && !isNaN(d)) ? parseFloat(d) : 1;
+              if (typ === 'day off payment') empDayOff += val;
+              else if (typ === 'extra off') empExtraOff += val;
+            }
+          }
+        });
+
+        uniqueMap.set(email, {
+          email,
+          emails: empAllEmails,
+          name,
+          barcode: barcodeVal,
+          standart_working_day: getValidPropCaseInsensitive(emp, ['Standart Working Day', 'standart_working_day', 'Standard Working Day', 'standard_working_day']) || 'BACKOFFICE52',
+          annual_leave_balance: getValidPropCaseInsensitive(emp, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave']) || '0',
+          day_off_payment_balance: empDayOff,
+          extra_off_balance: empExtraOff
+        });
+      }
+    });
+
+    const subordinateEmails = Array.from(subordinateEmailSet);
+    const sortedTeamMembers = Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+    const matchesScopedEmployee = (row) => {
+      const empVal = normalizeText(getValidPropCaseInsensitive(row, [
+        'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
+        'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email',
+        'Barcode', 'barcode', 'Employee ID', 'employee_id'
+      ]));
+      const rowNameVal = normalizeText(getValidPropCaseInsensitive(row, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name']));
+      if (empVal && (subordinateEmailSet.has(empVal) || subordinateIdentifiers.has(empVal))) return true;
+      if (rowNameVal && subordinateIdentifiers.has(rowNameVal)) return true;
+      return false;
+    };
+
+    const filteredLeaves = rawLeaves
+      .filter(row => {
+        const status = getRowStatus(row);
+        const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
+        if (!isRelevant) return false;
+
+        if (isSuperAdminMode) {
+          if (!activeSuperAdminCompanyKeys) return true; // All Companies
+          return rowMatchesCompanyKeys(row, activeSuperAdminCompanyKeys) || matchesScopedEmployee(row);
+        }
+
+        if (isHrManagerActive) {
+          return rowMatchesCompanyKeys(row, userCompanyKeys) || matchesScopedEmployee(row);
+        }
+
+        const empVal = normalizeText(getValidPropCaseInsensitive(row, [
+          'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
+          'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
+        ]));
+        const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, managerKeys);
+        const isSelf = cleanUserWorkEmail && (empVal === cleanUserWorkEmail);
+        return hasDirectMgr && !isSelf;
+      })
+      .map(row => ({
+        ...row,
+        _category: 'Leave',
+        _sourceTable: 'leave_requests'
+      }));
+
+    const filteredAttendance = rawAttendance
+      .filter(row => {
+        const status = getRowStatus(row);
+        const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
+        if (!isRelevant) return false;
+
+        if (isSuperAdminMode) {
+          if (!activeSuperAdminCompanyKeys) return true; // All Companies
+          return rowMatchesCompanyKeys(row, activeSuperAdminCompanyKeys) || matchesScopedEmployee(row);
+        }
+
+        if (isHrManagerActive) {
+          return rowMatchesCompanyKeys(row, userCompanyKeys) || matchesScopedEmployee(row);
+        }
+
+        const empEmail = normalizeText(getValidPropCaseInsensitive(row, [
+          'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
+          'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
+        ]));
+
+        const hasDirectMgr =
+          matchesLineManager(row, realWorkEmail, realName, managerKeys) ||
+          (empEmail && (subordinateEmailSet.has(empEmail) || subordinateEmails.includes(empEmail))) ||
+          (empEmail && subordinateEmails.some(sub => sub && (sub === empEmail || empEmail.includes(sub) || sub.includes(empEmail))));
+
+        return hasDirectMgr;
+      })
+      .map(row => ({
+        ...row,
+        _category: 'Attendance',
+        _sourceTable: 'attendance'
+      }));
+
+    const filteredSchedules = rawSchedules.filter(row => {
+      if (isSuperAdminMode) {
+        if (!activeSuperAdminCompanyKeys) return true; // All Companies
+        return rowMatchesCompanyKeys(row, activeSuperAdminCompanyKeys) || matchesScopedEmployee(row);
+      }
+
+      if (isHrManagerActive) {
+        return rowMatchesCompanyKeys(row, userCompanyKeys) || matchesScopedEmployee(row);
+      }
+
+      const empEmail = normalizeText(getValidPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email']));
+      return subordinateEmailSet.has(empEmail) || subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => sub && empEmail.includes(sub));
+    });
+
+    return {
+      teamMembers: sortedTeamMembers,
+      leaveRequests: filteredLeaves,
+      attendanceRequests: filteredAttendance,
+      teamScheduleRecords: filteredSchedules
+    };
+  }, [
+    rawDirEmployees,
+    rawCompanies,
+    rawHolidays,
+    rawLeaves,
+    rawAttendance,
+    rawSchedules,
+    currentUser,
+    userWorkEmail,
+    topNavEmail,
+    userName,
+    isSuperAdminMode,
+    selectedCompany,
+    companyOptions,
+    companyCandidateKeys,
+    compLookupKeys
+  ]);
+
+  useEffect(() => {
+    const cleanUserWorkEmail = (userWorkEmail || topNavEmail || '').trim().toLowerCase();
+    const userPrefix = cleanUserWorkEmail.includes('@') ? cleanUserWorkEmail.split('@')[0] : cleanUserWorkEmail;
+    const myProfile = rawDirEmployees.find(emp => {
+      const empEmail = (getValidPropCaseInsensitive(emp, ['Email', 'email', 'user_uid']) || '').trim().toLowerCase();
+      const empWorkEmail = (getValidPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']) || '').trim().toLowerCase();
+      const empEmailPrefix = empEmail.includes('@') ? empEmail.split('@')[0] : empEmail;
+      const empWorkPrefix = empWorkEmail.includes('@') ? empWorkEmail.split('@')[0] : empWorkEmail;
+      return (cleanUserWorkEmail && (empEmail === cleanUserWorkEmail || empWorkEmail === cleanUserWorkEmail)) ||
+             (userPrefix && (empEmailPrefix === userPrefix || empWorkPrefix === userPrefix));
+    });
+
+    const foundWorkEmail = myProfile
+      ? getValidPropCaseInsensitive(myProfile, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email']).trim().toLowerCase()
+      : '';
+    const foundName = myProfile
+      ? getValidPropCaseInsensitive(myProfile, ['Name', 'name', 'nama', 'fullname', 'full_name'])
+      : '';
+
+    setActualUserWorkEmail(foundWorkEmail || cleanUserWorkEmail);
+    setActualUserName(foundName || userName);
+  }, [rawDirEmployees, userWorkEmail, topNavEmail, userName]);
 
   // Effect to handle automatic dropdown opening and focusing
   useEffect(() => {
@@ -2203,6 +2277,35 @@ export default function Approval({ currentUser: propCurrentUser }) {
             </button>
           </div>
         </div>
+
+        {isSuperAdminMode && (
+          <div className="px-4 sm:px-5 py-3 bg-indigo-50/70 border-b border-indigo-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <span className="text-xs font-bold text-indigo-700">
+              {t.superAdminCompanyFilter}
+            </span>
+            <select
+              value={selectedCompany}
+              onChange={(e) => {
+                setSelectedCompany(e.target.value);
+                setSelectedEmployee('all');
+              }}
+              className="w-full sm:w-[240px] pl-3.5 pr-8 py-1.5 text-xs font-semibold text-gray-800 bg-white border border-indigo-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-xs cursor-pointer transition"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%234F46E5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 0.75rem center',
+                backgroundSize: '0.9rem'
+              }}
+            >
+              <option value="">{t.allCompanies}</option>
+              {companyOptions.map((comp) => (
+                <option key={comp.value} value={comp.value}>
+                  {comp.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="p-4 sm:px-5 sm:py-4 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100">
           
