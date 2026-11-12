@@ -513,7 +513,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
     confReasonPh: 'misal: Bukti tidak lengkap / konflik jadwal...',
     btnRejectReq: 'Tolak Permintaan',
     previewTitle: 'Pratinjau Lampiran',
-    errFilterFirst: 'Silakan pilih satu karyawan dari filter (bukan Semua Karyawan) untuk mengedit jadwal masal.'
+    errFilterFirst: 'Silakan pilih karyawan'
   } : {
     title: 'Approval Requests',
     manager: 'Line Manager:',
@@ -605,7 +605,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
     confReasonPh: 'e.g. Incomplete proof / conflict with schedule...',
     btnRejectReq: 'Reject Request',
     previewTitle: 'Attachment Preview',
-    errFilterFirst: 'Please select a specific employee from the filter (not All Employees) to edit bulk schedule.'
+    errFilterFirst: 'Please select employee'
   };
 
   const [sessionUser] = useState(() => {
