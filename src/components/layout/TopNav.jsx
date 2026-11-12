@@ -358,19 +358,56 @@ export default function TopNav({
                             })}
                           </select>
 
-                          <select 
-                            value={selectedSwitchEmp} 
-                            onChange={handleDirectSwitch}
-                            className="w-full px-2 py-1.5 text-xs text-gray-700 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                          >
-                            <option value="">{currentLang === 'id' ? '-- Pilih Karyawan --' : '-- Select Employee --'}</option>
-                            {filteredEmployees.map(emp => {
-                              const email = getPropCaseInsensitiveTopNav(emp, ['email', 'email address', 'user_uid'], '');
-                              const name = getPropCaseInsensitiveTopNav(emp, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Unknown');
-                              if (!email) return null;
-                              return <option key={email} value={email}>{name}</option>;
-                            })}
-                          </select>
+                          {/* DIUBAH MENJADI KUSTOM DROPDOWN UNTUK MENAMPILKAN FOTO KARYAWAN */}
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // Anda bisa menyimpan state open custom di sini jika mau
+                                // Karena kita di dalam dropdown lain, hati-hati dengan event bubbling
+                              }}
+                              className="w-full text-left bg-white border border-gray-200 rounded-lg text-xs text-gray-700 p-0 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            >
+                              <select 
+                                value={selectedSwitchEmp} 
+                                onChange={handleDirectSwitch}
+                                className="w-full h-full px-2 py-1.5 opacity-0 absolute inset-0 cursor-pointer"
+                                style={{ zIndex: 10 }}
+                              >
+                                <option value="">{currentLang === 'id' ? '-- Pilih Karyawan --' : '-- Select Employee --'}</option>
+                                {filteredEmployees.map(emp => {
+                                  const email = getPropCaseInsensitiveTopNav(emp, ['email', 'email address', 'user_uid'], '');
+                                  if (!email) return null;
+                                  return <option key={email} value={email}>{email}</option>;
+                                })}
+                              </select>
+
+                              {/* Tampilan Visual Dropdown (Label) */}
+                              <div className="flex items-center px-2 py-1.5 pointer-events-none">
+                                {(() => {
+                                  if (!selectedSwitchEmp) {
+                                    return <span>{currentLang === 'id' ? '-- Pilih Karyawan --' : '-- Select Employee --'}</span>;
+                                  }
+                                  const emp = filteredEmployees.find(e => getPropCaseInsensitiveTopNav(e, ['email', 'email address', 'user_uid'], '') === selectedSwitchEmp);
+                                  if (!emp) return <span>{selectedSwitchEmp}</span>;
+                                  
+                                  const name = getPropCaseInsensitiveTopNav(emp, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Unknown');
+                                  const photo = getPropCaseInsensitiveTopNav(emp, ['link', 'Link', 'photo', 'avatar'], 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png');
+                                  
+                                  return (
+                                    <div className="flex items-center gap-1.5">
+                                      <img src={photo} alt="" className="w-4 h-4 rounded-full object-cover shrink-0 bg-gray-100 border border-gray-200" onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }} />
+                                      <span className="truncate">{name}</span>
+                                    </div>
+                                  );
+                                })()}
+                                <svg className="w-3.5 h-3.5 text-gray-400 ml-auto shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                              </div>
+                            </button>
+                          </div>
+                          {/* ------------------------------------------------------------- */}
                         </div>
                       </>
                     )}
