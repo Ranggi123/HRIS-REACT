@@ -2295,8 +2295,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
       {/* 2. Team Working Calendar Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 w-full">
-        <div className="flex flex-row justify-between items-start sm:items-center pb-4 mb-4 border-b border-gray-100 gap-2 sm:gap-3">
-          <div className="flex-1 pr-2 sm:pr-3 flex flex-col gap-2">
+        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end pb-4 mb-4 border-b border-gray-100 gap-4">
+          <div className="flex-1 min-w-0 w-full xl:w-auto flex flex-col gap-3">
             <div>
               <h3 className="text-sm sm:text-lg font-bold text-gray-900 flex flex-wrap items-center gap-1.5 sm:gap-2">
                 <svg className="w-5 h-5 text-blue-600 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -2308,35 +2308,37 @@ export default function Approval({ currentUser: propCurrentUser }) {
                   : `${t.calDescOne} ${teamMembers.find(m => m.email === selectedEmployee)?.name || selectedEmployee}`}
               </p>
             </div>
-            
-            {/* Inline Summary Balance Cards Below Showing Schedule For */}
-            <div className="flex bg-transparent mt-1 gap-1.5 shrink-0 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
-              <div className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-gray-50 border border-gray-200 whitespace-nowrap">
-                <span className="text-[10px] font-bold text-gray-500">{t.sumAnn}</span>
-                <span className="text-[10px] font-black text-blue-700">{employeeSummary.annual}</span>
+
+            {/* Inline Summary Balance Cards */}
+            <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-1 overflow-x-auto max-w-full w-fit" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+              <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg bg-white shadow-sm border border-gray-200/50 whitespace-nowrap">
+                <span className="text-[11px] font-bold text-gray-500">{t.sumAnn}</span>
+                <span className="text-[11px] font-black text-blue-700">{employeeSummary.annual}</span>
               </div>
-              <div className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-gray-50 border border-gray-200 whitespace-nowrap">
-                <span className="text-[10px] font-bold text-gray-500">{t.sumDop}</span>
-                <span className="text-[10px] font-black text-blue-700">{employeeSummary.dayOff}</span>
+              <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg bg-white shadow-sm border border-gray-200/50 whitespace-nowrap">
+                <span className="text-[11px] font-bold text-gray-500">{t.sumDop}</span>
+                <span className="text-[11px] font-black text-blue-700">{employeeSummary.dayOff}</span>
               </div>
-              <div className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-gray-50 border border-gray-200 whitespace-nowrap">
-                <span className="text-[10px] font-bold text-gray-500">{t.sumEo}</span>
-                <span className="text-[10px] font-black text-blue-700">{employeeSummary.extraOff}</span>
+              <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg bg-white shadow-sm border border-gray-200/50 whitespace-nowrap">
+                <span className="text-[11px] font-bold text-gray-500">{t.sumEo}</span>
+                <span className="text-[11px] font-black text-blue-700">{employeeSummary.extraOff}</span>
               </div>
             </div>
           </div>
           
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            <button onClick={prevMonth} className="p-1 sm:p-2 border border-gray-200 hover:bg-gray-50 rounded-lg sm:rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Previous Month">
-              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
-            </button>
-            <span className="text-[10px] sm:text-base font-bold text-gray-800 min-w-[65px] sm:min-w-[120px] text-center">
-              {t.monthsFull[month]} {year}
-            </span>
-            <button onClick={nextMonth} className="p-1 sm:p-2 border border-gray-200 hover:bg-gray-50 rounded-lg sm:rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Next Month">
-              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-            </button>
-            <button onClick={setThisMonth} className="hidden sm:block px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition shadow-sm active:scale-95 ml-1">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0 w-full xl:w-auto justify-between xl:justify-end">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <button onClick={prevMonth} className="p-1 sm:p-2 border border-gray-200 hover:bg-gray-50 rounded-lg sm:rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Previous Month">
+                <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+              </button>
+              <span className="text-xs sm:text-base font-bold text-gray-800 min-w-[100px] sm:min-w-[120px] text-center">
+                {t.monthsFull[month]} {year}
+              </span>
+              <button onClick={nextMonth} className="p-1 sm:p-2 border border-gray-200 hover:bg-gray-50 rounded-lg sm:rounded-xl text-gray-600 transition shadow-sm active:scale-95" title="Next Month">
+                <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+              </button>
+            </div>
+            <button onClick={setThisMonth} className="px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition shadow-sm active:scale-95 ml-auto xl:ml-2">
               {t.btnThisMonth}
             </button>
           </div>
