@@ -1051,6 +1051,20 @@ export default function Approval({ currentUser: propCurrentUser }) {
       return false;
     };
 
+    const hasExplicitLineManager = (row) => {
+      if (!row) return false;
+      const val = getValidPropCaseInsensitive(row, [
+        'Line Manager work email', 'line_manager_work_email',
+        'Line Manager Email', 'line_manager_email',
+        'Line Manager', 'line_manager', 'Line_Manager', 'linemanager',
+        'manager_email', 'Manager Email', 'Manager', 'manager',
+        'Approver Email', 'approver_email', 'Approver', 'approver',
+        'Atasan Email', 'atasan_email', 'Atasan', 'atasan',
+        'atasan_langsung', 'Atasan Langsung', 'approval_line_manager'
+      ], '');
+      return Boolean(val);
+    };
+
     const filteredLeaves = rawLeaves
       .filter(row => {
         const status = getRowStatus(row);
@@ -1065,11 +1079,16 @@ export default function Approval({ currentUser: propCurrentUser }) {
         if (!hasValidWorkEmail) return false;
         const empVal = normalizeText(getValidPropCaseInsensitive(row, [
           'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
-          'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
+          'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email',
+          'Barcode', 'barcode', 'Employee ID', 'employee_id'
         ]));
-        const hasDirectMgr = matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail);
         const isSelf = empVal && (empVal === cleanEffectiveWorkEmail || (cleanLoginEmail && empVal === cleanLoginEmail));
-        return hasDirectMgr && !isSelf;
+        if (isSelf) return false;
+
+        if (hasExplicitLineManager(row)) {
+          return matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail);
+        }
+        return matchesScopedEmployee(row);
       })
       .map(row => ({
         ...row,
@@ -1091,11 +1110,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
         if (!hasValidWorkEmail) return false;
         const empEmail = normalizeText(getValidPropCaseInsensitive(row, [
           'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
-          'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
+          'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email',
+          'Barcode', 'barcode', 'Employee ID', 'employee_id'
         ]));
-        const hasDirectMgr = matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail);
         const isSelf = empEmail && (empEmail === cleanEffectiveWorkEmail || (cleanLoginEmail && empEmail === cleanLoginEmail));
-        return hasDirectMgr && !isSelf;
+        if (isSelf) return false;
+
+        const hasDirectMgr = matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail) || matchesScopedEmployee(row);
+        return hasDirectMgr;
       })
       .map(row => ({
         ...row,
