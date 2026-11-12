@@ -762,7 +762,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
             if (email) employeeDirectoryMap.set(email, name);
           });
 
-          const subordinates = dirData.filter(row => matchesLineManager(row, realWorkEmail, realName, managerKeys));
+                    const subordinates = dirData.filter(row => {
+            const isManagerMatch = matchesLineManager(row, realWorkEmail, realName, managerKeys);
+            const statusRaw = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
+            const isStatusValid = statusRaw === 'active' || statusRaw === 'off-boarding' || statusRaw === 'off boarding';
+            return isManagerMatch && isStatusValid;
+          });
           
           const uniqueMap = new Map();
           subordinates.forEach(emp => {
@@ -782,8 +787,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
             if (email) {
               subordinateIdentifiers.add(email);
-              if (!uniqueMap.has(email)) {
-                uniqueMap.set(email, { email, name });
+                            if (!uniqueMap.has(email)) {
+                uniqueMap.set(email, { 
+                  email, 
+                  name,
+                  annual_leave_balance: getPropCaseInsensitive(emp, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave']),
+                  day_off_payment_balance: getPropCaseInsensitive(emp, ['Day Off Payment Balance', 'day_off_payment_balance', 'Day Off Payment', 'dayoffbalance']),
+                  extra_off_balance: getPropCaseInsensitive(emp, ['Extra Off Balance', 'extra_off_balance', 'Extra Off', 'extraoffbalance'])
+                });
               }
             }
             if (name) subordinateIdentifiers.add(name.trim().toLowerCase());
