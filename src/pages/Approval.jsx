@@ -665,6 +665,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const currentUser = propCurrentUser || context.currentUser || sessionUser;
 
   const [loading, setLoading] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [rawDirEmployees, setRawDirEmployees] = useState([]);
   const [rawCompanies, setRawCompanies] = useState([]);
@@ -777,6 +778,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       setRawLeaves(lvData);
       setRawAttendance(attData);
       setRawSchedules(schedData);
+      setHasLoadedOnce(true);
     } catch (err) {
       console.error('[Approval] Error fetching approval records:', err);
     }
@@ -966,10 +968,25 @@ export default function Approval({ currentUser: propCurrentUser }) {
       if (statusRaw !== 'active') return false;
 
       if (isHrManagerActive) {
-        return rowMatchesCompany(row);
+        return rowBelongsToUserCompany(row, matchesScopedEmployee);
       }
 
       if (!hasValidWorkEmail) return false;
+      
+      const lineMgrEmail = normalizeText(getValidPropCaseInsensitive(row, [
+        'Line Manager work email', 'line_manager_work_email',
+        'Line Manager Email', 'line_manager_email',
+        'Line Manager', 'line_manager', 'Line_Manager', 'linemanager',
+        'manager_email', 'Manager Email', 'Manager', 'manager',
+        'Approver Email', 'approver_email', 'Approver', 'approver',
+        'Atasan Email', 'atasan_email', 'Atasan', 'atasan',
+        'atasan_langsung', 'Atasan Langsung', 'approval_line_manager'
+      ], ''));
+
+      if (!lineMgrEmail || lineMgrEmail === '-' || lineMgrEmail === 'null' || lineMgrEmail === 'undefined') {
+        return false;
+      }
+
       return matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail);
     });
 
@@ -1116,8 +1133,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
         const isSelf = empEmail && (empEmail === cleanEffectiveWorkEmail || (cleanLoginEmail && empEmail === cleanLoginEmail));
         if (isSelf) return false;
 
-        const hasDirectMgr = matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail) || matchesScopedEmployee(row);
-        return hasDirectMgr;
+        if (hasExplicitLineManager(row)) {
+          return matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail);
+        }
+        return matchesScopedEmployee(row);
       })
       .map(row => ({
         ...row,
@@ -2153,6 +2172,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const pendingAttendanceCount = useMemo(() => {
     return attendanceRequests.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   }, [attendanceRequests]);
+
+  useEffect(() => {
+    if (hasLoadedOnce && typeof context.onApprovalCountChange === 'function') {
+      context.onApprovalCountChange(pendingLeavesCount + pendingAttendanceCount);
+    }
+  }, [hasLoadedOnce, pendingLeavesCount, pendingAttendanceCount, context]);
 
   const activeCategoryList = useMemo(() => {
     return activeCategoryTab === 'attendance' ? attendanceRequests : leaveRequests;
