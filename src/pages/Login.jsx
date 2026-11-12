@@ -313,8 +313,8 @@ export default function Login() {
   }, [navigate]);
 
   useEffect(() => {
-    const isOAuthReturn = 
-      window.location.hash.includes('access_token') || 
+    const isOAuthReturn =
+      window.location.hash.includes('access_token') ||
       window.location.search.includes('code') ||
       sessionStorage.getItem('hris_oauth_active') === 'true';
 
@@ -322,20 +322,44 @@ export default function Login() {
       return;
     }
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user?.email) {
+    let isProcessing = false;
+
+    const processOAuthSession = async (session) => {
+      if (isProcessing || !session?.user?.email) return;
+
+      const currentSession = localStorage.getItem('hris_session_data');
+      if (currentSession) {
         sessionStorage.removeItem('hris_oauth_active');
-        const currentSession = localStorage.getItem('hris_session_data');
-        if (!currentSession) {
-          await validateAndLoginOAuth(session.user.email);
-        }
+        navigate('/');
+        return;
+      }
+
+      isProcessing = true;
+      sessionStorage.removeItem('hris_oauth_active');
+      setIsLoading(true);
+      await validateAndLoginOAuth(session.user.email);
+      setIsLoading(false);
+    };
+
+    // Cek sesi yang mungkin sudah terbentuk sebelum listener terpasang
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        processOAuthSession(session);
+      }
+    });
+
+    // Dengarkan perubahan status auth
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+        await processOAuthSession(session);
       }
     });
 
     return () => {
       authListener?.subscription?.unsubscribe();
     };
-  }, []);
+  }, [navigate]);
+
 
   useEffect(() => {
     if (isSuperAdminMode) {
@@ -558,11 +582,8 @@ export default function Login() {
     setAlert(null);
     try {
       sessionStorage.setItem('hris_oauth_active', 'true');
-      let redirectTarget = window.location.origin;
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        redirectTarget = 'http://localhost:5173';
-      }
-      
+      const redirectTarget = `${window.location.origin}/login`;
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -578,6 +599,7 @@ export default function Login() {
       setAlert({ message: err.message, type: 'error' });
     }
   };
+
 
   const validateAndLoginOAuth = async (email) => {
     try {
