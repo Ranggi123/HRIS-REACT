@@ -2980,18 +2980,58 @@ export default function Approval({ currentUser: propCurrentUser }) {
               </button>
             </div>
 
-            <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">{t.reqEmpInfo}</span>
-              <div className="text-sm font-bold text-gray-800">
-                {getPropCaseInsensitive(selectedRequest, ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'], '-')}
-              </div>
-              <div className="text-xs text-gray-500">
-                Email: {getPropCaseInsensitive(selectedRequest, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email'], '-')}
-              </div>
-              <div className="text-xs text-gray-500">
-                {t.manager} {getPropCaseInsensitive(selectedRequest, ['Line Manager', 'line_manager', 'Line Manager Email', 'manager_email', 'Approver'], '-')}
-              </div>
-            </div>
+            {(() => {
+              const reqEmpIdentifier = getValidPropCaseInsensitive(selectedRequest, [
+                'Employee', 'employee', 'email', 'Email', 'user_uid', 'employee_email', 'work_email', 'Employee work email', 'Barcode', 'barcode', 'Employee ID', 'employee_id'
+              ], '');
+              const normReqEmpId = normalizeText(reqEmpIdentifier);
+              const reqEmpNameRaw = getValidPropCaseInsensitive(selectedRequest, [
+                'Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'
+              ], '');
+              const normReqEmpName = normalizeText(reqEmpNameRaw);
+
+              const dirEmpProfile = rawDirEmployees.find(emp => {
+                const wMail = normalizeText(getValidPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'work email', 'Work Email'], ''));
+                const pMail = normalizeText(getValidPropCaseInsensitive(emp, ['email', 'Email', 'Email Address', 'email_address', 'user_uid'], ''));
+                const bCode = normalizeText(getValidPropCaseInsensitive(emp, ['Barcode', 'barcode', 'Employee ID', 'employee_id', 'id'], ''));
+                const eName = normalizeText(getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], ''));
+
+                if (normReqEmpId && (wMail === normReqEmpId || pMail === normReqEmpId || bCode === normReqEmpId)) return true;
+                if (normReqEmpName && eName === normReqEmpName) return true;
+                return false;
+              });
+
+              const displayEmpName = reqEmpNameRaw || (dirEmpProfile ? getValidPropCaseInsensitive(dirEmpProfile, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], '-') : '-');
+              const displayEmpEmail = reqEmpIdentifier || '-';
+
+              const lineMgrKeys = [
+                'Line Manager work email', 'line_manager_work_email',
+                'Line Manager', 'line_manager', 'Line_Manager', 'linemanager',
+                'Line Manager Email', 'line_manager_email',
+                'manager_email', 'Manager Email', 'Manager', 'manager',
+                'Approver', 'approver', 'Approver Email', 'approver_email',
+                'Atasan', 'atasan', 'Atasan Langsung', 'atasan_langsung', 'approval_line_manager'
+              ];
+
+              const directLineMgr = getValidPropCaseInsensitive(selectedRequest, lineMgrKeys, '');
+              const dirLineMgr = dirEmpProfile ? getValidPropCaseInsensitive(dirEmpProfile, lineMgrKeys, '') : '';
+              const resolvedLineMgr = directLineMgr || dirLineMgr || '-';
+
+              return (
+                <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">{t.reqEmpInfo}</span>
+                  <div className="text-sm font-bold text-gray-800">
+                    {displayEmpName}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    Email: {displayEmpEmail}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {t.manager} {resolvedLineMgr}
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="mt-4 space-y-3">
               <div className="grid grid-cols-2 gap-3">
