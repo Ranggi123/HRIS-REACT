@@ -25,6 +25,10 @@ export default function TopNav({
   const [filteredEmployees, setFilteredEmployees] = useState([]);
   const [selectedCompany, setSelectedCompany] = useState('');
   const [selectedSwitchEmp, setSelectedSwitchEmp] = useState('');
+  
+  // Custom dropdown states
+  const [empDropdownOpen, setEmpDropdownOpen] = useState(false);
+  const [empSearchQuery, setEmpSearchQuery] = useState('');
 
   const getPropCaseInsensitiveTopNav = (obj, candidateNames, fallback = '') => {
     if (!obj) return fallback;
@@ -88,27 +92,11 @@ export default function TopNav({
     setSelectedSwitchEmp('');
   };
 
-  const handleDirectSwitch = (e) => {
-    const email = e.target.value;
-    setSelectedSwitchEmp(email);
-    if (!email) return;
-    
-    const emp = allEmployees.find(emp => getPropCaseInsensitiveTopNav(emp, ['email', 'email address', 'user_uid'], '') === email);
-    if (emp) {
-      const existingOriginal = localStorage.getItem('hris_original_super_admin');
-      if (!existingOriginal && currentUser) {
-        localStorage.setItem('hris_original_super_admin', JSON.stringify(currentUser));
-      }
-      localStorage.setItem('hris_session_data', JSON.stringify(emp));
-      window.location.reload();
-    }
-  };
-  // --------------------------------------------------------
-
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setDropdownOpen(false);
+        setEmpDropdownOpen(false);
       }
     };
     if (dropdownOpen) {
@@ -348,7 +336,7 @@ export default function TopNav({
                           <select 
                             value={selectedCompany} 
                             onChange={handleCompanyChange}
-                            className="w-full px-2 py-1.5 text-xs text-gray-700 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                            className="w-full px-2 py-1.5 text-xs text-gray-700 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-xs"
                           >
                             <option value="">{currentLang === 'id' ? '-- Semua Perusahaan --' : '-- All Companies --'}</option>
                             {companies.map(c => {
@@ -358,54 +346,102 @@ export default function TopNav({
                             })}
                           </select>
 
-                          {/* DIUBAH MENJADI KUSTOM DROPDOWN UNTUK MENAMPILKAN FOTO KARYAWAN */}
+                          {/* KUSTOM DROPDOWN UNTUK FOTO & JOB TITLE KARYAWAN */}
                           <div className="relative">
                             <button
                               type="button"
-                              onClick={() => {
-                                // Anda bisa menyimpan state open custom di sini jika mau
-                                // Karena kita di dalam dropdown lain, hati-hati dengan event bubbling
-                              }}
-                              className="w-full text-left bg-white border border-gray-200 rounded-lg text-xs text-gray-700 p-0 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              onClick={() => setEmpDropdownOpen(!empDropdownOpen)}
+                              className="w-full text-left bg-white border border-gray-200 rounded-lg text-xs text-gray-700 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-xs hover:bg-gray-50 transition flex items-center justify-between"
                             >
-                              <select 
-                                value={selectedSwitchEmp} 
-                                onChange={handleDirectSwitch}
-                                className="w-full h-full px-2 py-1.5 opacity-0 absolute inset-0 cursor-pointer"
-                                style={{ zIndex: 10 }}
-                              >
-                                <option value="">{currentLang === 'id' ? '-- Pilih Karyawan --' : '-- Select Employee --'}</option>
-                                {filteredEmployees.map(emp => {
-                                  const email = getPropCaseInsensitiveTopNav(emp, ['email', 'email address', 'user_uid'], '');
-                                  if (!email) return null;
-                                  return <option key={email} value={email}>{email}</option>;
-                                })}
-                              </select>
-
-                              {/* Tampilan Visual Dropdown (Label) */}
-                              <div className="flex items-center px-2 py-1.5 pointer-events-none">
-                                {(() => {
-                                  if (!selectedSwitchEmp) {
-                                    return <span>{currentLang === 'id' ? '-- Pilih Karyawan --' : '-- Select Employee --'}</span>;
-                                  }
-                                  const emp = filteredEmployees.find(e => getPropCaseInsensitiveTopNav(e, ['email', 'email address', 'user_uid'], '') === selectedSwitchEmp);
-                                  if (!emp) return <span>{selectedSwitchEmp}</span>;
-                                  
-                                  const name = getPropCaseInsensitiveTopNav(emp, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Unknown');
-                                  const photo = getPropCaseInsensitiveTopNav(emp, ['link', 'Link', 'photo', 'avatar'], 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png');
-                                  
-                                  return (
-                                    <div className="flex items-center gap-1.5">
-                                      <img src={photo} alt="" className="w-4 h-4 rounded-full object-cover shrink-0 bg-gray-100 border border-gray-200" onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }} />
-                                      <span className="truncate">{name}</span>
-                                    </div>
-                                  );
-                                })()}
-                                <svg className="w-3.5 h-3.5 text-gray-400 ml-auto shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-                                </svg>
-                              </div>
+                              {(() => {
+                                if (!selectedSwitchEmp) {
+                                  return <span className="text-gray-500">{currentLang === 'id' ? '-- Pilih Karyawan --' : '-- Select Employee --'}</span>;
+                                }
+                                const emp = filteredEmployees.find(e => getPropCaseInsensitiveTopNav(e, ['email', 'email address', 'user_uid'], '') === selectedSwitchEmp);
+                                if (!emp) return <span>{selectedSwitchEmp}</span>;
+                                
+                                const name = getPropCaseInsensitiveTopNav(emp, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Unknown');
+                                const photo = getPropCaseInsensitiveTopNav(emp, ['link', 'Link', 'photo', 'avatar'], 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png');
+                                
+                                return (
+                                  <div className="flex items-center gap-1.5 overflow-hidden">
+                                    <img src={photo} alt="" className="w-5 h-5 rounded-full object-cover shrink-0 bg-gray-100 border border-gray-200" onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }} />
+                                    <span className="truncate font-semibold text-gray-800">{name}</span>
+                                  </div>
+                                );
+                              })()}
+                              <svg className="w-3.5 h-3.5 text-gray-400 ml-auto shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                              </svg>
                             </button>
+
+                            {empDropdownOpen && (
+                              <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-xl z-[60] py-1 divide-y divide-gray-50 animate-fadeIn" style={{ minWidth: '110%' }}>
+                                <div className="p-2 sticky top-0 bg-white border-b border-gray-100 z-10" onClick={(e) => e.stopPropagation()}>
+                                  <input 
+                                    type="text" 
+                                    value={empSearchQuery}
+                                    onChange={(e) => setEmpSearchQuery(e.target.value)}
+                                    placeholder={currentLang === 'id' ? 'Cari karyawan...' : 'Search employee...'} 
+                                    className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-gray-50"
+                                  />
+                                </div>
+                                <div className="py-1">
+                                  {(() => {
+                                    // filter locally
+                                    const searched = filteredEmployees.filter(emp => {
+                                      const email = getPropCaseInsensitiveTopNav(emp, ['email', 'email address', 'user_uid'], '');
+                                      const name = getPropCaseInsensitiveTopNav(emp, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Unknown');
+                                      if (!email) return false;
+                                      if (!empSearchQuery) return true;
+                                      const q = empSearchQuery.toLowerCase();
+                                      return name.toLowerCase().includes(q) || email.toLowerCase().includes(q);
+                                    });
+
+                                    if (searched.length === 0) {
+                                      return <div className="px-3 py-2 text-xs text-gray-400 text-center">{currentLang === 'id' ? 'Tidak ditemukan' : 'Not found'}</div>;
+                                    }
+
+                                    return searched.map((emp) => {
+                                      const email = getPropCaseInsensitiveTopNav(emp, ['email', 'email address', 'user_uid'], '');
+                                      const name = getPropCaseInsensitiveTopNav(emp, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Unknown');
+                                      const photo = getPropCaseInsensitiveTopNav(emp, ['link', 'Link', 'photo', 'avatar'], 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png');
+                                      const jobTitle = getPropCaseInsensitiveTopNav(emp, ['job title', 'Job Title', 'job_title', 'position'], '');
+                                      
+                                      return (
+                                        <button 
+                                          key={email}
+                                          type="button" 
+                                          onClick={() => {
+                                            setSelectedSwitchEmp(email);
+                                            setEmpDropdownOpen(false);
+                                            
+                                            const existingOriginal = localStorage.getItem('hris_original_super_admin');
+                                            if (!existingOriginal && currentUser) {
+                                              localStorage.setItem('hris_original_super_admin', JSON.stringify(currentUser));
+                                            }
+                                            localStorage.setItem('hris_session_data', JSON.stringify(emp));
+                                            window.location.reload();
+                                          }}
+                                          className="w-full px-3 py-2 flex items-center space-x-2.5 hover:bg-indigo-50 text-left transition group border-b border-gray-50 last:border-b-0"
+                                        >
+                                          <img 
+                                            src={photo} 
+                                            alt={name} 
+                                            className="w-7 h-7 rounded-full object-cover border border-gray-200 shrink-0 bg-gray-100" 
+                                            onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }}
+                                          />
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-xs font-semibold text-gray-800 group-hover:text-indigo-600 truncate">{name}</p>
+                                            <p className="text-[10px] text-gray-400 truncate">{jobTitle ? jobTitle + ' • ' : ''}{email}</p>
+                                          </div>
+                                        </button>
+                                      );
+                                    });
+                                  })()}
+                                </div>
+                              </div>
+                            )}
                           </div>
                           {/* ------------------------------------------------------------- */}
                         </div>

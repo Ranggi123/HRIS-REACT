@@ -622,7 +622,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
     return null;
   });
 
-  const currentUser = propCurrentUser || sessionUser;
+  const currentUser = propCurrentUser || context.currentUser || sessionUser;
 
   const [loading, setLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -699,10 +699,36 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
     try {
       let subordinateEmails = [];
+      const subordinateEmailSet = new Set();
       const subordinateIdentifiers = new Set();
       const employeeDirectoryMap = new Map();
       let realWorkEmail = userWorkEmail || topNavEmail;
       let realName = userName;
+      let isHrManagerActive = false;
+      const userCompanyKeys = new Set();
+
+      const companyCandidateKeys = [
+        'Company',
+        'company',
+        'Company Name',
+        'company_name',
+        'companyname',
+        'CompanyUID',
+        'companyuid',
+        'company_uid',
+        'company_id'
+      ];
+
+      const matchesUserCompany = (obj) => {
+        if (!obj || userCompanyKeys.size === 0) return false;
+        const val = (getPropCaseInsensitive(obj, companyCandidateKeys, '') || '').trim().toLowerCase();
+        return Boolean(val) && userCompanyKeys.has(val);
+      };
+
+      let profileDept = (getPropCaseInsensitive(currentUser, ['Department', 'department', 'dept', 'Dept'], '') || '').trim().toLowerCase();
+      let profileJobLevel = (getPropCaseInsensitive(currentUser, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], '') || '').trim().toLowerCase();
+      let profileAccountStatus = (getPropCaseInsensitive(currentUser, ['Account Status', 'account_status', 'accountstatus', 'Status', 'status', 'STATUS'], '') || '').trim().toLowerCase();
+      let profileCompany = (getPropCaseInsensitive(currentUser, companyCandidateKeys, '') || '').trim();
 
       try {
         const { data: dirData, error: dirErr } = await supabase
@@ -738,7 +764,46 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
             const foundName = getPropCaseInsensitive(myProfile, ['Name', 'name', 'nama', 'fullname', 'full_name']);
             if (foundName) realName = foundName;
+
+            const foundDept = getPropCaseInsensitive(myProfile, ['Department', 'department', 'dept', 'Dept'], '').trim().toLowerCase();
+            if (foundDept) profileDept = foundDept;
+
+            const foundJobLevel = getPropCaseInsensitive(myProfile, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], '').trim().toLowerCase();
+            if (foundJobLevel) profileJobLevel = foundJobLevel;
+
+            const foundAccountStatus = getPropCaseInsensitive(myProfile, ['Account Status', 'account_status', 'accountstatus', 'Status', 'status', 'STATUS'], '').trim().toLowerCase();
+            if (foundAccountStatus) profileAccountStatus = foundAccountStatus;
+
+            const foundCompany = getPropCaseInsensitive(myProfile, companyCandidateKeys, '').trim();
+            if (foundCompany) profileCompany = foundCompany;
           }
+
+          if (profileCompany) {
+            userCompanyKeys.add(profileCompany.toLowerCase());
+            try {
+              const { data: compData } = await supabase.from('company').select('*').limit(200);
+              if (compData && compData.length > 0) {
+                const matchedComp = compData.find(c => {
+                  const uid = (getPropCaseInsensitive(c, ['CompanyUID', 'companyuid', 'id', 'uid'], '') || '').trim().toLowerCase();
+                  const cname = (getPropCaseInsensitive(c, ['Company Name', 'company_name', 'name'], '') || '').trim().toLowerCase();
+                  const target = profileCompany.toLowerCase();
+                  return (uid && uid === target) || (cname && cname === target);
+                });
+                if (matchedComp) {
+                  const uid = (getPropCaseInsensitive(matchedComp, ['CompanyUID', 'companyuid', 'id', 'uid'], '') || '').trim().toLowerCase();
+                  const cname = (getPropCaseInsensitive(matchedComp, ['Company Name', 'company_name', 'name'], '') || '').trim().toLowerCase();
+                  if (uid) userCompanyKeys.add(uid);
+                  if (cname) userCompanyKeys.add(cname);
+                }
+              }
+            } catch (e) {}
+          }
+
+          isHrManagerActive =
+            profileDept === 'human resources' &&
+            profileJobLevel === 'manager' &&
+            profileAccountStatus === 'active' &&
+            userCompanyKeys.size > 0;
 
           setActualUserWorkEmail(realWorkEmail);
           setActualUserName(realName);
@@ -762,11 +827,17 @@ export default function Approval({ currentUser: propCurrentUser }) {
             if (email) employeeDirectoryMap.set(email, name);
           });
 
-                    const subordinates = dirData.filter(row => {
-            const isManagerMatch = matchesLineManager(row, realWorkEmail, realName, managerKeys);
-            const statusRaw = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
+          const subordinates = dirData.filter(row => {
+            const statusRaw = getPropCaseInsensitive(row, ['Account Status', 'account_status', 'status', 'Status', 'STATUS'], '').trim().toLowerCase();
             const isStatusValid = statusRaw === 'active' || statusRaw === 'off-boarding' || statusRaw === 'off boarding';
-            return isManagerMatch && isStatusValid;
+            if (!isStatusValid) return false;
+
+            if (isHrManagerActive) {
+              return matchesUserCompany(row);
+            }
+
+            const isManagerMatch = matchesLineManager(row, realWorkEmail, realName, managerKeys);
+            return isManagerMatch;
           });
           
           let allHolidays = [];
@@ -777,26 +848,35 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
           const uniqueMap = new Map();
           subordinates.forEach(emp => {
-            const email = (getPropCaseInsensitive(emp, [
+            const workMail = (getPropCaseInsensitive(emp, [
               'Employee work email',
               'employee_work_email',
               'work_email',
               'work email',
-              'Work Email',
+              'Work Email'
+            ]) || '').trim().toLowerCase();
+
+            const personalMail = (getPropCaseInsensitive(emp, [
               'email',
               'Email',
               'user_uid'
             ]) || '').trim().toLowerCase();
 
+            const email = workMail || personalMail;
+            const empAllEmails = Array.from(new Set([workMail, personalMail].filter(Boolean)));
             const name = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], email);
             const id = (getPropCaseInsensitive(emp, ['Employee ID', 'employee_id', 'id', 'Barcode', 'barcode', 'nik', 'nip']) || '').trim().toLowerCase();
 
+            empAllEmails.forEach(m => {
+              subordinateEmailSet.add(m);
+              subordinateIdentifiers.add(m);
+            });
+
             if (email) {
-              subordinateIdentifiers.add(email);
               if (!uniqueMap.has(email)) {
                 let empDayOff = 0;
                 let empExtraOff = 0;
-                const validKeys = [email, name.trim().toLowerCase(), id].filter(Boolean);
+                const validKeys = [...empAllEmails, name.trim().toLowerCase(), id].filter(Boolean);
                 
                 allHolidays.forEach(hRow => {
                     const hStatus = getPropCaseInsensitive(hRow, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
@@ -814,7 +894,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
                 uniqueMap.set(email, { 
                   email, 
+                  emails: empAllEmails,
                   name,
+                  barcode: getPropCaseInsensitive(emp, ['Barcode', 'barcode', 'Employee ID', 'employee_id', 'id']) || '',
+                  standart_working_day: getPropCaseInsensitive(emp, ['Standart Working Day', 'standart_working_day', 'Standard Working Day', 'standard_working_day']) || 'BACKOFFICE52',
                   annual_leave_balance: getPropCaseInsensitive(emp, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave']) || '0',
                   day_off_payment_balance: empDayOff,
                   extra_off_balance: empExtraOff
@@ -825,7 +908,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
             if (id) subordinateIdentifiers.add(id);
           });
 
-          subordinateEmails = Array.from(uniqueMap.keys());
+          subordinateEmails = Array.from(subordinateEmailSet);
           setTeamMembers(Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
         }
       } catch (err) {
@@ -861,15 +944,25 @@ export default function Approval({ currentUser: propCurrentUser }) {
             .filter(row => {
               const status = getRowStatus(row);
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
-              const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
+              if (!isRelevant) return false;
 
               const empVal = (getPropCaseInsensitive(row, [
                 'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
                 'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
               ]) || '').trim().toLowerCase();
+
+              if (isHrManagerActive) {
+                return (
+                  matchesUserCompany(row) ||
+                  (empVal && (subordinateEmailSet.has(empVal) || subordinateIdentifiers.has(empVal))) ||
+                  (empVal && subordinateEmails.some(sub => sub && (sub === empVal || empVal.includes(sub) || sub.includes(empVal))))
+                );
+              }
+
+              const hasDirectMgr = matchesLineManager(row, realWorkEmail, realName, allManagerKeys);
               const isSelf = cleanUserWorkEmail && (empVal === cleanUserWorkEmail);
 
-              return isRelevant && hasDirectMgr && !isSelf;
+              return hasDirectMgr && !isSelf;
             })
             .map(row => ({
               ...row,
@@ -922,18 +1015,27 @@ export default function Approval({ currentUser: propCurrentUser }) {
             .filter(row => {
               const status = getRowStatus(row);
               const isRelevant = isPendingApprovalStatus(status) || isApprovedStatus(status) || isRejectedStatus(status);
+              if (!isRelevant) return false;
 
               const empEmail = (getPropCaseInsensitive(row, [
                 'Employee', 'employee', 'Employee Email', 'employee_email', 'email', 'Email',
                 'user_uid', 'work_email', 'work email', 'Employee work email', 'user_email'
               ]) || '').trim().toLowerCase();
 
+              if (isHrManagerActive) {
+                return (
+                  matchesUserCompany(row) ||
+                  (empEmail && (subordinateEmailSet.has(empEmail) || subordinateIdentifiers.has(empEmail))) ||
+                  (empEmail && subordinateEmails.some(sub => sub && (sub === empEmail || empEmail.includes(sub) || sub.includes(empEmail))))
+                );
+              }
+
               const hasDirectMgr = 
                 matchesLineManager(row, realWorkEmail, realName, allManagerKeys) ||
-                (empEmail && subordinateEmails.includes(empEmail)) ||
+                (empEmail && (subordinateEmailSet.has(empEmail) || subordinateEmails.includes(empEmail))) ||
                 (empEmail && subordinateEmails.some(sub => sub && (sub === empEmail || empEmail.includes(sub) || sub.includes(empEmail))));
 
-              return isRelevant && hasDirectMgr;
+              return hasDirectMgr;
             })
             .map(row => ({
               ...row,
@@ -955,7 +1057,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
         if (!schedErr && schedData) {
           teamSched = schedData.filter(row => {
             const empEmail = (getPropCaseInsensitive(row, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email']) || '').trim().toLowerCase();
-            return subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => empEmail.includes(sub));
+            if (isHrManagerActive && matchesUserCompany(row)) return true;
+            return subordinateEmailSet.has(empEmail) || subordinateEmails.includes(empEmail) || subordinateEmails.some(sub => sub && empEmail.includes(sub));
           });
         }
       } catch (e) {
@@ -969,7 +1072,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       console.error('[Approval] Error fetching approval records:', err);
     }
     setLoading(false);
-  }, [userWorkEmail, topNavEmail, userName]);
+  }, [currentUser, userWorkEmail, topNavEmail, userName]);
 
   useEffect(() => {
     refreshAllData();
@@ -1021,22 +1124,29 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const totalDays = new Date(year, month + 1, 0).getDate();
   const today = new Date();
 
+  const selectedMemberObj = useMemo(() => {
+    if (!selectedEmployee || selectedEmployee === 'all') return null;
+    return teamMembers.find(m => m.email.toLowerCase() === selectedEmployee.toLowerCase()) || null;
+  }, [selectedEmployee, teamMembers]);
+
   const employeeSummary = useMemo(() => {
     if (!selectedEmployee || selectedEmployee === 'all') {
       return { annual: '-', dayOff: '-', extraOff: '-' };
     }
-    const profile = teamMembers.find(m => m.email.toLowerCase() === selectedEmployee.toLowerCase()) || {};
+    const profile = selectedMemberObj || {};
     return {
        annual: profile.annual_leave_balance !== undefined && profile.annual_leave_balance !== '' ? profile.annual_leave_balance : '0',
        dayOff: profile.day_off_payment_balance !== undefined ? profile.day_off_payment_balance : '0',
        extraOff: profile.extra_off_balance !== undefined ? profile.extra_off_balance : '0'
     };
-  }, [selectedEmployee, teamMembers]);
+  }, [selectedEmployee, selectedMemberObj]);
 
   const filteredScheduleRecords = useMemo(() => {
     if (!selectedEmployee || selectedEmployee === 'all') {
       return teamScheduleRecords;
     }
+    const target = selectedEmployee.toLowerCase();
+    const validEmails = selectedMemberObj?.emails || [target];
     return teamScheduleRecords.filter(item => {
       const email = (getPropCaseInsensitive(item, [
         'Employee',
@@ -1047,9 +1157,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
         'work_email',
         'Employee work email'
       ]) || '').toLowerCase();
-      return email === selectedEmployee.toLowerCase();
+      return email === target || validEmails.includes(email);
     });
-  }, [teamScheduleRecords, selectedEmployee]);
+  }, [teamScheduleRecords, selectedEmployee, selectedMemberObj]);
 
   const { calendarDays } = useMemo(() => {
     const days = [];
@@ -1098,7 +1208,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
   const openSingleScheduleEdit = (emp, dateStr) => {
     const empEmail = (getPropCaseInsensitive(emp, ['Employee', 'employee', 'email', 'user_uid', 'employee_email']) || '').trim().toLowerCase();
-    const memberProfile = teamMembers.find(m => m.email.toLowerCase() === empEmail) || {};
+    const memberProfile = teamMembers.find(m => m.email.toLowerCase() === empEmail || (m.emails && m.emails.includes(empEmail))) || {};
     
     const empName = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'employee_name'], memberProfile.name || empEmail);
     const barcode = memberProfile.barcode || getPropCaseInsensitive(emp, ['barcode', 'Barcode', 'nik', 'nip', 'id', 'employee_id']) || '-';
@@ -1206,10 +1316,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
     if (!empData) return;
     setBulkEditEmployee(empData);
 
+    const validEmails = empData.emails || [selectedEmployee.toLowerCase()];
+
     const newBulkData = calendarDays.map(d => {
       const existing = d.teamData.find(r => {
          const rEmail = (getPropCaseInsensitive(r, ['Employee', 'employee', 'email', 'user_uid', 'employee_email']) || '').toLowerCase();
-         return rEmail === selectedEmployee.toLowerCase();
+         return rEmail === selectedEmployee.toLowerCase() || validEmails.includes(rEmail);
       });
       
       const defaultShift = existing ? getPropCaseInsensitive(existing, ['shift', 'jam kerja'], 'M9') : 'M9';
@@ -1974,6 +2086,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
     if (selectedEmployee && selectedEmployee !== 'all') {
       const target = selectedEmployee.toLowerCase();
+      const validEmails = selectedMemberObj?.emails || [target];
       list = list.filter(item => {
         const empEmail = (getPropCaseInsensitive(item, [
           'Employee',
@@ -1984,7 +2097,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
           'work_email',
           'Employee work email'
         ]) || '').toLowerCase();
-        return empEmail === target;
+        return empEmail === target || validEmails.includes(empEmail);
       });
     }
 
@@ -1993,7 +2106,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'Time', 'time', 'created_at'])) || new Date(0);
       return dtB.getTime() - dtA.getTime();
     });
-  }, [activeCategoryList, activeCategoryTab, statusTab, selectedEmployee]);
+  }, [activeCategoryList, activeCategoryTab, statusTab, selectedEmployee, selectedMemberObj]);
 
   const pendingStatusCount = activeCategoryList.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   const approvedStatusCount = activeCategoryList.filter(r => isApprovedStatus(getRowStatus(r))).length;
@@ -2156,7 +2269,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                   const employeeName = getPropCaseInsensitive(
                     item, 
                     ['Name', 'name', 'nama', 'fullname', 'full_name', 'employee_name', 'Nama Karyawan'], 
-                    teamMembers.find(m => m.email.toLowerCase() === employeeEmail.toLowerCase())?.name || employeeEmail
+                    teamMembers.find(m => m.email.toLowerCase() === employeeEmail.toLowerCase() || (m.emails && m.emails.includes(employeeEmail.toLowerCase())))?.name || employeeEmail
                   );
                   let reqType = getPropCaseInsensitive(
                     item, 
