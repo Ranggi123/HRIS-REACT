@@ -323,12 +323,13 @@ export default function Login() {
     }
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user?.email) {
+      // PERBAIKAN: Menangkap event INITIAL_SESSION dan SIGNED_IN
+      // Serta tidak memedulikan currentSession lokal yang mungkin nyangkut
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user?.email) {
         sessionStorage.removeItem('hris_oauth_active');
-        const currentSession = localStorage.getItem('hris_session_data');
-        if (!currentSession) {
-          await validateAndLoginOAuth(session.user.email);
-        }
+        
+        // Selalu proses email baru yang masuk dari Google
+        await validateAndLoginOAuth(session.user.email);
       }
     });
 
@@ -557,6 +558,9 @@ export default function Login() {
   const handleGoogleLogin = async () => {
     setAlert(null);
     try {
+      // PERBAIKAN: Hapus sesi lama (cache email ranggiit yang nyangkut) sebelum mulai OAuth
+      await supabase.auth.signOut();
+
       sessionStorage.setItem('hris_oauth_active', 'true');
       let redirectTarget = window.location.origin;
       if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
