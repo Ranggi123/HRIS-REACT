@@ -1769,15 +1769,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
           });
 
           usedCandidates.sort((a, b) => {
-            const uA = getPropCaseInsensitive(a, ['Used Date', 'used_date', 'UsedDate', 'tanggal_digunakan']);
-            const uB = getPropCaseInsensitive(b, ['Used Date', 'used_date', 'UsedDate', 'tanggal_digunakan']);
-            if (uA === fromDate && uB !== fromDate) return -1;
-            if (uB === fromDate && uA !== fromDate) return 1;
-            return 0;
+            const dtA = parseFlexibleDate(getPropCaseInsensitive(a, ['Expiration Date', 'expiration_date', 'exp_date', 'Expired Date', 'expired'])) || new Date(0);
+            const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['Expiration Date', 'expiration_date', 'exp_date', 'Expired Date', 'expired'])) || new Date(0);
+            return dtB.getTime() - dtA.getTime();
           });
 
-          if (usedCandidates.length > 0) {
-            const targetUsedHol = usedCandidates[0];
+          const daysToRestore = Math.min(totalDays, usedCandidates.length);
+          for (let i = 0; i < daysToRestore; i++) {
+            const targetUsedHol = usedCandidates[i];
             const holCols = Object.keys(targetUsedHol);
             const holStatusCol = resolveTableColumn(holCols, ['Status', 'status', 'STATUS']) || 'Status';
             const holUsedDateCol = resolveTableColumn(holCols, ['Used Date', 'used_date', 'UsedDate', 'tanggal_digunakan']) || 'Used Date';
@@ -1807,7 +1806,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
             [schedTypeCol]: 'Working Day'
           })
           .ilike(schedEmpCol, `%${empEmail}%`)
-          .eq(schedDateCol, fromDate);
+          .gte(schedDateCol, fromDate)
+          .lte(schedDateCol, toDate);
 
           let recheckQuery = supabase.from('holiday_balance').select('*').limit(5000);
           if (orConditions) {
