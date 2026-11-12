@@ -2310,16 +2310,16 @@ export default function Approval({ currentUser: propCurrentUser }) {
             </div>
             
             {/* Inline Summary Balance Cards Below Showing Schedule For */}
-            <div className="flex bg-transparent mt-1 gap-1.5 shrink-0 flex-wrap">
-              <div className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-gray-50 border border-gray-200">
+            <div className="flex bg-transparent mt-1 gap-1.5 shrink-0 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+              <div className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-gray-50 border border-gray-200 whitespace-nowrap">
                 <span className="text-[10px] font-bold text-gray-500">{t.sumAnn}</span>
                 <span className="text-[10px] font-black text-blue-700">{employeeSummary.annual}</span>
               </div>
-              <div className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-gray-50 border border-gray-200">
+              <div className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-gray-50 border border-gray-200 whitespace-nowrap">
                 <span className="text-[10px] font-bold text-gray-500">{t.sumDop}</span>
                 <span className="text-[10px] font-black text-blue-700">{employeeSummary.dayOff}</span>
               </div>
-              <div className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-gray-50 border border-gray-200">
+              <div className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-gray-50 border border-gray-200 whitespace-nowrap">
                 <span className="text-[10px] font-bold text-gray-500">{t.sumEo}</span>
                 <span className="text-[10px] font-black text-blue-700">{employeeSummary.extraOff}</span>
               </div>
