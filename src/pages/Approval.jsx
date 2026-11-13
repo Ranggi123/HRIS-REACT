@@ -968,7 +968,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       if (statusRaw !== 'active') return false;
 
       if (isHrManagerActive) {
-        return rowBelongsToUserCompany(row, matchesScopedEmployee);
+        return rowBelongsToUserCompany(row, (r) => matchesLineManagerWorkEmail(r, cleanEffectiveWorkEmail));
       }
 
       if (!hasValidWorkEmail) return false;
@@ -1148,7 +1148,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       if (!isRowEmployeeActive(row)) return false;
 
       if (isHrManagerActive) {
-        return rowBelongsToUserCompany(row, matchesScopedEmployee);
+        return rowBelongsToUserCompany(row, (r) => matchesLineManagerWorkEmail(r, cleanEffectiveWorkEmail));
       }
 
       if (!hasValidWorkEmail) return false;
