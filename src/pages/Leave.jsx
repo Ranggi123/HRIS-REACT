@@ -728,7 +728,7 @@ Period: ${formattedStart} - ${formattedEnd} (${durLabel})
 
 Please review via the HRIS Portal.
 
-go to HRIS: https://hr.arratechs.com/approval`;
+Go to HRIS: https://hris.arratechs.com/leave`;
 
       const emailHtml = `
 <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
@@ -741,7 +741,7 @@ go to HRIS: https://hr.arratechs.com/approval`;
   </div>
   <p style="font-size: 14px; margin-bottom: 20px;">Please review via the HRIS Portal.</p>
   <div style="margin: 24px 0 10px 0;">
-    <a href="https://hr.arratechs.com/approval" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">go to HRIS</a>
+    <a href="https://hris.arratechs.com/leave" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">Go to HRIS</a>
   </div>
 </div>
 `;
@@ -802,6 +802,23 @@ go to HRIS: https://hr.arratechs.com/approval`;
       const durLabel = `${rDur} day(s)`;
       const lineManager = getPropCaseInsensitive(currentUser, ['Line Manager', 'line_manager', 'Manager Email', 'Approver', 'Atasan Email'], 'ranggiit@gmail.com');
       
+      const emailText = `Hi,\n\nA pending leave request has been CANCELLED by the employee:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nNo further action is required.\n\nGo to HRIS: https://hris.arratechs.com/leave`;
+      const emailHtml = `
+<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
+  <p style="margin-top: 0; font-size: 15px;">Hi,</p>
+  <p style="font-size: 15px;">A pending leave request has been CANCELLED by the employee:</p>
+  <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 12px 16px; margin: 16px 0; border-radius: 6px;">
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Employee:</strong> ${profileName}</p>
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Leave Type:</strong> ${rType}</p>
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Period:</strong> ${rStart} to ${rEnd} (${durLabel})</p>
+  </div>
+  <p style="font-size: 14px; margin-bottom: 20px;">No further action is required.</p>
+  <div style="margin: 24px 0 10px 0;">
+    <a href="https://hris.arratechs.com/leave" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">Go to HRIS</a>
+  </div>
+</div>
+`;
+
       try {
         await fetch(GAS_WEB_APP_URL, {
           method: 'POST',
@@ -810,15 +827,9 @@ go to HRIS: https://hr.arratechs.com/approval`;
             action: "sendEmail",
             to: lineManager,
             subject: `Cancel Leave Request: ${rType} - ${profileName}`,
-            body: `Hi,
-
-A pending leave request has been CANCELLED by the employee:
-
-Employee: ${profileName}
-Leave Type: ${rType}
-Period: ${rStart} to ${rEnd} (${durLabel})
-
-No further action is required.`,
+            body: emailHtml,
+            htmlBody: emailHtml,
+            plainText: emailText,
             fromEmail: userEmail
           })
         });
@@ -862,6 +873,23 @@ No further action is required.`,
       const durLabel = `${rDur} day(s)`;
       const lineManager = getPropCaseInsensitive(currentUser, ['Line Manager', 'line_manager', 'Manager Email', 'Approver', 'Atasan Email'], 'ranggiit@gmail.com');
       
+      const emailText = `Hi,\n\nA request to CANCEL an APPROVED leave has been submitted by the employee:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nPlease review via the HRIS Portal.\n\nGo to HRIS: https://hris.arratechs.com/leave`;
+      const emailHtml = `
+<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
+  <p style="margin-top: 0; font-size: 15px;">Hi,</p>
+  <p style="font-size: 15px;">A request to CANCEL an APPROVED leave has been submitted by the employee:</p>
+  <div style="background-color: #fff7ed; border-left: 4px solid #f97316; padding: 12px 16px; margin: 16px 0; border-radius: 6px;">
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Employee:</strong> ${profileName}</p>
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Leave Type:</strong> ${rType}</p>
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Period:</strong> ${rStart} to ${rEnd} (${durLabel})</p>
+  </div>
+  <p style="font-size: 14px; margin-bottom: 20px;">Please review via the HRIS Portal.</p>
+  <div style="margin: 24px 0 10px 0;">
+    <a href="https://hris.arratechs.com/leave" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">Go to HRIS</a>
+  </div>
+</div>
+`;
+
       try {
         await fetch(GAS_WEB_APP_URL, {
           method: 'POST',
@@ -870,7 +898,9 @@ No further action is required.`,
             action: "sendEmail",
             to: lineManager,
             subject: `Leave Cancellation Request: ${rType} - ${profileName}`,
-            body: `Hi,\n\nA request to CANCEL an APPROVED leave has been submitted by the employee:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nPlease review via the HRIS Portal.`,
+            body: emailHtml,
+            htmlBody: emailHtml,
+            plainText: emailText,
             fromEmail: userEmail
           })
         });
@@ -881,6 +911,78 @@ No further action is required.`,
       setIsDetailModalOpen(false);
     } catch (e) {
       alert((currentLang === 'id' ? 'Gagal mengirim permintaan: ' : 'Failed to send request: ') + e.message);
+    }
+  };
+
+  const abortCancelRequest = async (record) => {
+    if (!window.confirm(currentLang === 'id' ? 'Batalkan permintaan pembatalan ini (status akan kembali Disetujui)?' : 'Abort this cancellation request? Status will revert to Approved.')) return;
+    try {
+      const cols = Object.keys(record);
+      const idCol = resolveTableColumn(cols, ['id', 'ID', 'Id', 'request_id', 'leave_id', 'no', '_id']);
+      const colStatus = resolveTableColumn(cols, ['Status', 'status', 'Approval Status']) || 'Status';
+      
+      if (idCol && /^\d+$/.test(String(record[idCol]).trim())) {
+        await supabase.from('leave_requests').update({ [colStatus]: 'Approved' }).eq(idCol, record[idCol]);
+      } else {
+        const colEmp = resolveTableColumn(cols, ['Employee', 'employee', 'USER_UID']) || 'Employee';
+        const colCreated = resolveTableColumn(cols, ['CreatedDate', 'created_date', 'Created Date']) || 'CreatedDate';
+        await supabase.from('leave_requests').update({ [colStatus]: 'Approved' }).eq(colEmp, record[colEmp]).eq(colCreated, record[colCreated]);
+      }
+      
+      const rType = getPropCaseInsensitive(record, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '-');
+      const rStartRaw = getPropCaseInsensitive(record, ['From Date', 'from_date', 'Start Date', 'start_date'], '-');
+      const rEndRaw = getPropCaseInsensitive(record, ['To Date', 'to_date', 'End Date', 'end_date'], '-');
+      const rStart = formatDateDisplay(rStartRaw, 'en');
+      const rEnd = formatDateDisplay(rEndRaw, 'en');
+      
+      let rDur = getPropCaseInsensitive(record, ['Total Days', 'total_days', 'Duration', 'duration', 'Days', 'days'], '');
+      if (!rDur) {
+        const dS = parseFlexibleDate(rStartRaw);
+        const dE = parseFlexibleDate(rEndRaw);
+        if (dS && dE) rDur = Math.ceil(Math.abs(dE - dS) / (1000 * 60 * 60 * 24)) + 1;
+        else rDur = 1;
+      }
+      const durLabel = `${rDur} day(s)`;
+      const lineManager = getPropCaseInsensitive(currentUser, ['Line Manager', 'line_manager', 'Manager Email', 'Approver', 'Atasan Email'], 'ranggiit@gmail.com');
+      
+      const emailText = `Hi,\n\nThe employee has ABORTED their request to cancel the approved leave. The leave remains APPROVED:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nNo further action is required.\n\nGo to HRIS: https://hris.arratechs.com/leave`;
+      const emailHtml = `
+<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
+  <p style="margin-top: 0; font-size: 15px;">Hi,</p>
+  <p style="font-size: 15px;">The employee has ABORTED their request to cancel the approved leave. The leave remains APPROVED:</p>
+  <div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px 16px; margin: 16px 0; border-radius: 6px;">
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Employee:</strong> ${profileName}</p>
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Leave Type:</strong> ${rType}</p>
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Period:</strong> ${rStart} to ${rEnd} (${durLabel})</p>
+  </div>
+  <p style="font-size: 14px; margin-bottom: 20px;">No further action is required.</p>
+  <div style="margin: 24px 0 10px 0;">
+    <a href="https://hris.arratechs.com/leave" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">Go to HRIS</a>
+  </div>
+</div>
+`;
+
+      try {
+        await fetch(GAS_WEB_APP_URL, {
+          method: 'POST',
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "sendEmail",
+            to: lineManager,
+            subject: `Aborted Cancellation Request: ${rType} - ${profileName}`,
+            body: emailHtml,
+            htmlBody: emailHtml,
+            plainText: emailText,
+            fromEmail: userEmail
+          })
+        });
+      } catch (mailErr) {}
+
+      alert(currentLang === 'id' ? 'Permintaan pembatalan berhasil ditarik.' : 'Cancellation request aborted successfully.');
+      refreshAllData();
+      setIsDetailModalOpen(false);
+    } catch (e) {
+      alert((currentLang === 'id' ? 'Gagal menarik permintaan: ' : 'Failed to abort request: ') + e.message);
     }
   };
 
@@ -1093,7 +1195,9 @@ No further action is required.`,
                         <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${badgeClass}`}>{status}</span>
                       </td>
                       <td className="px-2 py-2 sm:px-4 sm:py-3 text-center" onClick={(e) => e.stopPropagation()}>
-                        {sLower.includes('approve') || sLower.includes('setuju') ? (
+                        {sLower.replace(/[\s_-]/g, '') === 'requesttocancel' ? (
+                          <button onClick={() => abortCancelRequest(r)} className="text-[9px] font-bold bg-orange-50 hover:bg-orange-100 text-orange-600 px-2.5 py-1.5 rounded transition border border-orange-200 shadow-sm active:scale-95">Cancel Req</button>
+                        ) : sLower.includes('approve') || sLower.includes('setuju') ? (
                           <button onClick={() => requestToCancelLeave(r)} className="text-[9px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1.5 rounded transition border border-gray-300 shadow-sm active:scale-95">{t.btnReqCancel}</button>
                         ) : !sLower.includes('reject') && !sLower.includes('tolak') && !sLower.includes('cancel') ? (
                           <button onClick={() => cancelPendingLeave(r)} className="text-[9px] font-bold bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1.5 rounded transition border border-red-200 shadow-sm active:scale-95">{t.btnCancel}</button>
@@ -1420,7 +1524,21 @@ No further action is required.`,
                 if (sLower.includes('reject') || sLower.includes('tolak') || sLower.replace(/[\s_-]/g, '') === 'cancelled') {
                   return null;
                 }
-                if (sLower.includes('approve') || sLower.includes('setuju') || sLower.replace(/[\s_-]/g, '') === 'requesttocancel') {
+
+                if (sLower.replace(/[\s_-]/g, '') === 'requesttocancel') {
+                  return (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => abortCancelRequest(selectedRecord)}
+                      className="px-4 py-2 bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 text-xs font-bold rounded-xl transition cursor-pointer"
+                    >
+                      Cancel Req
+                    </button>
+                  );
+                }
+
+                if (sLower.includes('approve') || sLower.includes('setuju')) {
                   return (
                     <button
                       type="button"
@@ -1428,10 +1546,11 @@ No further action is required.`,
                       onClick={() => requestToCancelLeave(selectedRecord)}
                       className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition cursor-pointer"
                     >
-                      {sLower.replace(/[\s_-]/g, '') === 'requesttocancel' ? 'Approve Cancellation' : t.btnReqCancel}
+                      {t.btnReqCancel}
                     </button>
                   );
                 }
+                
                 return (
                   <button
                     type="button"
