@@ -845,8 +845,40 @@ No further action is required.`,
         const colCreated = resolveTableColumn(cols, ['CreatedDate', 'created_date', 'Created Date']) || 'CreatedDate';
         await supabase.from('leave_requests').update({ [colStatus]: 'Request to Cancel' }).eq(colEmp, record[colEmp]).eq(colCreated, record[colCreated]);
       }
+      
+      const rType = getPropCaseInsensitive(record, ['Leave Type', 'leave_type', 'Type', 'type', 'leavetype'], '-');
+      const rStartRaw = getPropCaseInsensitive(record, ['From Date', 'from_date', 'Start Date', 'start_date'], '-');
+      const rEndRaw = getPropCaseInsensitive(record, ['To Date', 'to_date', 'End Date', 'end_date'], '-');
+      const rStart = formatDateDisplay(rStartRaw, 'en');
+      const rEnd = formatDateDisplay(rEndRaw, 'en');
+      
+      let rDur = getPropCaseInsensitive(record, ['Total Days', 'total_days', 'Duration', 'duration', 'Days', 'days'], '');
+      if (!rDur) {
+        const dS = parseFlexibleDate(rStartRaw);
+        const dE = parseFlexibleDate(rEndRaw);
+        if (dS && dE) rDur = Math.ceil(Math.abs(dE - dS) / (1000 * 60 * 60 * 24)) + 1;
+        else rDur = 1;
+      }
+      const durLabel = `${rDur} day(s)`;
+      const lineManager = getPropCaseInsensitive(currentUser, ['Line Manager', 'line_manager', 'Manager Email', 'Approver', 'Atasan Email'], 'ranggiit@gmail.com');
+      
+      try {
+        await fetch(GAS_WEB_APP_URL, {
+          method: 'POST',
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "sendEmail",
+            to: lineManager,
+            subject: `Leave Cancellation Request: ${rType} - ${profileName}`,
+            body: `Hi,\n\nA request to CANCEL an APPROVED leave has been submitted by the employee:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nPlease review via the HRIS Portal.`,
+            fromEmail: userEmail
+          })
+        });
+      } catch (mailErr) {}
+
       alert(currentLang === 'id' ? 'Permintaan pembatalan terkirim.' : 'Cancellation request sent successfully.');
       refreshAllData();
+      setIsDetailModalOpen(false);
     } catch (e) {
       alert((currentLang === 'id' ? 'Gagal mengirim permintaan: ' : 'Failed to send request: ') + e.message);
     }
@@ -1396,7 +1428,7 @@ No further action is required.`,
                       onClick={() => requestToCancelLeave(selectedRecord)}
                       className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition cursor-pointer"
                     >
-                      {sLower.replace(/[\s_-]/g, '') === 'requesttocancel' ? 'Approve Cancellation' : 'Cancel Approval'}
+                      {sLower.replace(/[\s_-]/g, '') === 'requesttocancel' ? 'Approve Cancellation' : t.btnReqCancel}
                     </button>
                   );
                 }
