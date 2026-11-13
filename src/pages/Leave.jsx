@@ -1382,26 +1382,28 @@ No further action is required.`,
                 {t.btnCancel}
               </button>
               {(() => {
-                const s = getRowStatus(selectedRecord);
-                if (isRejectedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'cancelled') {
+                const s = getPropCaseInsensitive(selectedRecord, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval');
+                const sLower = s.toLowerCase();
+                
+                if (sLower.includes('reject') || sLower.includes('tolak') || sLower.replace(/[\s_-]/g, '') === 'cancelled') {
                   return null;
                 }
-                if (isApprovedStatus(s) || s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel') {
+                if (sLower.includes('approve') || sLower.includes('setuju') || sLower.replace(/[\s_-]/g, '') === 'requesttocancel') {
                   return (
                     <button
                       type="button"
-                      disabled={isProcessing}
-                      onClick={() => handleCancelApproved(selectedRecord)}
+                      disabled={loading}
+                      onClick={() => requestToCancelLeave(selectedRecord)}
                       className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition cursor-pointer"
                     >
-                      {s.toLowerCase().replace(/[\s_-]/g, '') === 'requesttocancel' ? 'Approve Cancellation' : 'Cancel Approval'}
+                      {sLower.replace(/[\s_-]/g, '') === 'requesttocancel' ? 'Approve Cancellation' : 'Cancel Approval'}
                     </button>
                   );
                 }
                 return (
                   <button
                     type="button"
-                    disabled={isProcessing}
+                    disabled={loading}
                     onClick={() => cancelPendingLeave(selectedRecord)}
                     className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold rounded-xl transition cursor-pointer"
                   >
