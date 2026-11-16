@@ -2320,7 +2320,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
         <div className="p-4 sm:px-5 sm:py-4 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100">
           
-          <div className="flex items-center gap-2 w-full sm:w-auto flex-nowrap overflow-x-auto">
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-nowrap overflow-x-auto py-1">
             <div className="flex bg-gray-100 rounded-xl p-1 gap-1 shrink-0">
               <button
                 onClick={() => setActiveCategoryTab('leave')}
@@ -2332,7 +2332,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
               >
                 <span>{t.tabLeave}</span>
                 {pendingLeavesCount > 0 && (
-                  <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-xs">
+                  <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-xs animate-bounce">
                     {pendingLeavesCount}
                   </span>
                 )}
@@ -2347,7 +2347,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
               >
                 <span>{t.tabAttendance}</span>
                 {pendingAttendanceCount > 0 && (
-                  <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-xs">
+                  <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-xs animate-bounce">
                     {pendingAttendanceCount}
                   </span>
                 )}
