@@ -159,45 +159,72 @@ const getValidPropCaseInsensitive = (obj, candidateKeys, fallback = '') => {
 
 const normalizeText = (val) => String(val || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-const fetchAllRows = async (tableName) => {
+const fetchAllRows = async (tableName, maxRows = 50000) => {
   const pageSize = 1000;
-  
-  // 1. Dapatkan total data sebenarnya di database
-  const { count, error: countError } = await supabase
+
+  // 1. Ambil halaman pertama sekaligus meminta total count
+  const { data: firstPage, count, error: firstErr } = await supabase
     .from(tableName)
-    .select('*', { count: 'exact', head: true });
-    
-  if (countError) {
-    console.error(`Error fetching count for ${tableName}:`, countError);
+    .select('*', { count: 'exact' })
+    .range(0, pageSize - 1);
+
+  if (firstErr) {
+    console.error(`[Approval] Error fetching ${tableName}:`, firstErr);
     return [];
   }
-  
-  if (!count || count === 0) return [];
-  
-  // 2. Hitung jumlah halaman dan tarik semua secara paralel
-  const pages = Math.ceil(count / pageSize);
-  const promises = [];
-  
-  for (let i = 0; i < pages; i++) {
-    const from = i * pageSize;
-    const to = from + pageSize - 1;
-    promises.push(supabase.from(tableName).select('*').range(from, to));
-  }
-  
-  try {
-    const results = await Promise.all(promises);
-    let allData = [];
-    for (const res of results) {
-      if (res.error) throw res.error;
-      if (res.data && res.data.length > 0) {
-        allData = allData.concat(res.data);
+
+  if (!firstPage || firstPage.length === 0) return [];
+  if (firstPage.length < pageSize) return firstPage;
+
+  let allData = [...firstPage];
+
+  // 2. Jika count tersedia dan valid, tarik sisa halaman secara paralel per batch (aman dari rate-limit)
+  if (typeof count === 'number' && count > pageSize) {
+    const targetRows = Math.min(count, maxRows);
+    const totalPages = Math.ceil(targetRows / pageSize);
+    const batchSize = 4;
+
+    for (let p = 1; p < totalPages; p += batchSize) {
+      const batchPromises = [];
+      for (let j = p; j < Math.min(p + batchSize, totalPages); j++) {
+        const from = j * pageSize;
+        const to = from + pageSize - 1;
+        batchPromises.push(
+          supabase.from(tableName).select('*').range(from, to)
+        );
+      }
+      const results = await Promise.all(batchPromises);
+      for (const res of results) {
+        if (res.error) {
+          console.warn(`[Approval] Partial error on ${tableName}:`, res.error);
+          continue;
+        }
+        if (res.data && res.data.length > 0) {
+          allData = allData.concat(res.data);
+        }
       }
     }
     return allData;
-  } catch (error) {
-    console.error(`Error fetching ${tableName}:`, error);
-    return [];
   }
+
+  // 3. Fallback jika header count tidak tersedia (null): lanjutkan pagination hingga habis
+  let from = pageSize;
+  while (from < maxRows) {
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('*')
+      .range(from, from + pageSize - 1);
+    if (error) {
+      console.warn(`[Approval] Fallback pagination stopped on ${tableName}:`, error);
+      break;
+    }
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return allData;
 };
 
 const resolveTableColumn = (knownCols, candidates) => {
@@ -483,7 +510,7 @@ const SHIFT_OPTIONS = [
 export default function Approval({ currentUser: propCurrentUser }) {
   const context = useOutletContext() || {};
   const currentLang = context.currentLang || 'en';
-  const lang = currentLang; // Fix for ReferenceError: lang is not defined
+  const lang = currentLang;
 
   const t = currentLang === 'id' ? {
     title: 'Permintaan Persetujuan',
@@ -710,8 +737,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const employeeDropdownRef = useRef(null); 
   const [showFilterAlert, setShowFilterAlert] = useState(false); 
 
-
-
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -765,14 +790,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
     setLoading(true);
 
     try {
-      // Mengambil semua data tanpa limit statis menggunakan auto-count parallel fetching
       const [dirRes, compRes, holRes, lvRes, attRes, schedRes] = await Promise.allSettled([
-        fetchAllRows('employee_directory'),
-        fetchAllRows('company'),
-        fetchAllRows('holiday_balance'),
-        fetchAllRows('leave_requests'),
-        fetchAllRows('attendance'),
-        fetchAllRows('schedule')
+        fetchAllRows('employee_directory', 20000),
+        fetchAllRows('company', 5000),
+        fetchAllRows('holiday_balance', 30000),
+        fetchAllRows('leave_requests', 30000),
+        fetchAllRows('attendance', 50000),
+        fetchAllRows('schedule', 50000)
       ]);
 
       const dirData = dirRes.status === 'fulfilled' && Array.isArray(dirRes.value) ? dirRes.value : [];
@@ -933,12 +957,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
         }
       }
       return vals;
-    };
-
-    const rowMatchesCompany = (obj) => {
-      if (!obj || userCompanyKeys.size === 0) return false;
-      const vals = getRowCompanyValues(obj);
-      return vals.some(v => userCompanyKeys.has(v));
     };
 
     const rowBelongsToUserCompany = (obj, fallbackMatchFn) => {
@@ -1209,7 +1227,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
     userName
   ]);
 
-  // FIX TDZ Error: Dideklarasikan SESUDAH teamMembers dibuat
   const uniqueDepartments = useMemo(() => {
     if (!teamMembers) return [];
     const depts = new Set(teamMembers.map(m => m.department).filter(d => d && d !== '-' && d !== 'null' && d !== 'undefined'));
@@ -1221,22 +1238,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
     setActualUserName(resolvedUserName || userName);
   }, [resolvedUserWorkEmail, resolvedUserName, userName]);
 
-  // Effect to handle automatic dropdown opening and focusing
   useEffect(() => {
       if (showFilterAlert && employeeDropdownRef.current) {
-          // Temporarily add a highlight to draw attention
           employeeDropdownRef.current.classList.add('ring-2', 'ring-red-400', 'ring-offset-1');
-          
-          // Focus the dropdown so it's ready for interaction
           employeeDropdownRef.current.focus();
 
-          // Try to programmatically open the dropdown (standard HTML select)
           try {
-             // In standard HTML, you cannot reliably trigger the visual drop-down to open programmatically
-             // via JS for security/UX reasons across all browsers, but focusing it and simulating a click helps in some.
              employeeDropdownRef.current.click();
-             
-             // Alternatively, dispatching events sometimes helps on specific browser implementations
              const event = new MouseEvent('mousedown', {
                  view: window,
                  bubbles: true,
@@ -1245,7 +1253,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
              employeeDropdownRef.current.dispatchEvent(event);
           } catch(e) {}
           
-          // Remove the highlight after a short delay
           const timer = setTimeout(() => {
               if (employeeDropdownRef.current) {
                   employeeDropdownRef.current.classList.remove('ring-2', 'ring-red-400', 'ring-offset-1');
@@ -1285,8 +1292,32 @@ export default function Approval({ currentUser: propCurrentUser }) {
   }, [selectedEmployee, selectedMemberObj]);
 
   const filteredScheduleRecords = useMemo(() => {
+    let records = teamScheduleRecords;
+
+    if (selectedDepartment && selectedDepartment !== 'all') {
+      const targetDept = selectedDepartment.toLowerCase();
+      const validDeptKeys = new Set(
+        teamMembers
+          .filter(m => (m.department || '') === targetDept)
+          .flatMap(m => [
+            m.email,
+            ...(m.emails || []),
+            m.name ? normalizeText(m.name) : '',
+            m.barcode ? normalizeText(m.barcode) : ''
+          ])
+          .map(v => normalizeText(v))
+          .filter(Boolean)
+      );
+      records = records.filter(item => {
+        const email = normalizeText(getPropCaseInsensitive(item, [
+          'Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email'
+        ]));
+        return validDeptKeys.has(email);
+      });
+    }
+
     if (!selectedEmployee || selectedEmployee === 'all') {
-      return teamScheduleRecords;
+      return records;
     }
     const target = selectedEmployee.toLowerCase();
     const validKeys = new Set([
@@ -1295,7 +1326,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       selectedMemberObj?.name ? normalizeText(selectedMemberObj.name) : '',
       selectedMemberObj?.barcode ? normalizeText(selectedMemberObj.barcode) : ''
     ].filter(Boolean));
-    return teamScheduleRecords.filter(item => {
+    return records.filter(item => {
       const email = normalizeText(getPropCaseInsensitive(item, [
         'Employee',
         'employee',
@@ -1307,7 +1338,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       ]));
       return validKeys.has(email);
     });
-  }, [teamScheduleRecords, selectedEmployee, selectedMemberObj]);
+  }, [teamScheduleRecords, selectedDepartment, selectedEmployee, selectedMemberObj, teamMembers]);
 
   const { calendarDays } = useMemo(() => {
     const days = [];
@@ -1343,7 +1374,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
     return { calendarDays: days };
   }, [year, month, totalDays, filteredScheduleRecords, today]);
 
-  
   const getShiftTimes = (shiftVal, stdWorkingDay = 'BACKOFFICE52') => {
     const shiftInfo = SHIFT_OPTIONS.find(s => s.value === shiftVal) || SHIFT_OPTIONS[8];
     const startTime = shiftInfo.start;
@@ -1456,7 +1486,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const openBulkEditModal = () => {
     if (!selectedEmployee || selectedEmployee === 'all') {
       setShowFilterAlert(true);
-      window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll up to make sure dropdown is visible
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     
@@ -1549,7 +1579,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
     
     const isLeave = item._category === 'Leave';
 
-    // Get formatted date strings
     let dateStr = '';
     if (isLeave) {
         const fromDateRaw = getPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date']);
@@ -1585,7 +1614,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
       </div>
     `;
 
-    // Only force "Leave Request" as subject if it's a leave request, otherwise default behavior
     const subjectTitle = isLeave ? `Leave Request - ${newStatus}` : `[${newStatus}] ${item._category} Request - ${empName}`;
 
     try {
@@ -1598,7 +1626,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
           subject: subjectTitle,
           body: emailHtml,
           htmlBody: emailHtml,
-          fromEmail: actualUserWorkEmail || topNavEmail || userWorkEmail // Use the correct user email as the sender
+          fromEmail: actualUserWorkEmail || topNavEmail || userWorkEmail
         })
       });
     } catch (e) {
@@ -2240,16 +2268,23 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
     if (selectedDepartment && selectedDepartment !== 'all') {
       const targetDept = selectedDepartment.toLowerCase();
-      const validDeptEmails = new Set(
-        teamMembers.filter(m => (m.department || '') === targetDept)
-                   .flatMap(m => [m.email, ...(m.emails || [])])
-                   .map(e => normalizeText(e))
+      const validDeptKeys = new Set(
+        teamMembers
+          .filter(m => (m.department || '') === targetDept)
+          .flatMap(m => [
+            m.email,
+            ...(m.emails || []),
+            m.name ? normalizeText(m.name) : '',
+            m.barcode ? normalizeText(m.barcode) : ''
+          ])
+          .map(e => normalizeText(e))
+          .filter(Boolean)
       );
       list = list.filter(item => {
         const empEmail = normalizeText(getPropCaseInsensitive(item, [
           'Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email'
         ]));
-        return validDeptEmails.has(empEmail);
+        return validDeptKeys.has(empEmail);
       });
     }
 
@@ -2383,27 +2418,27 @@ export default function Approval({ currentUser: propCurrentUser }) {
               <div className="relative w-full sm:w-[170px] shrink-0">
                 <select
                   value={selectedDepartment}
-                onChange={(e) => {
-                   setSelectedDepartment(e.target.value);
-                   setSelectedEmployee('all');
-                   if (showFilterAlert) setShowFilterAlert(false);
-                }}
-                className="w-full pl-3.5 pr-8 py-1.5 text-[13px] font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm cursor-pointer transition relative z-0 capitalize"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 0.75rem center',
-                  backgroundSize: '1rem'
-                }}
-              >
-                <option value="all" className="capitalize">{t.deptFilterAll}</option>
-                {uniqueDepartments.map((dept) => (
-                  <option key={dept} value={dept} className="capitalize">
-                    {dept}
-                  </option>
-                ))}
-              </select>
-            </div>
+                  onChange={(e) => {
+                     setSelectedDepartment(e.target.value);
+                     setSelectedEmployee('all');
+                     if (showFilterAlert) setShowFilterAlert(false);
+                  }}
+                  className="w-full pl-3.5 pr-8 py-1.5 text-[13px] font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm cursor-pointer transition relative z-0 capitalize"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 0.75rem center',
+                    backgroundSize: '1rem'
+                  }}
+                >
+                  <option value="all" className="capitalize">{t.deptFilterAll}</option>
+                  {uniqueDepartments.map((dept) => (
+                    <option key={dept} value={dept} className="capitalize">
+                      {dept}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
 
             <div className="relative w-full sm:w-[200px] shrink-0">
@@ -2611,9 +2646,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
           </div>
         ) : null}
       </div>
-
-      
-      
 
       {/* 2. Team Working Calendar Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 w-full">
