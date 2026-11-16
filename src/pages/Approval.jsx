@@ -473,6 +473,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
     filterApproved: 'Disetujui',
     filterRejected: 'Ditolak',
     filterAll: 'Semua Status',
+    deptFilterAll: 'Semua Departemen',
     empFilterAll: 'Semua Karyawan',
     colEmp: 'Karyawan',
     colReq: 'Tipe Permintaan',
@@ -565,6 +566,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
     filterApproved: 'Approved',
     filterRejected: 'Rejected',
     filterAll: 'All Status',
+    deptFilterAll: 'All Departments',
     empFilterAll: 'All Employees',
     colEmp: 'Employee',
     colReq: 'Request Type',
@@ -679,10 +681,16 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const [teamScheduleModalData, setTeamScheduleModalData] = useState(null);
 
   const [statusTab, setStatusTab] = useState('pending');
+  const [selectedDepartment, setSelectedDepartment] = useState('all');
   const [selectedEmployee, setSelectedEmployee] = useState('all');
 
   const employeeDropdownRef = useRef(null); 
   const [showFilterAlert, setShowFilterAlert] = useState(false); 
+
+  const uniqueDepartments = useMemo(() => {
+    const depts = new Set(teamMembers.map(m => m.department).filter(d => d && d !== '-' && d !== 'null' && d !== 'undefined'));
+    return Array.from(depts).sort();
+  }, [teamMembers]);
 
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -1041,11 +1049,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
           }
         });
 
+        const dept = normalizeText(getValidPropCaseInsensitive(emp, ['Department', 'department', 'dept', 'Dept'], ''));
         uniqueMap.set(email, {
           email,
           emails: empAllEmails,
           name,
           barcode: barcodeVal,
+          department: dept,
           standart_working_day: getValidPropCaseInsensitive(emp, ['Standart Working Day', 'standart_working_day', 'Standard Working Day', 'standard_working_day']) || 'BACKOFFICE52',
           annual_leave_balance: getValidPropCaseInsensitive(emp, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave']) || '0',
           day_off_payment_balance: empDayOff,
@@ -2198,6 +2208,21 @@ export default function Approval({ currentUser: propCurrentUser }) {
       }
     }
 
+    if (selectedDepartment && selectedDepartment !== 'all') {
+      const targetDept = selectedDepartment.toLowerCase();
+      const validDeptEmails = new Set(
+        teamMembers.filter(m => (m.department || '') === targetDept)
+                   .flatMap(m => [m.email, ...(m.emails || [])])
+                   .map(e => normalizeText(e))
+      );
+      list = list.filter(item => {
+        const empEmail = normalizeText(getPropCaseInsensitive(item, [
+          'Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email'
+        ]));
+        return validDeptEmails.has(empEmail);
+      });
+    }
+
     if (selectedEmployee && selectedEmployee !== 'all') {
       const target = selectedEmployee.toLowerCase();
       const validKeys = new Set([
@@ -2313,8 +2338,34 @@ export default function Approval({ currentUser: propCurrentUser }) {
             )}
           </div>
 
-          <div className="relative w-full sm:w-[200px] shrink-0">
-            {showFilterAlert && (
+          <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto shrink-0">
+            <div className="relative w-full sm:w-[170px] shrink-0">
+              <select
+                value={selectedDepartment}
+                onChange={(e) => {
+                   setSelectedDepartment(e.target.value);
+                   setSelectedEmployee('all');
+                   if (showFilterAlert) setShowFilterAlert(false);
+                }}
+                className="w-full pl-3.5 pr-8 py-1.5 text-[13px] font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm cursor-pointer transition relative z-0 capitalize"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 0.75rem center',
+                  backgroundSize: '1rem'
+                }}
+              >
+                <option value="all" className="capitalize">{t.deptFilterAll}</option>
+                {uniqueDepartments.map((dept) => (
+                  <option key={dept} value={dept} className="capitalize">
+                    {dept}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="relative w-full sm:w-[200px] shrink-0">
+              {showFilterAlert && (
                <div className="absolute -top-10 left-0 right-0 bg-red-100 text-red-700 text-[10px] font-bold py-1 px-2 rounded shadow-sm text-center animate-bounce z-10 whitespace-nowrap">
                   {t.errFilterFirst}
                </div>
@@ -2335,12 +2386,15 @@ export default function Approval({ currentUser: propCurrentUser }) {
               }}
             >
               <option value="all">{t.empFilterAll}</option>
-              {teamMembers.map((member) => (
+              {teamMembers
+                .filter(member => selectedDepartment === 'all' || member.department === selectedDepartment)
+                .map((member) => (
                 <option key={member.email} value={member.email}>
                   {member.name}
                 </option>
               ))}
             </select>
+            </div>
           </div>
         </div>
 
