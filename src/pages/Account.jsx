@@ -14,11 +14,12 @@ export default function Account() {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // State khusus Payslip
+  // State Payslip
   const [payslips, setPayslips] = useState([]);
   const [payslipLoading, setPayslipLoading] = useState(false);
   const [payslipError, setPayslipError] = useState(null);
-  const [selectedPayslipIdx, setSelectedPayslipIdx] = useState(0);
+  const [checkedEmails, setCheckedEmails] = useState([]);
+  const [selectedPayslip, setSelectedPayslip] = useState(null);
 
   const t = currentLang === 'id' ? {
     title: 'Detail Karyawan',
@@ -84,14 +85,27 @@ export default function Account() {
     taxTitle: 'Pajak Penghasilan',
     ter: 'TER',
     descCode: 'Kode Deskripsi',
-    // Terjemahan Payslip
-    payslipTitle: 'Rincian Slip Gaji',
-    selectPeriod: 'Pilih Periode',
-    payDate: 'Tanggal Pembayaran',
-    paymentStatus: 'Status',
+    // Payslip
+    payslipListTitle: 'Daftar Slip Gaji',
+    payslipDetailTitle: 'Detail Slip Gaji',
+    matchedEmailLabel: 'Email Terdeteksi',
+    totalRecords: 'Total Slip',
+    periodCol: 'Periode',
+    payDateCol: 'Tanggal Bayar',
+    basicCol: 'Gaji Pokok',
+    grossCol: 'Total Pendapatan',
+    deductionCol: 'Total Potongan',
+    netCol: 'Gaji Bersih (THP)',
+    statusCol: 'Status',
+    actionCol: 'Aksi',
+    viewDetail: 'Lihat Detail',
+    closeModal: 'Tutup',
+    printPayslip: 'Cetak / PDF',
+    viewFile: 'Buka Dokumen',
     takeHomePay: 'Gaji Bersih (Take Home Pay)',
     earningsTitle: 'Pendapatan (Earnings)',
     deductionsTitle: 'Potongan (Deductions)',
+    otherFieldsTitle: 'Informasi Tambahan',
     overtime: 'Lembur',
     bonusIncentive: 'Bonus / Insentif / THR',
     totalEarnings: 'Total Pendapatan',
@@ -101,17 +115,8 @@ export default function Account() {
     lateAbsentDeduction: 'Potongan Keterlambatan / Absen',
     otherDeduction: 'Potongan Lainnya',
     totalDeductions: 'Total Potongan',
-    printPayslip: 'Cetak / Simpan PDF',
-    viewPdf: 'Buka Dokumen Slip',
-    noPayslipTitle: 'Belum Ada Data Slip Gaji',
-    noPayslipDesc: 'Data payroll untuk email Anda belum tersedia di sistem.',
-    payslipHistory: 'Riwayat Slip Gaji',
-    periodCol: 'Periode',
-    grossCol: 'Total Pendapatan',
-    deductionCol: 'Total Potongan',
-    netCol: 'Gaji Bersih',
-    actionCol: 'Aksi',
-    viewDetail: 'Lihat'
+    noPayslipTitle: 'Data Slip Gaji Tidak Ditemukan',
+    noPayslipDesc: 'Belum ada data di tabel payroll dengan "Employee Email" yang cocok dengan akun Anda.'
   } : {
     title: 'Employee Details',
     subtitle: 'Detail information of your account',
@@ -176,14 +181,27 @@ export default function Account() {
     taxTitle: 'Income Tax',
     ter: 'Ter',
     descCode: 'Description Code',
-    // Payslip translations
-    payslipTitle: 'Payslip Breakdown',
-    selectPeriod: 'Select Period',
-    payDate: 'Payment Date',
-    paymentStatus: 'Status',
+    // Payslip
+    payslipListTitle: 'Payslip List',
+    payslipDetailTitle: 'Payslip Detail',
+    matchedEmailLabel: 'Detected Email',
+    totalRecords: 'Total Records',
+    periodCol: 'Period',
+    payDateCol: 'Payment Date',
+    basicCol: 'Basic Salary',
+    grossCol: 'Total Earnings',
+    deductionCol: 'Total Deductions',
+    netCol: 'Take Home Pay',
+    statusCol: 'Status',
+    actionCol: 'Action',
+    viewDetail: 'View Detail',
+    closeModal: 'Close',
+    printPayslip: 'Print / PDF',
+    viewFile: 'Open Document',
     takeHomePay: 'Take Home Pay (Net Salary)',
     earningsTitle: 'Earnings',
     deductionsTitle: 'Deductions',
+    otherFieldsTitle: 'Additional Information',
     overtime: 'Overtime',
     bonusIncentive: 'Bonus / Incentive / THR',
     totalEarnings: 'Total Earnings',
@@ -193,17 +211,8 @@ export default function Account() {
     lateAbsentDeduction: 'Late / Absent Deduction',
     otherDeduction: 'Other Deduction',
     totalDeductions: 'Total Deductions',
-    printPayslip: 'Print / Save PDF',
-    viewPdf: 'Open Payslip File',
     noPayslipTitle: 'No Payslip Records Found',
-    noPayslipDesc: 'No payroll data was found matching your employee email.',
-    payslipHistory: 'Payslip History',
-    periodCol: 'Period',
-    grossCol: 'Total Earnings',
-    deductionCol: 'Total Deductions',
-    netCol: 'Net Salary',
-    actionCol: 'Action',
-    viewDetail: 'View'
+    noPayslipDesc: 'No payroll record matched your "Employee Email" in the database.'
   };
 
   const formatIndoDateOnly = (dateVal) => {
@@ -232,7 +241,7 @@ export default function Account() {
     const dataKeys = Object.keys(obj);
     
     for (const key of keys) {
-      const match = dataKeys.find(k => k.toLowerCase() === key.toLowerCase());
+      const match = dataKeys.find(k => k.trim().toLowerCase() === key.trim().toLowerCase());
       if (match && obj[match] !== null && obj[match] !== '') return String(obj[match]);
     }
     
@@ -268,56 +277,105 @@ export default function Account() {
     }).format(num);
   };
 
-  const fetchPayslips = useCallback(async (sessionUser) => {
+  const extractCandidateEmails = (sessionUser, outletCtx) => {
+    const emails = new Set();
+    const addIfValid = (val) => {
+      if (!val || typeof val !== 'string') return;
+      const trimmed = val.trim();
+      if (trimmed.includes('@') && trimmed.includes('.')) {
+        emails.add(trimmed);
+      }
+    };
+
+    const inspectObject = (obj) => {
+      if (!obj || typeof obj !== 'object') return;
+      // Prioritaskan field email spesifik
+      addIfValid(getValFromObj(obj, ['Employee Email', 'employee_email'], ''));
+      addIfValid(getValFromObj(obj, ['Employee Work Email', 'Work Email', 'employee_work_email'], ''));
+      addIfValid(getValFromObj(obj, ['Personal Email', 'Email Pribadi', 'Email', 'email'], ''));
+
+      // Scan semua properti yang mengandung email
+      Object.entries(obj).forEach(([k, v]) => {
+        if (typeof v === 'string' && (k.toLowerCase().includes('email') || v.includes('@'))) {
+          addIfValid(v);
+        }
+      });
+    };
+
+    inspectObject(sessionUser);
+    inspectObject(outletCtx?.user);
+    inspectObject(outletCtx?.userData);
+    inspectObject(outletCtx?.session?.user);
+
+    return Array.from(emails);
+  };
+
+  const fetchPayslips = useCallback(async (sessionUser, outletCtx) => {
     setPayslipLoading(true);
     setPayslipError(null);
 
     try {
-      // Kumpulkan kandidat email dari userData atau sesi auth Supabase
-      const candidateEmails = [];
-      if (sessionUser) {
-        const emailKeys = [
-          ['Employee Email', 'employee_email'],
-          ['Employee Work Email', 'work email', 'employee_work_email'],
-          ['Personal Email', 'email pribadi', 'email']
-        ];
-        emailKeys.forEach((group) => {
-          const found = getValFromObj(sessionUser, group, '');
-          if (found && found !== '-' && !candidateEmails.includes(found.trim())) {
-            candidateEmails.push(found.trim());
-          }
-        });
-      }
+      const candidates = extractCandidateEmails(sessionUser, outletCtx);
 
-      if (candidateEmails.length === 0) {
-        const { data: authData } = await supabase.auth.getUser();
-        if (authData?.user?.email) {
-          candidateEmails.push(authData.user.email.trim());
+      // Cek juga Supabase Auth user jika ada
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.email) {
+        const authEmail = authData.user.email.trim();
+        if (!candidates.some(e => e.toLowerCase() === authEmail.toLowerCase())) {
+          candidates.push(authEmail);
         }
       }
 
-      if (candidateEmails.length === 0) {
+      setCheckedEmails(candidates);
+
+      if (candidates.length === 0) {
         setPayslips([]);
         setPayslipLoading(false);
         return;
       }
 
-      let fetchedData = [];
-      for (const email of candidateEmails) {
+      const lowerCandidates = candidates.map(e => e.toLowerCase());
+      let matchedRows = [];
+
+      // 1. Query langsung ke tabel payroll dengan ilike wildcard untuk menghindari spasi tersembunyi
+      for (const email of candidates) {
         const { data, error } = await supabase
           .from('payroll')
           .select('*')
-          .ilike('Employee Email', email);
+          .ilike('Employee Email', `%${email}%`);
 
         if (error) throw error;
         if (data && data.length > 0) {
-          fetchedData = data;
+          const exactMatches = data.filter(row => {
+            const rowEmail = getValFromObj(row, ['Employee Email', 'employee_email', 'Email'], '').trim().toLowerCase();
+            return lowerCandidates.includes(rowEmail);
+          });
+          matchedRows = exactMatches.length > 0 ? exactMatches : data;
           break;
         }
       }
 
-      // Urutkan dari periode / tanggal pembayaran terbaru
-      const sorted = [...fetchedData].sort((a, b) => {
+      // 2. Fallback: ambil data payroll lalu cocokkan di client-side jika nama kolom/format berbeda
+      if (matchedRows.length === 0) {
+        const { data: allData, error: fallbackError } = await supabase
+          .from('payroll')
+          .select('*')
+          .limit(500);
+
+        if (!fallbackError && Array.isArray(allData)) {
+          matchedRows = allData.filter(row => {
+            const rowEmail = getValFromObj(
+              row,
+              ['Employee Email', 'employee_email', 'Employee Work Email', 'Email', 'email'],
+              ''
+            ).trim().toLowerCase();
+            return lowerCandidates.includes(rowEmail);
+          });
+        }
+      }
+
+      // Urutkan dari periode / tanggal terbaru
+      const sorted = [...matchedRows].sort((a, b) => {
         const dateStrA = getValFromObj(a, ['Payment Date', 'Pay Date', 'Tanggal Pembayaran', 'created_at'], '');
         const dateStrB = getValFromObj(b, ['Payment Date', 'Pay Date', 'Tanggal Pembayaran', 'created_at'], '');
         const timeA = dateStrA ? new Date(dateStrA).getTime() : 0;
@@ -329,7 +387,6 @@ export default function Account() {
       });
 
       setPayslips(sorted);
-      setSelectedPayslipIdx(0);
     } catch (err) {
       console.error('Error fetching payroll:', err);
       setPayslipError(err.message || 'Gagal memuat data payroll');
@@ -340,17 +397,14 @@ export default function Account() {
 
   useEffect(() => {
     const saved = localStorage.getItem('hris_session_data');
+    let parsed = null;
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
+        parsed = JSON.parse(saved);
         setUserData(parsed);
-        fetchPayslips(parsed);
-      } catch (e) {
-        fetchPayslips(null);
-      }
-    } else {
-      fetchPayslips(null);
+      } catch (e) {}
     }
+    fetchPayslips(parsed, context);
   }, [fetchPayslips]);
 
   const refreshData = () => {
@@ -363,7 +417,7 @@ export default function Account() {
         setUserData(parsed);
       } catch (e) {}
     }
-    fetchPayslips(parsed).finally(() => {
+    fetchPayslips(parsed, context).finally(() => {
       setTimeout(() => setLoading(false), 300);
     });
   };
@@ -381,10 +435,25 @@ export default function Account() {
     </div>
   );
 
-  const activePayslip = payslips[selectedPayslipIdx] || null;
-
   const getPayslipSummary = (slip) => {
-    if (!slip) return { earnings: [], deductions: [], totalEarnings: 0, totalDeductions: 0, netSalary: 0 };
+    if (!slip) {
+      return { basicSalary: 0, earnings: [], deductions: [], totalEarnings: 0, totalDeductions: 0, netSalary: 0, extraFields: [] };
+    }
+
+    const mappedKeys = new Set([
+      'id', 'created_at', 'updated_at',
+      'employee email', 'employee_email', 'email',
+      'employee name', 'name', 'nama',
+      'employee id', 'nik',
+      'department', 'dept',
+      'job title', 'position',
+      'bank name', 'nama bank',
+      'bank account number', 'no rekening',
+      'period', 'payroll period', 'month', 'periode', 'bulan',
+      'payment date', 'pay date', 'tanggal pembayaran',
+      'status', 'payment status',
+      'payslip link', 'link', 'pdf', 'file', 'url'
+    ]);
 
     const earningDefs = [
       { label: t.basicSalary, keys: ['Basic Salary', 'Gaji Pokok'], alwaysShow: true },
@@ -404,19 +473,28 @@ export default function Account() {
       { label: t.otherDeduction, keys: ['Other Deduction', 'Other Deductions', 'Loan', 'Kasbon', 'Potongan Lainnya'], alwaysShow: false }
     ];
 
+    [...earningDefs, ...deductionDefs].forEach(def => {
+      def.keys.forEach(k => mappedKeys.add(k.toLowerCase()));
+    });
+    ['total earnings', 'gross salary', 'total income', 'total pendapatan', 'gaji kotor',
+     'total deductions', 'total deduction', 'total potongan',
+     'net salary', 'take home pay', 'thp', 'net pay', 'gaji bersih'].forEach(k => mappedKeys.add(k));
+
     const earnings = earningDefs
       .map((item) => {
         const raw = getValFromObj(slip, item.keys, '');
-        return { label: item.label, amount: parseNumeric(raw), hasRaw: raw !== '' && raw !== '-', alwaysShow: item.alwaysShow };
+        return { label: item.label, amount: parseNumeric(raw), alwaysShow: item.alwaysShow };
       })
       .filter((item) => item.alwaysShow || item.amount > 0);
 
     const deductions = deductionDefs
       .map((item) => {
         const raw = getValFromObj(slip, item.keys, '');
-        return { label: item.label, amount: parseNumeric(raw), hasRaw: raw !== '' && raw !== '-', alwaysShow: item.alwaysShow };
+        return { label: item.label, amount: parseNumeric(raw), alwaysShow: item.alwaysShow };
       })
       .filter((item) => item.alwaysShow || item.amount > 0);
+
+    const basicSalary = parseNumeric(getValFromObj(slip, ['Basic Salary', 'Gaji Pokok'], '0'));
 
     const rawTotalEarnings = getValFromObj(slip, ['Total Earnings', 'Gross Salary', 'Total Income', 'Total Pendapatan', 'Gaji Kotor'], '');
     const totalEarnings = rawTotalEarnings !== '' && rawTotalEarnings !== '-'
@@ -433,7 +511,15 @@ export default function Account() {
       ? parseNumeric(rawNet)
       : totalEarnings - totalDeductions;
 
-    return { earnings, deductions, totalEarnings, totalDeductions, netSalary };
+    // Tangkap kolom lain dari tabel payroll yang belum dipetakan agar tetap tampil di detail
+    const extraFields = Object.entries(slip)
+      .filter(([key, val]) => !mappedKeys.has(key.trim().toLowerCase()) && val !== null && val !== '')
+      .map(([key, val]) => ({
+        label: key,
+        value: typeof val === 'number' ? formatCurrency(val) : String(val)
+      }));
+
+    return { basicSalary, earnings, deductions, totalEarnings, totalDeductions, netSalary, extraFields };
   };
 
   return (
@@ -459,7 +545,7 @@ export default function Account() {
           </button>
         </div>
 
-        {/* Mobile Tab Dropdown */}
+        {/* Mobile Dropdown */}
         <div className="sm:hidden mb-4">
           <select 
             value={activeTab} 
@@ -608,6 +694,19 @@ export default function Account() {
 
           {activeTab === 'payslip' && (
             <div>
+              {/* Info Bar Email & Jumlah Data */}
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4 px-3.5 py-2.5 bg-blue-50/70 border border-blue-100 rounded-xl text-xs">
+                <div className="flex items-center gap-2 text-gray-700">
+                  <span className="font-semibold text-blue-700">{t.matchedEmailLabel}:</span>
+                  <span className="font-mono bg-white px-2 py-0.5 rounded border border-blue-200 text-gray-800">
+                    {checkedEmails.length > 0 ? checkedEmails.join(', ') : '-'}
+                  </span>
+                </div>
+                <span className="font-semibold text-gray-600">
+                  {t.totalRecords}: <span className="text-blue-700 font-bold">{payslips.length}</span>
+                </span>
+              </div>
+
               {payslipLoading ? (
                 <div className="py-12 flex flex-col items-center justify-center text-gray-500">
                   <svg className="w-7 h-7 animate-spin text-blue-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -620,203 +719,257 @@ export default function Account() {
                   {payslipError}
                 </div>
               ) : payslips.length === 0 ? (
-                <div className="py-12 text-center border border-dashed border-gray-200 rounded-2xl bg-gray-50/50">
+                <div className="py-12 px-4 text-center border border-dashed border-gray-200 rounded-2xl bg-gray-50/50">
                   <p className="text-sm font-semibold text-gray-700">{t.noPayslipTitle}</p>
                   <p className="text-xs text-gray-500 mt-1">{t.noPayslipDesc}</p>
                 </div>
-              ) : (() => {
-                const { earnings, deductions, totalEarnings, totalDeductions, netSalary } = getPayslipSummary(activePayslip);
-                const periodLabel = getValFromObj(
-                  activePayslip,
-                  ['Period', 'Payroll Period', 'Month', 'Periode', 'Bulan'],
-                  formatIndoDateOnly(getValFromObj(activePayslip, ['Payment Date', 'Pay Date', 'created_at'], '-'))
-                );
-                const payDateLabel = formatIndoDateOnly(
-                  getValFromObj(activePayslip, ['Payment Date', 'Pay Date', 'Tanggal Pembayaran', 'created_at'], '-')
-                );
-                const statusLabel = getValFromObj(activePayslip, ['Status', 'Payment Status'], 'Paid');
-                const pdfLink = getValFromObj(activePayslip, ['Payslip Link', 'Link', 'PDF', 'File', 'Url'], '');
+              ) : (
+                <div>
+                  <h4 className="text-sm font-bold text-gray-800 mb-3">{t.payslipListTitle}</h4>
 
-                return (
-                  <div className="space-y-6">
-                    {/* Baris Kontrol Periode & Aksi */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50 p-3.5 rounded-xl border border-gray-200">
-                      <div className="flex items-center gap-2.5">
-                        <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">{t.selectPeriod}:</label>
-                        <select
-                          value={selectedPayslipIdx}
-                          onChange={(e) => setSelectedPayslipIdx(Number(e.target.value))}
-                          className="py-1.5 px-3 text-xs font-semibold text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                        >
-                          {payslips.map((item, idx) => {
-                            const itemPeriod = getValFromObj(
-                              item,
-                              ['Period', 'Payroll Period', 'Month', 'Periode', 'Bulan'],
-                              formatIndoDateOnly(getValFromObj(item, ['Payment Date', 'Pay Date', 'created_at'], `#${idx + 1}`))
-                            );
-                            return (
-                              <option key={item.id || idx} value={idx}>
-                                {itemPeriod}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
+                  {/* Tampilan List Tabel Desktop */}
+                  <div className="hidden md:block overflow-x-auto border border-gray-200 rounded-xl">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200 text-[11px] font-bold text-gray-600 uppercase">
+                          <th className="py-3 px-4 w-12">No</th>
+                          <th className="py-3 px-4">{t.periodCol}</th>
+                          <th className="py-3 px-4">{t.payDateCol}</th>
+                          <th className="py-3 px-4 text-right">{t.basicCol}</th>
+                          <th className="py-3 px-4 text-right">{t.grossCol}</th>
+                          <th className="py-3 px-4 text-right">{t.deductionCol}</th>
+                          <th className="py-3 px-4 text-right">{t.netCol}</th>
+                          <th className="py-3 px-4 text-center">{t.statusCol}</th>
+                          <th className="py-3 px-4 text-center">{t.actionCol}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 text-xs">
+                        {payslips.map((slip, idx) => {
+                          const summary = getPayslipSummary(slip);
+                          const periodLabel = getValFromObj(
+                            slip,
+                            ['Period', 'Payroll Period', 'Month', 'Periode', 'Bulan'],
+                            formatIndoDateOnly(getValFromObj(slip, ['Payment Date', 'Pay Date', 'created_at'], `#${idx + 1}`))
+                          );
+                          const payDateLabel = formatIndoDateOnly(
+                            getValFromObj(slip, ['Payment Date', 'Pay Date', 'Tanggal Pembayaran', 'created_at'], '-')
+                          );
+                          const statusLabel = getValFromObj(slip, ['Status', 'Payment Status'], 'Paid');
 
-                      <div className="flex items-center gap-2">
-                        {pdfLink && pdfLink !== '-' && (
-                          <a
-                            href={pdfLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-semibold transition"
-                          >
-                            {t.viewPdf}
-                          </a>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => window.print()}
-                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition shadow-xs cursor-pointer"
-                        >
-                          {t.printPayslip}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Kartu Highlight Take Home Pay */}
-                    <div className="rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 text-white p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div>
-                        <span className="text-xs uppercase tracking-wider text-blue-100 font-semibold block">
-                          {t.takeHomePay}
-                        </span>
-                        <div className="text-2xl sm:text-3xl font-bold mt-1">
-                          {formatCurrency(netSalary)}
-                        </div>
-                        <p className="text-xs text-blue-100 mt-1">
-                          {t.periodCol}: <span className="font-semibold text-white">{periodLabel}</span> • {t.payDate}: <span className="font-semibold text-white">{payDateLabel}</span>
-                        </p>
-                      </div>
-                      <div className="self-start sm:self-center">
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-white/20 text-white backdrop-blur-xs">
-                          {statusLabel}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Info Karyawan di Slip */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5 bg-gray-50/60 p-4 rounded-xl border border-gray-100">
-                      <DetailRow label={t.employeeName} value={getValFromObj(activePayslip, ['Employee Name', 'Name', 'Nama'], getVal(['name', 'nama']))} />
-                      <DetailRow label={t.empId} value={getValFromObj(activePayslip, ['Employee ID', 'ID'], getVal(['employee id', 'id']))} />
-                      <DetailRow label={t.dept} value={getValFromObj(activePayslip, ['Department', 'Dept'], getVal(['department']))} />
-                      <DetailRow label={t.jobTitle} value={getValFromObj(activePayslip, ['Job Title', 'Position'], getVal(['job title']))} />
-                      <DetailRow label={t.bankName} value={getValFromObj(activePayslip, ['Bank Name', 'Nama Bank'], getVal(['bank name']))} />
-                      <DetailRow label={t.bankAccNum} value={getValFromObj(activePayslip, ['Bank Account Number', 'No Rekening'], getVal(['bank account number']))} />
-                    </div>
-
-                    {/* Rincian Pendapatan & Potongan */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Kolom Pendapatan */}
-                      <div className="border border-gray-200 rounded-xl p-4">
-                        <h4 className="text-sm font-bold text-emerald-700 pb-2 mb-2 border-b border-gray-200">
-                          {t.earningsTitle}
-                        </h4>
-                        <div className="space-y-0.5">
-                          {earnings.map((item, idx) => (
-                            <DetailRow key={idx} label={item.label} value={formatCurrency(item.amount)} />
-                          ))}
-                        </div>
-                        <div className="mt-3 pt-2.5 border-t border-gray-200 flex justify-between items-center">
-                          <span className="text-xs font-bold text-gray-800">{t.totalEarnings}</span>
-                          <span className="text-sm font-bold text-emerald-700">{formatCurrency(totalEarnings)}</span>
-                        </div>
-                      </div>
-
-                      {/* Kolom Potongan */}
-                      <div className="border border-gray-200 rounded-xl p-4">
-                        <h4 className="text-sm font-bold text-rose-700 pb-2 mb-2 border-b border-gray-200">
-                          {t.deductionsTitle}
-                        </h4>
-                        <div className="space-y-0.5">
-                          {deductions.map((item, idx) => (
-                            <DetailRow key={idx} label={item.label} value={formatCurrency(item.amount)} />
-                          ))}
-                        </div>
-                        <div className="mt-3 pt-2.5 border-t border-gray-200 flex justify-between items-center">
-                          <span className="text-xs font-bold text-gray-800">{t.totalDeductions}</span>
-                          <span className="text-sm font-bold text-rose-700">{formatCurrency(totalDeductions)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Tabel Riwayat Slip Gaji */}
-                    {payslips.length > 1 && (
-                      <div className="pt-2">
-                        <h4 className="text-sm font-bold text-gray-800 mb-3">{t.payslipHistory}</h4>
-                        <div className="overflow-x-auto border border-gray-200 rounded-xl">
-                          <table className="w-full text-left border-collapse">
-                            <thead>
-                              <tr className="bg-gray-50 border-b border-gray-200 text-[11px] font-bold text-gray-600 uppercase">
-                                <th className="py-2.5 px-3.5">{t.periodCol}</th>
-                                <th className="py-2.5 px-3.5">{t.payDate}</th>
-                                <th className="py-2.5 px-3.5 text-right">{t.grossCol}</th>
-                                <th className="py-2.5 px-3.5 text-right">{t.deductionCol}</th>
-                                <th className="py-2.5 px-3.5 text-right">{t.netCol}</th>
-                                <th className="py-2.5 px-3.5 text-center">{t.actionCol}</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100 text-xs">
-                              {payslips.map((slip, idx) => {
-                                const summary = getPayslipSummary(slip);
-                                const rowPeriod = getValFromObj(
-                                  slip,
-                                  ['Period', 'Payroll Period', 'Month', 'Periode', 'Bulan'],
-                                  `#${idx + 1}`
-                                );
-                                const rowPayDate = formatIndoDateOnly(
-                                  getValFromObj(slip, ['Payment Date', 'Pay Date', 'created_at'], '-')
-                                );
-                                const isSelected = idx === selectedPayslipIdx;
-
-                                return (
-                                  <tr
-                                    key={slip.id || idx}
-                                    onClick={() => setSelectedPayslipIdx(idx)}
-                                    className={`cursor-pointer transition ${isSelected ? 'bg-blue-50/70 font-semibold' : 'hover:bg-gray-50'}`}
-                                  >
-                                    <td className="py-2.5 px-3.5 text-gray-800">{rowPeriod}</td>
-                                    <td className="py-2.5 px-3.5 text-gray-600">{rowPayDate}</td>
-                                    <td className="py-2.5 px-3.5 text-right text-gray-700">{formatCurrency(summary.totalEarnings)}</td>
-                                    <td className="py-2.5 px-3.5 text-right text-rose-600">{formatCurrency(summary.totalDeductions)}</td>
-                                    <td className="py-2.5 px-3.5 text-right font-bold text-blue-700">{formatCurrency(summary.netSalary)}</td>
-                                    <td className="py-2.5 px-3.5 text-center">
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSelectedPayslipIdx(idx);
-                                        }}
-                                        className="text-blue-600 hover:underline font-semibold"
-                                      >
-                                        {t.viewDetail}
-                                      </button>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
+                          return (
+                            <tr
+                              key={slip.id || idx}
+                              onClick={() => setSelectedPayslip(slip)}
+                              className="hover:bg-blue-50/50 transition cursor-pointer"
+                            >
+                              <td className="py-3 px-4 text-gray-500 font-medium">{idx + 1}</td>
+                              <td className="py-3 px-4 font-bold text-gray-900">{periodLabel}</td>
+                              <td className="py-3 px-4 text-gray-600">{payDateLabel}</td>
+                              <td className="py-3 px-4 text-right text-gray-700">{formatCurrency(summary.basicSalary)}</td>
+                              <td className="py-3 px-4 text-right text-emerald-700 font-medium">{formatCurrency(summary.totalEarnings)}</td>
+                              <td className="py-3 px-4 text-right text-rose-600">{formatCurrency(summary.totalDeductions)}</td>
+                              <td className="py-3 px-4 text-right font-bold text-blue-700">{formatCurrency(summary.netSalary)}</td>
+                              <td className="py-3 px-4 text-center">
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  {statusLabel}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedPayslip(slip);
+                                  }}
+                                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-semibold transition cursor-pointer"
+                                >
+                                  {t.viewDetail}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                );
-              })()}
+
+                  {/* Tampilan List Kartu Mobile */}
+                  <div className="md:hidden space-y-3">
+                    {payslips.map((slip, idx) => {
+                      const summary = getPayslipSummary(slip);
+                      const periodLabel = getValFromObj(
+                        slip,
+                        ['Period', 'Payroll Period', 'Month', 'Periode', 'Bulan'],
+                        formatIndoDateOnly(getValFromObj(slip, ['Payment Date', 'Pay Date', 'created_at'], `#${idx + 1}`))
+                      );
+                      const payDateLabel = formatIndoDateOnly(
+                        getValFromObj(slip, ['Payment Date', 'Pay Date', 'Tanggal Pembayaran', 'created_at'], '-')
+                      );
+                      const statusLabel = getValFromObj(slip, ['Status', 'Payment Status'], 'Paid');
+
+                      return (
+                        <div
+                          key={slip.id || idx}
+                          onClick={() => setSelectedPayslip(slip)}
+                          className="p-4 border border-gray-200 rounded-xl bg-white hover:border-blue-300 shadow-2xs transition cursor-pointer"
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <span className="text-sm font-bold text-gray-900 block">{periodLabel}</span>
+                              <span className="text-[11px] text-gray-500">{t.payDateCol}: {payDateLabel}</span>
+                            </div>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {statusLabel}
+                            </span>
+                          </div>
+                          <div className="pt-2 mt-2 border-t border-gray-100 flex justify-between items-center">
+                            <div>
+                              <span className="text-[11px] text-gray-500 block">{t.netCol}</span>
+                              <span className="text-sm font-bold text-blue-700">{formatCurrency(summary.netSalary)}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedPayslip(slip);
+                              }}
+                              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold"
+                            >
+                              {t.viewDetail}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
 
       </div>
+
+      {/* Modal Detail Slip Gaji */}
+      {selectedPayslip && (() => {
+        const { earnings, deductions, totalEarnings, totalDeductions, netSalary, extraFields } = getPayslipSummary(selectedPayslip);
+        const periodLabel = getValFromObj(
+          selectedPayslip,
+          ['Period', 'Payroll Period', 'Month', 'Periode', 'Bulan'],
+          formatIndoDateOnly(getValFromObj(selectedPayslip, ['Payment Date', 'Pay Date', 'created_at'], '-'))
+        );
+        const payDateLabel = formatIndoDateOnly(
+          getValFromObj(selectedPayslip, ['Payment Date', 'Pay Date', 'Tanggal Pembayaran', 'created_at'], '-')
+        );
+        const statusLabel = getValFromObj(selectedPayslip, ['Status', 'Payment Status'], 'Paid');
+        const pdfLink = getValFromObj(selectedPayslip, ['Payslip Link', 'Link', 'PDF', 'File', 'Url'], '');
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-3xl max-h-[90vh] overflow-y-auto p-5 sm:p-6">
+              
+              {/* Modal Header */}
+              <div className="flex justify-between items-center pb-3 mb-4 border-b border-gray-200">
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900">{t.payslipDetailTitle}</h3>
+                  <p className="text-xs text-gray-500">{periodLabel} • {t.payDateCol}: {payDateLabel}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {pdfLink && pdfLink !== '-' && (
+                    <a
+                      href={pdfLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold transition"
+                    >
+                      {t.viewFile}
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
+                  >
+                    {t.printPayslip}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPayslip(null)}
+                    className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                  >
+                    {t.closeModal}
+                  </button>
+                </div>
+              </div>
+
+              {/* Banner Take Home Pay */}
+              <div className="rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <span className="text-[11px] uppercase tracking-wider text-blue-100 font-semibold block">
+                    {t.takeHomePay}
+                  </span>
+                  <span className="text-2xl font-bold mt-0.5 block">{formatCurrency(netSalary)}</span>
+                </div>
+                <span className="self-start sm:self-center px-3 py-1 rounded-full text-xs font-bold bg-white/20 text-white">
+                  {statusLabel}
+                </span>
+              </div>
+
+              {/* Identitas Karyawan */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5 bg-gray-50 p-3.5 rounded-xl border border-gray-100 mb-5">
+                <DetailRow label={t.employeeName} value={getValFromObj(selectedPayslip, ['Employee Name', 'Name', 'Nama'], getVal(['name', 'nama']))} />
+                <DetailRow label={t.empId} value={getValFromObj(selectedPayslip, ['Employee ID', 'NIK', 'ID'], getVal(['employee id', 'id']))} />
+                <DetailRow label={t.dept} value={getValFromObj(selectedPayslip, ['Department', 'Dept'], getVal(['department']))} />
+                <DetailRow label={t.jobTitle} value={getValFromObj(selectedPayslip, ['Job Title', 'Position'], getVal(['job title']))} />
+                <DetailRow label={t.bankName} value={getValFromObj(selectedPayslip, ['Bank Name', 'Nama Bank'], getVal(['bank name']))} />
+                <DetailRow label={t.bankAccNum} value={getValFromObj(selectedPayslip, ['Bank Account Number', 'No Rekening'], getVal(['bank account number']))} />
+              </div>
+
+              {/* Pendapatan & Potongan */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="border border-gray-200 rounded-xl p-4">
+                  <h4 className="text-sm font-bold text-emerald-700 pb-2 mb-2 border-b border-gray-200">{t.earningsTitle}</h4>
+                  <div className="space-y-0.5">
+                    {earnings.map((item, i) => (
+                      <DetailRow key={i} label={item.label} value={formatCurrency(item.amount)} />
+                    ))}
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-gray-200 flex justify-between items-center">
+                    <span className="text-xs font-bold text-gray-800">{t.totalEarnings}</span>
+                    <span className="text-sm font-bold text-emerald-700">{formatCurrency(totalEarnings)}</span>
+                  </div>
+                </div>
+
+                <div className="border border-gray-200 rounded-xl p-4">
+                  <h4 className="text-sm font-bold text-rose-700 pb-2 mb-2 border-b border-gray-200">{t.deductionsTitle}</h4>
+                  <div className="space-y-0.5">
+                    {deductions.map((item, i) => (
+                      <DetailRow key={i} label={item.label} value={formatCurrency(item.amount)} />
+                    ))}
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-gray-200 flex justify-between items-center">
+                    <span className="text-xs font-bold text-gray-800">{t.totalDeductions}</span>
+                    <span className="text-sm font-bold text-rose-700">{formatCurrency(totalDeductions)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Komponen Tambahan dari Tabel Payroll (jika ada kolom lain) */}
+              {extraFields.length > 0 && (
+                <div className="mt-5 border border-gray-200 rounded-xl p-4">
+                  <h4 className="text-sm font-bold text-blue-700 pb-2 mb-2 border-b border-gray-200">{t.otherFieldsTitle}</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5">
+                    {extraFields.map((field, i) => (
+                      <DetailRow key={i} label={field.label} value={field.value} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );
