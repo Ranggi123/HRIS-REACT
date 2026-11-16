@@ -2332,7 +2332,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
               >
                 <span>{t.tabLeave}</span>
                 {pendingLeavesCount > 0 && (
-                  <span className={`px-1.5 py-0.5 rounded-md text-[10px] leading-none ${activeCategoryTab === 'leave' ? 'bg-blue-100 text-blue-700 font-black' : 'bg-gray-200 text-gray-500 font-bold'}`}>
+                  <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-xs">
                     {pendingLeavesCount}
                   </span>
                 )}
@@ -2347,7 +2347,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
               >
                 <span>{t.tabAttendance}</span>
                 {pendingAttendanceCount > 0 && (
-                  <span className={`px-1.5 py-0.5 rounded-md text-[10px] leading-none ${activeCategoryTab === 'attendance' ? 'bg-blue-100 text-blue-700 font-black' : 'bg-gray-200 text-gray-500 font-bold'}`}>
+                  <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-xs">
                     {pendingAttendanceCount}
                   </span>
                 )}
