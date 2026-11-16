@@ -2324,23 +2324,33 @@ export default function Approval({ currentUser: propCurrentUser }) {
             <div className="flex bg-gray-100 rounded-xl p-1 gap-1 shrink-0">
               <button
                 onClick={() => setActiveCategoryTab('leave')}
-                className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-[13px] font-bold transition-colors whitespace-nowrap ${
+                className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-[13px] font-bold transition-colors whitespace-nowrap ${
                   activeCategoryTab === 'leave'
                     ? 'bg-white text-blue-700 shadow-sm border border-gray-200/50'
                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
                 }`}
               >
-                {t.tabLeave} ({pendingLeavesCount})
+                <span>{t.tabLeave}</span>
+                {pendingLeavesCount > 0 && (
+                  <span className={`px-1.5 py-0.5 rounded-md text-[10px] leading-none ${activeCategoryTab === 'leave' ? 'bg-blue-100 text-blue-700 font-black' : 'bg-gray-200 text-gray-500 font-bold'}`}>
+                    {pendingLeavesCount}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveCategoryTab('attendance')}
-                className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-[13px] font-bold transition-colors whitespace-nowrap ${
+                className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-[13px] font-bold transition-colors whitespace-nowrap ${
                   activeCategoryTab === 'attendance'
                     ? 'bg-white text-blue-700 shadow-sm border border-gray-200/50'
                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
                 }`}
               >
-                {t.tabAttendance} ({pendingAttendanceCount})
+                <span>{t.tabAttendance}</span>
+                {pendingAttendanceCount > 0 && (
+                  <span className={`px-1.5 py-0.5 rounded-md text-[10px] leading-none ${activeCategoryTab === 'attendance' ? 'bg-blue-100 text-blue-700 font-black' : 'bg-gray-200 text-gray-500 font-bold'}`}>
+                    {pendingAttendanceCount}
+                  </span>
+                )}
               </button>
             </div>
 
