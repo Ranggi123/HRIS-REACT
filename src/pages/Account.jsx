@@ -18,7 +18,7 @@ export default function Account() {
   const [payslips, setPayslips] = useState([]);
   const [payslipLoading, setPayslipLoading] = useState(false);
   const [payslipError, setPayslipError] = useState(null);
-  const [checkedEmails, setCheckedEmails] = useState([]);
+  const [loginEmail, setLoginEmail] = useState('');
   const [selectedPayslip, setSelectedPayslip] = useState(null);
 
   const t = currentLang === 'id' ? {
@@ -88,8 +88,6 @@ export default function Account() {
     // Payslip
     payslipListTitle: 'Daftar Slip Gaji',
     payslipDetailTitle: 'Detail Slip Gaji',
-    matchedEmailLabel: 'Email Terdeteksi',
-    totalRecords: 'Total Slip',
     periodCol: 'Periode',
     payDateCol: 'Tanggal Bayar',
     basicCol: 'Gaji Pokok',
@@ -116,7 +114,7 @@ export default function Account() {
     otherDeduction: 'Potongan Lainnya',
     totalDeductions: 'Total Potongan',
     noPayslipTitle: 'Data Slip Gaji Tidak Ditemukan',
-    noPayslipDesc: 'Belum ada data di tabel payroll dengan "Employee Email" yang cocok dengan akun Anda.'
+    noPayslipDesc: 'Belum ada data di tabel payroll dengan "Employee Email" untuk akun'
   } : {
     title: 'Employee Details',
     subtitle: 'Detail information of your account',
@@ -184,8 +182,6 @@ export default function Account() {
     // Payslip
     payslipListTitle: 'Payslip List',
     payslipDetailTitle: 'Payslip Detail',
-    matchedEmailLabel: 'Detected Email',
-    totalRecords: 'Total Records',
     periodCol: 'Period',
     payDateCol: 'Payment Date',
     basicCol: 'Basic Salary',
@@ -212,7 +208,7 @@ export default function Account() {
     otherDeduction: 'Other Deduction',
     totalDeductions: 'Total Deductions',
     noPayslipTitle: 'No Payslip Records Found',
-    noPayslipDesc: 'No payroll record matched your "Employee Email" in the database.'
+    noPayslipDesc: 'No payroll record matched "Employee Email" for'
   };
 
   const formatIndoDateOnly = (dateVal) => {
@@ -277,37 +273,34 @@ export default function Account() {
     }).format(num);
   };
 
-  const extractCandidateEmails = (sessionUser, outletCtx) => {
-    const emails = new Set();
-    const addIfValid = (val) => {
-      if (!val || typeof val !== 'string') return;
-      const trimmed = val.trim();
-      if (trimmed.includes('@') && trimmed.includes('.')) {
-        emails.add(trimmed);
+  // Ambil hanya email user yang login (BUKAN Employee Work Email)
+  const getLoggedInUserEmail = async (sessionUser, outletCtx) => {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.email) {
+        return authData.user.email.trim();
       }
-    };
+    } catch (e) {}
 
-    const inspectObject = (obj) => {
-      if (!obj || typeof obj !== 'object') return;
-      // Prioritaskan field email spesifik
-      addIfValid(getValFromObj(obj, ['Employee Email', 'employee_email'], ''));
-      addIfValid(getValFromObj(obj, ['Employee Work Email', 'Work Email', 'employee_work_email'], ''));
-      addIfValid(getValFromObj(obj, ['Personal Email', 'Email Pribadi', 'Email', 'email'], ''));
+    if (outletCtx?.session?.user?.email) {
+      return String(outletCtx.session.user.email).trim();
+    }
+    if (outletCtx?.user?.email) {
+      return String(outletCtx.user.email).trim();
+    }
 
-      // Scan semua properti yang mengandung email
-      Object.entries(obj).forEach(([k, v]) => {
-        if (typeof v === 'string' && (k.toLowerCase().includes('email') || v.includes('@'))) {
-          addIfValid(v);
-        }
-      });
-    };
+    if (sessionUser && typeof sessionUser === 'object') {
+      const userAccountEmail = getValFromObj(
+        sessionUser,
+        ['email', 'Email', 'Personal Email', 'personal email', 'personal_email', 'email pribadi'],
+        ''
+      );
+      if (userAccountEmail && userAccountEmail !== '-' && userAccountEmail.includes('@')) {
+        return userAccountEmail.trim();
+      }
+    }
 
-    inspectObject(sessionUser);
-    inspectObject(outletCtx?.user);
-    inspectObject(outletCtx?.userData);
-    inspectObject(outletCtx?.session?.user);
-
-    return Array.from(emails);
+    return '';
   };
 
   const fetchPayslips = useCallback(async (sessionUser, outletCtx) => {
@@ -315,67 +308,30 @@ export default function Account() {
     setPayslipError(null);
 
     try {
-      const candidates = extractCandidateEmails(sessionUser, outletCtx);
+      const userEmail = await getLoggedInUserEmail(sessionUser, outletCtx);
+      setLoginEmail(userEmail);
 
-      // Cek juga Supabase Auth user jika ada
-      const { data: authData } = await supabase.auth.getUser();
-      if (authData?.user?.email) {
-        const authEmail = authData.user.email.trim();
-        if (!candidates.some(e => e.toLowerCase() === authEmail.toLowerCase())) {
-          candidates.push(authEmail);
-        }
-      }
-
-      setCheckedEmails(candidates);
-
-      if (candidates.length === 0) {
+      if (!userEmail) {
         setPayslips([]);
         setPayslipLoading(false);
         return;
       }
 
-      const lowerCandidates = candidates.map(e => e.toLowerCase());
-      let matchedRows = [];
+      // Ambil dari tabel payroll di mana "Employee Email" = email user yang login
+      const { data, error } = await supabase
+        .from('payroll')
+        .select('*')
+        .ilike('Employee Email', `%${userEmail}%`);
 
-      // 1. Query langsung ke tabel payroll dengan ilike wildcard untuk menghindari spasi tersembunyi
-      for (const email of candidates) {
-        const { data, error } = await supabase
-          .from('payroll')
-          .select('*')
-          .ilike('Employee Email', `%${email}%`);
+      if (error) throw error;
 
-        if (error) throw error;
-        if (data && data.length > 0) {
-          const exactMatches = data.filter(row => {
-            const rowEmail = getValFromObj(row, ['Employee Email', 'employee_email', 'Email'], '').trim().toLowerCase();
-            return lowerCandidates.includes(rowEmail);
-          });
-          matchedRows = exactMatches.length > 0 ? exactMatches : data;
-          break;
-        }
-      }
-
-      // 2. Fallback: ambil data payroll lalu cocokkan di client-side jika nama kolom/format berbeda
-      if (matchedRows.length === 0) {
-        const { data: allData, error: fallbackError } = await supabase
-          .from('payroll')
-          .select('*')
-          .limit(500);
-
-        if (!fallbackError && Array.isArray(allData)) {
-          matchedRows = allData.filter(row => {
-            const rowEmail = getValFromObj(
-              row,
-              ['Employee Email', 'employee_email', 'Employee Work Email', 'Email', 'email'],
-              ''
-            ).trim().toLowerCase();
-            return lowerCandidates.includes(rowEmail);
-          });
-        }
-      }
+      const matched = (data || []).filter((row) => {
+        const rowEmail = getValFromObj(row, ['Employee Email', 'employee_email'], '').trim().toLowerCase();
+        return rowEmail === userEmail.toLowerCase();
+      });
 
       // Urutkan dari periode / tanggal terbaru
-      const sorted = [...matchedRows].sort((a, b) => {
+      const sorted = matched.sort((a, b) => {
         const dateStrA = getValFromObj(a, ['Payment Date', 'Pay Date', 'Tanggal Pembayaran', 'created_at'], '');
         const dateStrB = getValFromObj(b, ['Payment Date', 'Pay Date', 'Tanggal Pembayaran', 'created_at'], '');
         const timeA = dateStrA ? new Date(dateStrA).getTime() : 0;
@@ -511,7 +467,6 @@ export default function Account() {
       ? parseNumeric(rawNet)
       : totalEarnings - totalDeductions;
 
-    // Tangkap kolom lain dari tabel payroll yang belum dipetakan agar tetap tampil di detail
     const extraFields = Object.entries(slip)
       .filter(([key, val]) => !mappedKeys.has(key.trim().toLowerCase()) && val !== null && val !== '')
       .map(([key, val]) => ({
@@ -694,19 +649,6 @@ export default function Account() {
 
           {activeTab === 'payslip' && (
             <div>
-              {/* Info Bar Email & Jumlah Data */}
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-4 px-3.5 py-2.5 bg-blue-50/70 border border-blue-100 rounded-xl text-xs">
-                <div className="flex items-center gap-2 text-gray-700">
-                  <span className="font-semibold text-blue-700">{t.matchedEmailLabel}:</span>
-                  <span className="font-mono bg-white px-2 py-0.5 rounded border border-blue-200 text-gray-800">
-                    {checkedEmails.length > 0 ? checkedEmails.join(', ') : '-'}
-                  </span>
-                </div>
-                <span className="font-semibold text-gray-600">
-                  {t.totalRecords}: <span className="text-blue-700 font-bold">{payslips.length}</span>
-                </span>
-              </div>
-
               {payslipLoading ? (
                 <div className="py-12 flex flex-col items-center justify-center text-gray-500">
                   <svg className="w-7 h-7 animate-spin text-blue-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -721,7 +663,9 @@ export default function Account() {
               ) : payslips.length === 0 ? (
                 <div className="py-12 px-4 text-center border border-dashed border-gray-200 rounded-2xl bg-gray-50/50">
                   <p className="text-sm font-semibold text-gray-700">{t.noPayslipTitle}</p>
-                  <p className="text-xs text-gray-500 mt-1">{t.noPayslipDesc}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {t.noPayslipDesc} <span className="font-semibold text-gray-700">{loginEmail || '-'}</span>.
+                  </p>
                 </div>
               ) : (
                 <div>
@@ -954,7 +898,7 @@ export default function Account() {
                 </div>
               </div>
 
-              {/* Komponen Tambahan dari Tabel Payroll (jika ada kolom lain) */}
+              {/* Komponen Tambahan dari Tabel Payroll */}
               {extraFields.length > 0 && (
                 <div className="mt-5 border border-gray-200 rounded-xl p-4">
                   <h4 className="text-sm font-bold text-blue-700 pb-2 mb-2 border-b border-gray-200">{t.otherFieldsTitle}</h4>
