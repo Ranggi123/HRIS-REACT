@@ -2278,7 +2278,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const dtB = parseFlexibleDate(getPropCaseInsensitive(b, ['CreatedDate', 'created_date', 'From Date', 'Date', 'date', 'Time', 'time', 'created_at'])) || new Date(0);
       return dtB.getTime() - dtA.getTime();
     });
-  }, [activeCategoryList, activeCategoryTab, statusTab, selectedEmployee, selectedMemberObj]);
+  }, [activeCategoryList, activeCategoryTab, statusTab, selectedDepartment, selectedEmployee, selectedMemberObj, teamMembers]);
 
   const pendingStatusCount = activeCategoryList.filter(r => isPendingApprovalStatus(getRowStatus(r))).length;
   const approvedStatusCount = activeCategoryList.filter(r => isApprovedStatus(getRowStatus(r))).length;
@@ -2366,7 +2366,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
             )}
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto shrink-0">
+          <div className="grid grid-cols-2 sm:flex sm:flex-row items-center gap-2 w-full sm:w-auto shrink-0">
             <div className="relative w-full sm:w-[170px] shrink-0">
               <select
                 value={selectedDepartment}
