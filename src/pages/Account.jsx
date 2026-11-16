@@ -541,61 +541,64 @@ export default function Account() {
     return '';
   };
 
-  // Ambil kolom company dari tabel employee_directory dimana email = Employee Email pada Payroll
+  // Ambil kolom company dari employee_directory tanpa memicu 400 Bad Request
   const fetchCompaniesFromDirectory = async (emailsList, fallbackSessionUser) => {
     const map = {};
-    const fallbackComp = getValFromObj(
-      fallbackSessionUser,
-      ['company', 'Company', 'company_name', 'Company Name'],
-      ''
-    );
+    const normalizedTargets = emailsList
+      .map((e) => String(e || '').trim().toLowerCase())
+      .filter(Boolean);
 
-    for (const rawEmail of emailsList) {
-      const cleanEmail = String(rawEmail || '').trim();
-      if (!cleanEmail) continue;
-      const lowerEmail = cleanEmail.toLowerCase();
+    if (normalizedTargets.length === 0) return map;
 
-      try {
-        let { data, error } = await supabase
-          .from('employee_directory')
-          .select('*')
-          .ilike('email', cleanEmail);
+    // 1. Cek terlebih dahulu dari data sesi pengguna yang sudah tersimpan
+    if (fallbackSessionUser && typeof fallbackSessionUser === 'object') {
+      const sessionComp = getValFromObj(
+        fallbackSessionUser,
+        ['company', 'Company', 'company_name', 'Company Name'],
+        ''
+      );
+      if (sessionComp && sessionComp !== '-') {
+        normalizedTargets.forEach((em) => {
+          map[em] = sessionComp;
+        });
+      }
+    }
 
-        if (error) {
-          const retry = await supabase
-            .from('employee_directory')
-            .select('*')
-            .ilike('Email', cleanEmail);
-          data = retry.data;
-          error = retry.error;
-        }
+    // 2. Query employee_directory secara aman (tanpa filter nama kolom yang belum pasti)
+    try {
+      const { data, error } = await supabase
+        .from('employee_directory')
+        .select('*');
 
-        if (!error && Array.isArray(data) && data.length > 0) {
-          const matchedRow =
-            data.find(
-              (r) =>
-                getValFromObj(r, ['email', 'Email', 'Personal Email'], '')
-                  .trim()
-                  .toLowerCase() === lowerEmail
-            ) || data[0];
+      if (!error && Array.isArray(data) && data.length > 0) {
+        for (const targetEmail of normalizedTargets) {
+          const matchedRow = data.find((row) => {
+            const candidateEmails = [
+              getValFromObj(row, ['Personal Email', 'personal_email'], ''),
+              getValFromObj(row, ['Employee Email', 'employee_email'], ''),
+              getValFromObj(row, ['Employee Work Email', 'work_email'], ''),
+              getValFromObj(row, ['Email', 'email'], '')
+            ]
+              .map((v) => String(v || '').trim().toLowerCase())
+              .filter((v) => v && v !== '-');
 
-          const compVal = getValFromObj(
-            matchedRow,
-            ['company', 'Company', 'company_name', 'Company Name'],
-            ''
-          );
-          if (compVal && compVal !== '-') {
-            map[lowerEmail] = compVal;
-            continue;
+            return candidateEmails.includes(targetEmail);
+          });
+
+          if (matchedRow) {
+            const compVal = getValFromObj(
+              matchedRow,
+              ['company', 'Company', 'company_name', 'Company Name'],
+              ''
+            );
+            if (compVal && compVal !== '-') {
+              map[targetEmail] = compVal;
+            }
           }
         }
-      } catch (err) {
-        console.error('Error fetching company from employee_directory:', err);
       }
-
-      if (fallbackComp && fallbackComp !== '-') {
-        map[lowerEmail] = fallbackComp;
-      }
+    } catch (err) {
+      console.error('Error fetching company from employee_directory:', err);
     }
 
     return map;
