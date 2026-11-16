@@ -2724,13 +2724,36 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 </span>
               </div>
 
-              <div className="w-full flex flex-col items-center justify-center my-auto gap-0.5 sm:gap-1 mt-1">
-                {d.counts.workingCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-green-600 text-white shadow-sm">{d.counts.workingCount} {t.statWork}</span>}
-                {d.counts.sickCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-pink-500 text-white shadow-sm">{d.counts.sickCount} {t.statSick}</span>}
-                {d.counts.leaveCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-orange-500 text-white shadow-sm">{d.counts.leaveCount} {t.statLeave}</span>}
-                {d.counts.offCount > 0 && <span className="w-full py-0.5 px-1 rounded sm:rounded-md text-[9px] font-bold text-center truncate bg-red-600 text-white shadow-sm">{d.counts.offCount} {t.statOff}</span>}
-                
-                {d.teamData.length === 0 && <span className="text-[10px] text-gray-300">-</span>}
+              <div className="w-full flex flex-col gap-1 my-auto mt-2">
+                {d.counts.workingCount > 0 && (
+                  <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded px-1.5 py-0.5 w-full">
+                    <span className="text-[8px] sm:text-[9px] font-bold text-green-700 uppercase tracking-tight">{t.statWork}</span>
+                    <span className="bg-green-600 text-white text-[9px] sm:text-[10px] font-black px-1.5 rounded-sm">{d.counts.workingCount}</span>
+                  </div>
+                )}
+                {d.counts.sickCount > 0 && (
+                  <div className="flex items-center justify-between bg-pink-50 border border-pink-200 rounded px-1.5 py-0.5 w-full">
+                    <span className="text-[8px] sm:text-[9px] font-bold text-pink-700 uppercase tracking-tight">{t.statSick}</span>
+                    <span className="bg-pink-500 text-white text-[9px] sm:text-[10px] font-black px-1.5 rounded-sm">{d.counts.sickCount}</span>
+                  </div>
+                )}
+                {d.counts.leaveCount > 0 && (
+                  <div className="flex items-center justify-between bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 w-full">
+                    <span className="text-[8px] sm:text-[9px] font-bold text-orange-700 uppercase tracking-tight">{t.statLeave}</span>
+                    <span className="bg-orange-500 text-white text-[9px] sm:text-[10px] font-black px-1.5 rounded-sm">{d.counts.leaveCount}</span>
+                  </div>
+                )}
+                {d.counts.offCount > 0 && (
+                  <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded px-1.5 py-0.5 w-full">
+                    <span className="text-[8px] sm:text-[9px] font-bold text-red-700 uppercase tracking-tight">{t.statOff}</span>
+                    <span className="bg-red-600 text-white text-[9px] sm:text-[10px] font-black px-1.5 rounded-sm">{d.counts.offCount}</span>
+                  </div>
+                )}
+                {d.teamData.length === 0 && (
+                  <div className="flex items-center justify-center w-full mt-2">
+                    <span className="text-[10px] text-gray-300">-</span>
+                  </div>
+                )}
               </div>
             </div>
           ))}
