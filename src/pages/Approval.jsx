@@ -159,12 +159,25 @@ const getValidPropCaseInsensitive = (obj, candidateKeys, fallback = '') => {
 
 const normalizeText = (val) => String(val || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-const fetchAllRows = async (tableName, maxRows = 5000) => {
+const fetchAllRows = async (tableName) => {
   const pageSize = 1000;
-  const pages = Math.ceil(maxRows / pageSize);
+  
+  // 1. Dapatkan total data sebenarnya di database
+  const { count, error: countError } = await supabase
+    .from(tableName)
+    .select('*', { count: 'exact', head: true });
+    
+  if (countError) {
+    console.error(`Error fetching count for ${tableName}:`, countError);
+    return [];
+  }
+  
+  if (!count || count === 0) return [];
+  
+  // 2. Hitung jumlah halaman dan tarik semua secara paralel
+  const pages = Math.ceil(count / pageSize);
   const promises = [];
   
-  // Menggunakan fetch paralel untuk mempercepat waktu tunggu jaringan
   for (let i = 0; i < pages; i++) {
     const from = i * pageSize;
     const to = from + pageSize - 1;
@@ -697,10 +710,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const employeeDropdownRef = useRef(null); 
   const [showFilterAlert, setShowFilterAlert] = useState(false); 
 
-  const uniqueDepartments = useMemo(() => {
-    const depts = new Set(teamMembers.map(m => m.department).filter(d => d && d !== '-' && d !== 'null' && d !== 'undefined'));
-    return Array.from(depts).sort();
-  }, [teamMembers]);
+
 
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -755,14 +765,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
     setLoading(true);
 
     try {
-      // Membatasi pengambilan data yang tidak perlu & fetch paralel
+      // Mengambil semua data tanpa limit statis menggunakan auto-count parallel fetching
       const [dirRes, compRes, holRes, lvRes, attRes, schedRes] = await Promise.allSettled([
-        fetchAllRows('employee_directory', 2000),
-        fetchAllRows('company', 1000),
-        fetchAllRows('holiday_balance', 5000),
-        fetchAllRows('leave_requests', 5000),
-        fetchAllRows('attendance', 8000),
-        fetchAllRows('schedule', 8000)
+        fetchAllRows('employee_directory'),
+        fetchAllRows('company'),
+        fetchAllRows('holiday_balance'),
+        fetchAllRows('leave_requests'),
+        fetchAllRows('attendance'),
+        fetchAllRows('schedule')
       ]);
 
       const dirData = dirRes.status === 'fulfilled' && Array.isArray(dirRes.value) ? dirRes.value : [];
@@ -1196,6 +1206,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
     topNavEmail,
     userName
   ]);
+
+  // FIX TDZ Error: Dideklarasikan SESUDAH teamMembers dibuat
+  const uniqueDepartments = useMemo(() => {
+    if (!teamMembers) return [];
+    const depts = new Set(teamMembers.map(m => m.department).filter(d => d && d !== '-' && d !== 'null' && d !== 'undefined'));
+    return Array.from(depts).sort();
+  }, [teamMembers]);
 
   useEffect(() => {
     setActualUserWorkEmail(resolvedUserWorkEmail || '');
