@@ -641,7 +641,6 @@ export default function Account() {
 
       setPayslips(sorted);
 
-      // Ambil nama company dari employee_directory berdasarkan email = Employee Email pada Payroll
       const uniqueEmails = Array.from(
         new Set(
           [
@@ -1435,17 +1434,25 @@ export default function Account() {
       </div>
 
       {/* ========================================================================
-          MODAL DETAIL SLIP GAJI (TANPA LOGO, NAMA COMPANY DARI EMPLOYEE_DIRECTORY)
+          MODAL DETAIL SLIP GAJI (KLIK DI LUAR MODAL OTOMATIS CLOSE)
           ======================================================================== */}
       {selectedPayslip && (() => {
         const d = getTemplatePayslipData(selectedPayslip);
         const pdfLink = getValFromObj(selectedPayslip, ['Payslip Link', 'Link', 'PDF', 'File', 'Url'], '');
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-3 sm:p-5 overflow-y-auto">
+          <div
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setSelectedPayslip(null);
+              }
+            }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-3 sm:p-5 overflow-y-auto cursor-pointer"
+          >
             <div
               id="payslip-print-modal"
-              className="relative bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-4xl max-h-[92vh] overflow-y-auto p-6 sm:p-10 text-gray-900"
+              onClick={(e) => e.stopPropagation()}
+              className="relative bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-4xl max-h-[92vh] overflow-y-auto p-6 sm:p-10 text-gray-900 cursor-default"
             >
               {/* Watermark Miring CONFIDENTIAL di Tengah Background */}
               <div
