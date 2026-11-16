@@ -824,7 +824,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
     attendanceRequests,
     teamScheduleRecords,
     resolvedUserWorkEmail,
-    resolvedUserName
+    resolvedUserName,
+    isHrManagerActive
   } = useMemo(() => {
     const cleanLoginEmail = (topNavEmail || userWorkEmail || '').trim().toLowerCase();
     const loginPrefix = cleanLoginEmail.includes('@') ? cleanLoginEmail.split('@')[0] : cleanLoginEmail;
@@ -1192,7 +1193,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
       attendanceRequests: filteredAttendance,
       teamScheduleRecords: filteredSchedules,
       resolvedUserWorkEmail: hasValidWorkEmail ? cleanEffectiveWorkEmail : '',
-      resolvedUserName: realName
+      resolvedUserName: realName,
+      isHrManagerActive
     };
   }, [
     rawDirEmployees,
@@ -2376,10 +2378,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
             )}
           </div>
 
-          <div className="grid grid-cols-2 sm:flex sm:flex-row items-center gap-2 w-full sm:w-auto shrink-0">
-            <div className="relative w-full sm:w-[170px] shrink-0">
-              <select
-                value={selectedDepartment}
+          <div className={`grid ${isHrManagerActive ? 'grid-cols-2' : 'grid-cols-1'} sm:flex sm:flex-row items-center gap-2 w-full sm:w-auto shrink-0`}>
+            {isHrManagerActive && (
+              <div className="relative w-full sm:w-[170px] shrink-0">
+                <select
+                  value={selectedDepartment}
                 onChange={(e) => {
                    setSelectedDepartment(e.target.value);
                    setSelectedEmployee('all');
@@ -2401,6 +2404,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 ))}
               </select>
             </div>
+            )}
 
             <div className="relative w-full sm:w-[200px] shrink-0">
               {showFilterAlert && (

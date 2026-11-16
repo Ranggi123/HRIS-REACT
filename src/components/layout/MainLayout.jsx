@@ -1051,13 +1051,13 @@ export default function MainLayout() {
             </Link>
 
             <Link 
-              to="/account" 
-              className={`p-4 rounded-2xl border transition flex flex-col items-center text-center ${currentPath === '/account' ? 'bg-blue-50/60 border-blue-400 shadow-sm ring-2 ring-blue-400 ring-opacity-30' : 'bg-white border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300'}`}
+              to="/payslip" 
+              className={`p-4 rounded-2xl border transition flex flex-col items-center text-center ${currentPath === '/payslip' ? 'bg-blue-50/60 border-blue-400 shadow-sm ring-2 ring-blue-400 ring-opacity-30' : 'bg-white border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300'}`}
             >
               <div className="relative mb-2">
                 <img src="https://cdn-icons-png.flaticon.com/128/10695/10695051.png" alt="Payslip" className="w-8 h-8 object-contain" />
               </div>
-              <span className={`text-xs font-semibold ${currentPath === '/account' ? 'text-blue-700' : 'text-gray-700'}`}>{t.moduleNames.payslip}</span>
+              <span className={`text-xs font-semibold ${currentPath === '/payslip' ? 'text-blue-700' : 'text-gray-700'}`}>{t.moduleNames.payslip}</span>
             </Link>
           </div>
         </div>
