@@ -244,7 +244,12 @@ export default function Account() {
   
   const [activeTab, setActiveTab] = useState('personal');
   const [userData, setUserData] = useState(null);
+  const [directoryData, setDirectoryData] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // State Barcode Zoom Modal
+  const [isBarcodeZoomed, setIsBarcodeZoomed] = useState(false);
+  const [barcodeImgError, setBarcodeImgError] = useState(false);
 
   // State Payslip & Company Directory
   const [payslips, setPayslips] = useState([]);
@@ -288,6 +293,11 @@ export default function Account() {
     emgName: 'Nama Kontak Darurat',
     emgRelation: 'Hubungan Darurat',
     emgPhone: 'Nomor Kontak Darurat',
+    barcodeTitle: 'Barcode Karyawan',
+    barcodeHint: 'Klik gambar barcode untuk memperbesar',
+    barcodeEmpty: 'Gambar barcode belum tersedia',
+    clickToZoom: 'Perbesar',
+    clickOutsideClose: 'Klik di area luar untuk menutup',
     empId: 'ID Karyawan',
     dept: 'Departemen',
     jobTitle: 'Jabatan',
@@ -368,6 +378,11 @@ export default function Account() {
     emgName: 'Emergency Contact Name',
     emgRelation: 'Emergency Relationship',
     emgPhone: 'Emergency Contact Number',
+    barcodeTitle: 'Employee Barcode',
+    barcodeHint: 'Click barcode image to enlarge',
+    barcodeEmpty: 'Barcode image is not available yet',
+    clickToZoom: 'Enlarge',
+    clickOutsideClose: 'Click anywhere outside to close',
     empId: 'Employee ID',
     dept: 'Department',
     jobTitle: 'Job Title',
@@ -456,7 +471,23 @@ export default function Account() {
     return fallback;
   };
 
-  const getVal = (keys, fallback = '-') => getValFromObj(userData, keys, fallback);
+  const getVal = (keys, fallback = '-') => {
+    const fromSession = getValFromObj(userData, keys, '');
+    if (fromSession && fromSession !== '-') return fromSession;
+    return getValFromObj(directoryData, keys, fallback);
+  };
+
+  const normalizeImageUrl = (rawUrl) => {
+    if (!rawUrl || rawUrl === '-') return '';
+    const trimmed = String(rawUrl).trim();
+    const driveMatch =
+      trimmed.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i) ||
+      trimmed.match(/drive\.google\.com\/open\?id=([^&#]+)/i);
+    if (driveMatch && driveMatch[1]) {
+      return `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
+    }
+    return trimmed;
+  };
 
   const parseNumeric = (val) => {
     if (val === null || val === undefined || val === '' || val === '-') return 0;
@@ -541,14 +572,19 @@ export default function Account() {
     return '';
   };
 
-  // Ambil kolom company dari employee_directory tanpa memicu 400 Bad Request
-  const fetchCompaniesFromDirectory = async (emailsList, fallbackSessionUser) => {
+  // Ambil data employee_directory (company & Barcode URL) secara aman
+  const fetchDirectoryInfo = async (emailsList, fallbackSessionUser) => {
     const map = {};
+    let matchedUserRow = null;
+
     const normalizedTargets = emailsList
       .map((e) => String(e || '').trim().toLowerCase())
       .filter(Boolean);
 
-    if (normalizedTargets.length === 0) return map;
+    const sessionEmpId =
+      fallbackSessionUser && typeof fallbackSessionUser === 'object'
+        ? getValFromObj(fallbackSessionUser, ['Employee ID', 'employee id', 'employeeid', 'id'], '').trim().toLowerCase()
+        : '';
 
     // 1. Cek terlebih dahulu dari data sesi pengguna yang sudah tersimpan
     if (fallbackSessionUser && typeof fallbackSessionUser === 'object') {
@@ -564,7 +600,7 @@ export default function Account() {
       }
     }
 
-    // 2. Query employee_directory secara aman (tanpa filter nama kolom yang belum pasti)
+    // 2. Query employee_directory secara aman
     try {
       const { data, error } = await supabase
         .from('employee_directory')
@@ -586,6 +622,9 @@ export default function Account() {
           });
 
           if (matchedRow) {
+            if (!matchedUserRow) {
+              matchedUserRow = matchedRow;
+            }
             const compVal = getValFromObj(
               matchedRow,
               ['company', 'Company', 'company_name', 'Company Name'],
@@ -596,12 +635,23 @@ export default function Account() {
             }
           }
         }
+
+        // Fallback pencocokan berdasarkan Employee ID jika email belum cocok
+        if (!matchedUserRow && sessionEmpId && sessionEmpId !== '-') {
+          matchedUserRow =
+            data.find((row) => {
+              const rowId = getValFromObj(row, ['Employee ID', 'employee id', 'employeeid', 'id'], '')
+                .trim()
+                .toLowerCase();
+              return rowId === sessionEmpId;
+            }) || null;
+        }
       }
     } catch (err) {
-      console.error('Error fetching company from employee_directory:', err);
+      console.error('Error fetching employee_directory:', err);
     }
 
-    return map;
+    return { companyMap: map, matchedUserRow };
   };
 
   const fetchPayslips = useCallback(async (sessionUser, outletCtx) => {
@@ -611,6 +661,17 @@ export default function Account() {
     try {
       const userEmail = await getLoggedInUserEmail(sessionUser, outletCtx);
       setLoginEmail(userEmail);
+
+      // Tetap ambil data employee_directory (untuk Barcode URL & Company) meskipun belum ada payslip
+      const { companyMap: initialCompanies, matchedUserRow } = await fetchDirectoryInfo(
+        userEmail ? [userEmail] : [],
+        sessionUser
+      );
+      if (matchedUserRow) {
+        setDirectoryData(matchedUserRow);
+        setBarcodeImgError(false);
+      }
+      setCompanyByEmail(initialCompanies);
 
       if (!userEmail) {
         setPayslips([]);
@@ -652,7 +713,14 @@ export default function Account() {
           ].filter((e) => e && e !== '-')
         )
       );
-      const resolvedCompanies = await fetchCompaniesFromDirectory(uniqueEmails, sessionUser);
+      const { companyMap: resolvedCompanies, matchedUserRow: resolvedRow } = await fetchDirectoryInfo(
+        uniqueEmails,
+        sessionUser
+      );
+      if (resolvedRow) {
+        setDirectoryData(resolvedRow);
+        setBarcodeImgError(false);
+      }
       setCompanyByEmail(resolvedCompanies);
     } catch (err) {
       console.error('Error fetching payroll:', err);
@@ -674,6 +742,18 @@ export default function Account() {
     fetchPayslips(parsed, context);
   }, [fetchPayslips]);
 
+  // Tutup modal zoom barcode ketika menekan tombol Escape
+  useEffect(() => {
+    if (!isBarcodeZoomed) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setIsBarcodeZoomed(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isBarcodeZoomed]);
+
   const refreshData = () => {
     setLoading(true);
     const saved = localStorage.getItem('hris_session_data');
@@ -688,6 +768,12 @@ export default function Account() {
       setTimeout(() => setLoading(false), 300);
     });
   };
+
+  // Ambil URL Barcode dari database employee_directory kolom "Barcode URL"
+  const rawBarcodeUrl =
+    getValFromObj(directoryData, ['Barcode URL', 'barcode url', 'barcode_url', 'barcode'], '') ||
+    getValFromObj(userData, ['Barcode URL', 'barcode url', 'barcode_url', 'barcode'], '');
+  const barcodeUrl = normalizeImageUrl(rawBarcodeUrl);
 
   const DetailRow = ({ label, value }) => (
     <div className="py-2 border-b border-gray-100 flex justify-between items-center">
@@ -1261,22 +1347,60 @@ export default function Account() {
           )}
 
           {activeTab === 'employee' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5">
-              <DetailRow label={t.empId} value={getVal(['employee id', 'employeeid', 'id'])} />
-              <DetailRow label={t.dept} value={getVal(['department', 'dept'])} />
-              <DetailRow label={t.jobTitle} value={getVal(['job title', 'job_title', 'position'])} />
-              <DetailRow label={t.jobLevel} value={getVal(['job level'])} />
-              <DetailRow label={t.jobGrade} value={getVal(['job grade'])} />
-              <DetailRow label={t.joinDate} value={formatIndoDateOnly(getVal(['join date', 'tanggal masuk']))} />
-              <DetailRow label={t.jobDesc} value={getVal(['job description'])} />
-              <DetailRow label={t.workEmail} value={getVal(['employee work email', 'work email', 'employee_work_email', 'email'])} />
-              <DetailRow label={t.directLine} value={getVal(['direct reporting line', 'direct line report', 'bawahan langsung'])} />
-              <DetailRow label={t.lineManager} value={getVal(['line manager', 'atasan'])} />
+            <div className="space-y-5">
+              {/* Kartu Gambar Barcode Karyawan dari employee_directory -> Barcode URL */}
+              <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/70 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-center sm:text-left">
+                  <h4 className="text-sm font-bold text-gray-800">{t.barcodeTitle}</h4>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {barcodeUrl && !barcodeImgError ? t.barcodeHint : t.barcodeEmpty}
+                  </p>
+                </div>
 
-              <SectionHeader title={t.leaveBalance} />
-              <DetailRow label={t.annualLeave} value={getVal(['annual leave', 'cuti tahunan'])} />
-              <DetailRow label={t.dop} value={getVal(['day off payment', 'dop'])} />
-              <DetailRow label={t.eo} value={getVal(['extra off', 'eo'])} />
+                {barcodeUrl && !barcodeImgError ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsBarcodeZoomed(true)}
+                    className="group bg-white border border-gray-200 hover:border-blue-400 rounded-xl p-3 shadow-2xs transition cursor-zoom-in flex flex-col items-center"
+                    title={t.barcodeHint}
+                  >
+                    <img
+                      src={barcodeUrl}
+                      alt="Employee Barcode"
+                      onError={() => setBarcodeImgError(true)}
+                      className="h-16 sm:h-20 w-auto max-w-[230px] object-contain"
+                    />
+                    <span className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 group-hover:text-blue-700">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 104.5 4.5a7.5 7.5 0 0012.15 12.15zM10 7v6m-3-3h6" />
+                      </svg>
+                      {t.clickToZoom}
+                    </span>
+                  </button>
+                ) : (
+                  <div className="px-4 py-3 rounded-xl border border-dashed border-gray-300 bg-white text-xs text-gray-400">
+                    -
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5">
+                <DetailRow label={t.empId} value={getVal(['employee id', 'employeeid', 'id'])} />
+                <DetailRow label={t.dept} value={getVal(['department', 'dept'])} />
+                <DetailRow label={t.jobTitle} value={getVal(['job title', 'job_title', 'position'])} />
+                <DetailRow label={t.jobLevel} value={getVal(['job level'])} />
+                <DetailRow label={t.jobGrade} value={getVal(['job grade'])} />
+                <DetailRow label={t.joinDate} value={formatIndoDateOnly(getVal(['join date', 'tanggal masuk']))} />
+                <DetailRow label={t.jobDesc} value={getVal(['job description'])} />
+                <DetailRow label={t.workEmail} value={getVal(['employee work email', 'work email', 'employee_work_email', 'email'])} />
+                <DetailRow label={t.directLine} value={getVal(['direct reporting line', 'direct line report', 'bawahan langsung'])} />
+                <DetailRow label={t.lineManager} value={getVal(['line manager', 'atasan'])} />
+
+                <SectionHeader title={t.leaveBalance} />
+                <DetailRow label={t.annualLeave} value={getVal(['annual leave', 'cuti tahunan'])} />
+                <DetailRow label={t.dop} value={getVal(['day off payment', 'dop'])} />
+                <DetailRow label={t.eo} value={getVal(['extra off', 'eo'])} />
+              </div>
             </div>
           )}
 
@@ -1435,6 +1559,50 @@ export default function Account() {
         </div>
 
       </div>
+
+      {/* ========================================================================
+          MODAL PERBESAR BARCODE (KLIK DI TEMPAT LAIN / LUAR AKAN KELUAR)
+          ======================================================================== */}
+      {isBarcodeZoomed && barcodeUrl && (
+        <div
+          onClick={() => setIsBarcodeZoomed(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 cursor-pointer"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md p-6 sm:p-8 flex flex-col items-center text-center cursor-default"
+          >
+            <button
+              type="button"
+              onClick={() => setIsBarcodeZoomed(false)}
+              aria-label={t.closeModal}
+              className="absolute top-3.5 right-3.5 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center transition cursor-pointer"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <h4 className="text-base font-bold text-gray-900">{t.barcodeTitle}</h4>
+            <p className="text-xs text-gray-500 mt-0.5 mb-4">
+              {getVal(['name', 'nama', 'fullname', 'full_name'], '')}
+              {getVal(['employee id', 'employeeid', 'id'], '') !== '-' && (
+                <span> • {getVal(['employee id', 'employeeid', 'id'], '')}</span>
+              )}
+            </p>
+
+            <div className="w-full bg-white border border-gray-200 rounded-xl p-5 sm:p-6 flex items-center justify-center">
+              <img
+                src={barcodeUrl}
+                alt="Employee Barcode Enlarged"
+                className="w-full max-h-72 object-contain"
+              />
+            </div>
+
+            <p className="text-[11px] text-gray-400 mt-4">{t.clickOutsideClose}</p>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================
           MODAL DETAIL SLIP GAJI (KLIK DI LUAR MODAL OTOMATIS CLOSE)
