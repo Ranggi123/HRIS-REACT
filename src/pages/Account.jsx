@@ -246,11 +246,12 @@ export default function Account() {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // State Payslip
+  // State Payslip & Company Directory
   const [payslips, setPayslips] = useState([]);
   const [payslipLoading, setPayslipLoading] = useState(false);
   const [payslipError, setPayslipError] = useState(null);
   const [loginEmail, setLoginEmail] = useState('');
+  const [companyByEmail, setCompanyByEmail] = useState({});
   const [selectedPayslip, setSelectedPayslip] = useState(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
 
@@ -326,7 +327,6 @@ export default function Account() {
     grossCol: 'Total Earnings',
     deductionCol: 'Total Deductions',
     netCol: 'Take Home Pay',
-    statusCol: 'Status',
     actionCol: 'Aksi',
     viewDetail: 'Lihat Detail',
     closeModal: 'Tutup',
@@ -407,7 +407,6 @@ export default function Account() {
     grossCol: 'Total Earnings',
     deductionCol: 'Total Deductions',
     netCol: 'Take Home Pay',
-    statusCol: 'Status',
     actionCol: 'Action',
     viewDetail: 'View Detail',
     closeModal: 'Close',
@@ -542,6 +541,66 @@ export default function Account() {
     return '';
   };
 
+  // Ambil kolom company dari tabel employee_directory dimana email = Employee Email pada Payroll
+  const fetchCompaniesFromDirectory = async (emailsList, fallbackSessionUser) => {
+    const map = {};
+    const fallbackComp = getValFromObj(
+      fallbackSessionUser,
+      ['company', 'Company', 'company_name', 'Company Name'],
+      ''
+    );
+
+    for (const rawEmail of emailsList) {
+      const cleanEmail = String(rawEmail || '').trim();
+      if (!cleanEmail) continue;
+      const lowerEmail = cleanEmail.toLowerCase();
+
+      try {
+        let { data, error } = await supabase
+          .from('employee_directory')
+          .select('*')
+          .ilike('email', cleanEmail);
+
+        if (error) {
+          const retry = await supabase
+            .from('employee_directory')
+            .select('*')
+            .ilike('Email', cleanEmail);
+          data = retry.data;
+          error = retry.error;
+        }
+
+        if (!error && Array.isArray(data) && data.length > 0) {
+          const matchedRow =
+            data.find(
+              (r) =>
+                getValFromObj(r, ['email', 'Email', 'Personal Email'], '')
+                  .trim()
+                  .toLowerCase() === lowerEmail
+            ) || data[0];
+
+          const compVal = getValFromObj(
+            matchedRow,
+            ['company', 'Company', 'company_name', 'Company Name'],
+            ''
+          );
+          if (compVal && compVal !== '-') {
+            map[lowerEmail] = compVal;
+            continue;
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching company from employee_directory:', err);
+      }
+
+      if (fallbackComp && fallbackComp !== '-') {
+        map[lowerEmail] = fallbackComp;
+      }
+    }
+
+    return map;
+  };
+
   const fetchPayslips = useCallback(async (sessionUser, outletCtx) => {
     setPayslipLoading(true);
     setPayslipError(null);
@@ -581,6 +640,18 @@ export default function Account() {
       });
 
       setPayslips(sorted);
+
+      // Ambil nama company dari employee_directory berdasarkan email = Employee Email pada Payroll
+      const uniqueEmails = Array.from(
+        new Set(
+          [
+            userEmail,
+            ...sorted.map((row) => getValFromObj(row, ['Employee Email', 'employee_email'], ''))
+          ].filter((e) => e && e !== '-')
+        )
+      );
+      const resolvedCompanies = await fetchCompaniesFromDirectory(uniqueEmails, sessionUser);
+      setCompanyByEmail(resolvedCompanies);
     } catch (err) {
       console.error('Error fetching payroll:', err);
       setPayslipError(err.message || 'Gagal memuat data payroll');
@@ -630,9 +701,19 @@ export default function Account() {
   );
 
   // ============================================================================
-  // PEMETAAN LENGKAP FORMAT TEMPLATE PT BINA TATAWISTA / VIVRE GROUP
+  // PEMETAAN LENGKAP FORMAT TEMPLATE PAYSLIP (TANPA LOGO, NAMA COMPANY DINAMIS)
   // ============================================================================
   const getTemplatePayslipData = (slip) => {
+    const slipEmpEmail = getValFromObj(slip, ['Employee Email', 'employee_email'], loginEmail)
+      .trim()
+      .toLowerCase();
+
+    const companyName =
+      companyByEmail[slipEmpEmail] ||
+      companyByEmail[String(loginEmail || '').trim().toLowerCase()] ||
+      getValFromObj(slip, ['company', 'Company'], '') ||
+      getVal(['company', 'Company', 'company_name', 'Company Name'], '-');
+
     const monthVal = getValFromObj(slip, ['Month', 'Bulan'], '');
     const yearVal = getValFromObj(slip, ['Year', 'Tahun'], '');
     const periodFallback = getValFromObj(slip, ['Period', 'Payroll Period', 'Periode'], '');
@@ -772,6 +853,7 @@ export default function Account() {
         : parseNumeric(rawTotalBenefits);
 
     return {
+      companyName,
       payrollCutOff,
       periodShort,
       empName,
@@ -793,7 +875,7 @@ export default function Account() {
   };
 
   // ============================================================================
-  // GENERATOR LOCKED PDF SESUAI TEMPLATE PT BINA TATAWISTA / VIVRE GROUP
+  // GENERATOR LOCKED PDF (TANPA LOGO, MENGGUNAKAN NAMA COMPANY DARI DIRECTORY)
   // ============================================================================
   const handleDownloadLockedPdf = (slip) => {
     if (!slip) return;
@@ -820,25 +902,27 @@ export default function Account() {
         ctx.fillText('*CONFIDENTIAL', 1152, 76);
         ctx.textAlign = 'left';
 
-        // 3. Top Left: Logo Vivre group
-        ctx.fillStyle = '#1F2937';
-        ctx.font = 'bold 42px Georgia, serif';
-        ctx.fillText('Vivre', 96, 128);
-
-        ctx.fillStyle = '#4B5563';
-        ctx.font = '18px Georgia, serif';
-        ctx.fillText('group', 162, 148);
-
-        // 4. Company Name & PAYSLIP Title
+        // 3. Top Left: Nama Company dari employee_directory (Menggantikan Logo)
         ctx.fillStyle = '#111827';
-        ctx.font = '24px sans-serif';
-        ctx.fillText('PT Bina Tatawista', 88, 248);
+        ctx.font = 'bold 28px sans-serif';
+        ctx.fillText(String(d.companyName || '-'), 88, 120);
 
+        // Top Right: PAYSLIP Title
+        ctx.fillStyle = '#111827';
+        ctx.font = 'bold 22px sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText('PAYSLIP', 1152, 248);
+        ctx.fillText('PAYSLIP', 1152, 120);
         ctx.textAlign = 'left';
 
-        // 5. Metadata Karyawan (2 Kolom)
+        // Garis Pembatas Header
+        ctx.strokeStyle = '#E5E7EB';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(88, 146);
+        ctx.lineTo(1152, 146);
+        ctx.stroke();
+
+        // 4. Metadata Karyawan (2 Kolom)
         const metaLeft = [
           ['Payroll cut off', d.payrollCutOff],
           ['ID / Name', d.idAndName],
@@ -853,7 +937,7 @@ export default function Account() {
         ];
 
         metaLeft.forEach(([label, val], idx) => {
-          const y = 318 + idx * 44;
+          const y = 196 + idx * 44;
           ctx.fillStyle = '#1F2937';
           ctx.font = '16px sans-serif';
           ctx.fillText(label, 88, y);
@@ -864,7 +948,7 @@ export default function Account() {
         });
 
         metaRight.forEach(([label, val], idx) => {
-          const y = 318 + idx * 44;
+          const y = 196 + idx * 44;
           ctx.fillStyle = '#1F2937';
           ctx.font = '16px sans-serif';
           ctx.fillText(label, 636, y);
@@ -874,8 +958,8 @@ export default function Account() {
           ctx.textAlign = 'left';
         });
 
-        // 6. Header Bar Abu-abu: Earnings | Deductions
-        const tableHeaderY = 510;
+        // 5. Header Bar Abu-abu: Earnings | Deductions
+        const tableHeaderY = 388;
         ctx.fillStyle = '#E5E7EB';
         ctx.fillRect(88, tableHeaderY, 526, 44);
         ctx.fillRect(626, tableHeaderY, 526, 44);
@@ -885,7 +969,7 @@ export default function Account() {
         ctx.fillText('Earnings', 96, tableHeaderY + 28);
         ctx.fillText('Deductions', 634, tableHeaderY + 28);
 
-        // 7. Isi Baris Earnings (Kiri) & Deductions (Kanan)
+        // 6. Isi Baris Earnings (Kiri) & Deductions (Kanan)
         const rowStartY = tableHeaderY + 80;
         const rowStepY = 48;
 
@@ -935,7 +1019,7 @@ export default function Account() {
         ctx.fillText(formatCurrency(d.totalDeductions), 1144, totalRowY);
         ctx.textAlign = 'left';
 
-        // 8. Take Home Pay (Kanan Bawah)
+        // 7. Take Home Pay (Kanan Bawah)
         const thpY = totalRowY + 86;
         ctx.fillStyle = '#111827';
         ctx.font = 'bold 24px sans-serif';
@@ -945,7 +1029,7 @@ export default function Account() {
         ctx.fillText(formatCurrency(d.takeHomePay), 1144, thpY);
         ctx.textAlign = 'left';
 
-        // 9. Bagian Benefits* (Kolom Kiri Bawah)
+        // 8. Bagian Benefits* (Kolom Kiri Bawah)
         const benefitsStartY = thpY + 62;
         ctx.fillStyle = '#111827';
         ctx.font = 'bold 17px sans-serif';
@@ -971,7 +1055,7 @@ export default function Account() {
         ctx.fillText(formatCurrency(d.totalBenefits), 604, totalBenefitsY);
         ctx.textAlign = 'left';
 
-        // 10. WATERMARK CONFIDENTIAL MIRING DI TENGAH BACKGROUND
+        // 9. WATERMARK CONFIDENTIAL MIRING DI TENGAH BACKGROUND
         ctx.save();
         ctx.translate(canvas.width / 2, canvas.height / 2);
         ctx.rotate((-32 * Math.PI) / 180);
@@ -987,7 +1071,7 @@ export default function Account() {
         ctx.fillText('CONFIDENTIAL', 0, 4);
         ctx.restore();
 
-        // 11. Footer Keamanan Dokumen Terkunci
+        // 10. Footer Keamanan Dokumen Terkunci
         ctx.strokeStyle = '#E5E7EB';
         ctx.beginPath();
         ctx.moveTo(88, 1665);
@@ -997,7 +1081,7 @@ export default function Account() {
         ctx.fillStyle = '#6B7280';
         ctx.font = '13px sans-serif';
         ctx.fillText(
-          'PT Bina Tatawista • Locked Read-Only Payslip Document (CONFIDENTIAL)',
+          `${d.companyName} • Locked Read-Only Payslip Document (CONFIDENTIAL)`,
           88,
           1695
         );
@@ -1006,7 +1090,7 @@ export default function Account() {
         ctx.fillText(`Generated: ${new Date().toLocaleString('id-ID')}`, 1152, 1695);
         ctx.textAlign = 'left';
 
-        // 12. Export ke Locked PDF
+        // 11. Export ke Locked PDF
         const pdfBlob = buildLockedPdfFromCanvas(canvas);
         const url = URL.createObjectURL(pdfBlob);
         const a = document.createElement('a');
@@ -1351,7 +1435,7 @@ export default function Account() {
       </div>
 
       {/* ========================================================================
-          MODAL DETAIL SLIP GAJI (FORMAT PT BINA TATAWISTA / VIVRE GROUP)
+          MODAL DETAIL SLIP GAJI (TANPA LOGO, NAMA COMPANY DARI EMPLOYEE_DIRECTORY)
           ======================================================================== */}
       {selectedPayslip && (() => {
         const d = getTemplatePayslipData(selectedPayslip);
@@ -1405,32 +1489,24 @@ export default function Account() {
                 </button>
               </div>
 
-              {/* 1. Top Header: Logo Vivre group & *CONFIDENTIAL */}
-              <div className="relative z-10 flex justify-between items-start mb-8">
-                <div className="leading-none select-none">
-                  <span className="font-serif font-bold text-3xl sm:text-4xl tracking-tight text-gray-900 block">
-                    Vivre
+              {/* 1. Top Header: Nama Company (dari employee_directory) & *CONFIDENTIAL + PAYSLIP */}
+              <div className="relative z-10 flex justify-between items-start pb-4 mb-6 border-b border-gray-200">
+                <div>
+                  <h2 className="text-lg sm:text-xl font-bold text-gray-900">
+                    {d.companyName}
+                  </h2>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs sm:text-sm font-bold text-red-500 tracking-wide block">
+                    *CONFIDENTIAL
                   </span>
-                  <span className="font-serif text-xs sm:text-sm text-gray-600 block text-right -mt-1 pr-0.5">
-                    group
+                  <span className="text-sm sm:text-base font-bold text-gray-900 tracking-wide mt-1 block">
+                    PAYSLIP
                   </span>
                 </div>
-                <span className="text-xs sm:text-sm font-bold text-red-500 tracking-wide">
-                  *CONFIDENTIAL
-                </span>
               </div>
 
-              {/* 2. Nama Perusahaan & Judul PAYSLIP */}
-              <div className="relative z-10 flex justify-between items-center mb-6">
-                <h2 className="text-base sm:text-lg font-medium text-gray-900">
-                  PT Bina Tatawista
-                </h2>
-                <span className="text-base sm:text-lg font-medium text-gray-900 tracking-wide">
-                  PAYSLIP
-                </span>
-              </div>
-
-              {/* 3. Metadata Karyawan (2 Kolom) */}
+              {/* 2. Metadata Karyawan (2 Kolom) */}
               <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2.5 text-xs mb-7">
                 {/* Kolom Kiri */}
                 <div className="space-y-2.5">
@@ -1469,7 +1545,7 @@ export default function Account() {
                 </div>
               </div>
 
-              {/* 4. Tabel Earnings (Kiri) & Deductions (Kanan) */}
+              {/* 3. Tabel Earnings (Kiri) & Deductions (Kanan) */}
               <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6 text-xs">
                 {/* Kolom Earnings */}
                 <div className="flex flex-col justify-between">
@@ -1510,7 +1586,7 @@ export default function Account() {
                 </div>
               </div>
 
-              {/* 5. Baris Total Earnings & Total Deductions */}
+              {/* 4. Baris Total Earnings & Total Deductions */}
               <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-xs mt-4 pt-3.5 border-t border-gray-200">
                 <div className="flex justify-between items-center px-1 font-bold text-gray-900">
                   <span>Total Earnings</span>
@@ -1522,7 +1598,7 @@ export default function Account() {
                 </div>
               </div>
 
-              {/* 6. Take Home Pay (Kanan Bawah) */}
+              {/* 5. Take Home Pay (Kanan Bawah) */}
               <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-x-6 mt-8">
                 <div className="hidden md:block" />
                 <div className="flex justify-between items-center px-1">
@@ -1535,7 +1611,7 @@ export default function Account() {
                 </div>
               </div>
 
-              {/* 7. Benefits* (Kolom Kiri Bawah) */}
+              {/* 6. Benefits* (Kolom Kiri Bawah) */}
               <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-x-6 mt-8 text-xs">
                 <div className="px-1">
                   <h4 className="font-bold text-gray-900 mb-3">Benefits*</h4>
