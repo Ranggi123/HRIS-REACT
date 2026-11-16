@@ -7,7 +7,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ============================================================================
-// HELPER: GENERATOR PDF TERKUNCI (READ-ONLY / ANTI-EDIT) TANPA DEPENDENSI LUAR
+// HELPER: GENERATOR PDF TERKUNCI (READ-ONLY / ANTI-EDIT)
 // ============================================================================
 const PDF_PADDING = new Uint8Array([
   0x28, 0xBF, 0x4E, 0x5E, 0x4E, 0x75, 0x8A, 0x41,
@@ -119,7 +119,7 @@ function toHex(bytes) {
 function buildLockedPdfFromCanvas(canvas) {
   const width = canvas.width;
   const height = canvas.height;
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.94);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
   const base64 = dataUrl.split(',')[1];
   const rawBinary = atob(base64);
   const jpegBytes = new Uint8Array(rawBinary.length);
@@ -127,7 +127,6 @@ function buildLockedPdfFromCanvas(canvas) {
     jpegBytes[i] = rawBinary.charCodeAt(i);
   }
 
-  // Buat Owner Password acak & User Password kosong agar langsung terbuka namun terkunci (Read-Only)
   const ownerPwdStr = `HRIS_LOCK_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const ownerPadded = new Uint8Array(32);
   for (let i = 0; i < 32; i++) {
@@ -136,7 +135,7 @@ function buildLockedPdfFromCanvas(canvas) {
   const ownerKey = md5Bytes(ownerPadded).slice(0, 5);
   const O_bytes = rc4Crypt(ownerKey, PDF_PADDING);
 
-  // Permission -3900 (0xFFFFF0C4): Hanya izinkan Print, kunci total Modify / Copy / Extract / Annotate
+  // Permission -3900: Read-Only / Kunci Edit & Copy
   const P_val = -3900;
   const P_bytes = new Uint8Array(4);
   new DataView(P_bytes.buffer).setInt32(0, P_val, true);
@@ -319,15 +318,14 @@ export default function Account() {
     taxTitle: 'Pajak Penghasilan',
     ter: 'TER',
     descCode: 'Kode Deskripsi',
-    // Payslip
+    // Payslip List & Actions
     payslipListTitle: 'Daftar Slip Gaji',
-    payslipDetailTitle: 'Detail Slip Gaji',
     periodCol: 'Periode',
-    payDateCol: 'Tanggal Bayar',
-    basicCol: 'Gaji Pokok',
-    grossCol: 'Total Pendapatan',
-    deductionCol: 'Total Potongan',
-    netCol: 'Gaji Bersih (THP)',
+    payDateCol: 'Payroll Cut Off',
+    basicCol: 'Basic Salary',
+    grossCol: 'Total Earnings',
+    deductionCol: 'Total Deductions',
+    netCol: 'Take Home Pay',
     statusCol: 'Status',
     actionCol: 'Aksi',
     viewDetail: 'Lihat Detail',
@@ -335,19 +333,6 @@ export default function Account() {
     printPayslip: 'Download Locked PDF',
     generatingPdfLabel: 'Mengunci PDF...',
     viewFile: 'Buka Dokumen',
-    takeHomePay: 'Gaji Bersih (Take Home Pay)',
-    earningsTitle: 'Pendapatan (Earnings)',
-    deductionsTitle: 'Potongan (Deductions)',
-    otherFieldsTitle: 'Informasi Tambahan',
-    overtime: 'Lembur',
-    bonusIncentive: 'Bonus / Insentif / THR',
-    totalEarnings: 'Total Pendapatan',
-    bpjsTkDeduction: 'Potongan BPJS Ketenagakerjaan',
-    bpjsKesDeduction: 'Potongan BPJS Kesehatan',
-    taxDeduction: 'Potongan Pajak (PPh 21 / TER)',
-    lateAbsentDeduction: 'Potongan Keterlambatan / Absen',
-    otherDeduction: 'Potongan Lainnya',
-    totalDeductions: 'Total Potongan',
     noPayslipTitle: 'Data Slip Gaji Tidak Ditemukan',
     noPayslipDesc: 'Belum ada data di tabel payroll dengan "Employee Email" untuk akun'
   } : {
@@ -414,11 +399,10 @@ export default function Account() {
     taxTitle: 'Income Tax',
     ter: 'Ter',
     descCode: 'Description Code',
-    // Payslip
+    // Payslip List & Actions
     payslipListTitle: 'Payslip List',
-    payslipDetailTitle: 'Payslip Detail',
     periodCol: 'Period',
-    payDateCol: 'Payment Date',
+    payDateCol: 'Payroll Cut Off',
     basicCol: 'Basic Salary',
     grossCol: 'Total Earnings',
     deductionCol: 'Total Deductions',
@@ -430,19 +414,6 @@ export default function Account() {
     printPayslip: 'Download Locked PDF',
     generatingPdfLabel: 'Locking PDF...',
     viewFile: 'Open Document',
-    takeHomePay: 'Take Home Pay (Net Salary)',
-    earningsTitle: 'Earnings',
-    deductionsTitle: 'Deductions',
-    otherFieldsTitle: 'Additional Information',
-    overtime: 'Overtime',
-    bonusIncentive: 'Bonus / Incentive / THR',
-    totalEarnings: 'Total Earnings',
-    bpjsTkDeduction: 'BPJS Ketenagakerjaan Deduction',
-    bpjsKesDeduction: 'BPJS Health Deduction',
-    taxDeduction: 'Income Tax (PPh 21 / TER)',
-    lateAbsentDeduction: 'Late / Absent Deduction',
-    otherDeduction: 'Other Deduction',
-    totalDeductions: 'Total Deductions',
     noPayslipTitle: 'No Payslip Records Found',
     noPayslipDesc: 'No payroll record matched "Employee Email" for'
   };
@@ -509,6 +480,38 @@ export default function Account() {
     }).format(num);
   };
 
+  const formatRateDisplay = (rawVal) => {
+    if (rawVal === null || rawVal === undefined || rawVal === '' || rawVal === '-') return '0%';
+    const str = String(rawVal).trim();
+    if (str.includes('%') || str.toLowerCase().includes('rp')) return str;
+    const num = parseNumeric(str);
+    if (num > 0 && num < 1) {
+      return `${+(num * 100).toFixed(2)}%`;
+    }
+    if (num >= 0 && num <= 100) {
+      return `${num}%`;
+    }
+    return formatCurrency(num);
+  };
+
+  // Cek apakah kolom Tax Allowance? bernilai TRUE
+  const isTaxAllowanceTrue = (slip) => {
+    if (!slip) return false;
+    const rawFlag = getValFromObj(
+      slip,
+      ['Tax Allowance?', 'tax_allowance?', 'Tax Allowance Flag', 'is_tax_allowance'],
+      ''
+    );
+    const normalized = String(rawFlag).trim().toLowerCase();
+    return (
+      rawFlag === true ||
+      normalized === 'true' ||
+      normalized === 'yes' ||
+      normalized === 'y' ||
+      normalized === '1'
+    );
+  };
+
   // Ambil hanya email user yang login (BUKAN Employee Work Email)
   const getLoggedInUserEmail = async (sessionUser, outletCtx) => {
     try {
@@ -566,13 +569,14 @@ export default function Account() {
       });
 
       const sorted = matched.sort((a, b) => {
-        const dateStrA = getValFromObj(a, ['Payment Date', 'Pay Date', 'Tanggal Pembayaran', 'created_at'], '');
-        const dateStrB = getValFromObj(b, ['Payment Date', 'Pay Date', 'Tanggal Pembayaran', 'created_at'], '');
-        const timeA = dateStrA ? new Date(dateStrA).getTime() : 0;
-        const timeB = dateStrB ? new Date(dateStrB).getTime() : 0;
-        if (!isNaN(timeB) && !isNaN(timeA) && timeB !== timeA) {
-          return timeB - timeA;
-        }
+        const yearA = parseInt(getValFromObj(a, ['Year', 'Tahun'], '0'), 10) || 0;
+        const yearB = parseInt(getValFromObj(b, ['Year', 'Tahun'], '0'), 10) || 0;
+        if (yearB !== yearA) return yearB - yearA;
+
+        const monthA = parseInt(getValFromObj(a, ['Month', 'Bulan'], '0'), 10) || 0;
+        const monthB = parseInt(getValFromObj(b, ['Month', 'Bulan'], '0'), 10) || 0;
+        if (monthB !== monthA) return monthB - monthA;
+
         return (Number(b.id) || 0) - (Number(a.id) || 0);
       });
 
@@ -625,94 +629,171 @@ export default function Account() {
     </div>
   );
 
-  const getPayslipSummary = (slip) => {
-    if (!slip) {
-      return { basicSalary: 0, earnings: [], deductions: [], totalEarnings: 0, totalDeductions: 0, netSalary: 0, extraFields: [] };
-    }
+  // ============================================================================
+  // PEMETAAN LENGKAP FORMAT TEMPLATE PT BINA TATAWISTA / VIVRE GROUP
+  // ============================================================================
+  const getTemplatePayslipData = (slip) => {
+    const monthVal = getValFromObj(slip, ['Month', 'Bulan'], '');
+    const yearVal = getValFromObj(slip, ['Year', 'Tahun'], '');
+    const periodFallback = getValFromObj(slip, ['Period', 'Payroll Period', 'Periode'], '');
 
-    const mappedKeys = new Set([
-      'id', 'created_at', 'updated_at',
-      'employee email', 'employee_email', 'email',
-      'employee name', 'name', 'nama',
-      'employee id', 'nik',
-      'department', 'dept',
-      'job title', 'position',
-      'bank name', 'nama bank',
-      'bank account number', 'no rekening',
-      'period', 'payroll period', 'month', 'periode', 'bulan',
-      'payment date', 'pay date', 'tanggal pembayaran',
-      'status', 'payment status',
-      'payslip link', 'link', 'pdf', 'file', 'url'
-    ]);
+    const payrollCutOff =
+      monthVal && yearVal
+        ? `20 / ${monthVal} / ${yearVal}`
+        : periodFallback
+        ? `20 / ${periodFallback}`
+        : formatIndoDateOnly(getValFromObj(slip, ['Payment Date', 'Pay Date', 'created_at'], '-'));
 
-    const earningDefs = [
-      { label: t.basicSalary, keys: ['Basic Salary', 'Gaji Pokok'], alwaysShow: true },
-      { label: t.posAllowance, keys: ['Position Allowance', 'Tunjangan Jabatan'], alwaysShow: false },
-      { label: t.travelAllowance, keys: ['Travel & Communication Allowance', 'Transport Allowance', 'Tunjangan Transportasi'], alwaysShow: false },
-      { label: t.mealAllowance, keys: ['Meal Allowance', 'Meals Allowance', 'Tunjangan Makan'], alwaysShow: false },
-      { label: t.overtime, keys: ['Overtime', 'Overtime Pay', 'Lembur'], alwaysShow: false },
-      { label: t.bonusIncentive, keys: ['Bonus', 'Incentive', 'THR', 'Service Charge'], alwaysShow: false },
-      { label: t.otherAllowance, keys: ['Other Allowance', 'Tunjangan Lainnya'], alwaysShow: false }
-    ];
+    const periodShort =
+      monthVal && yearVal
+        ? `${monthVal} / ${yearVal}`
+        : periodFallback || payrollCutOff;
 
-    const deductionDefs = [
-      { label: t.bpjsTkDeduction, keys: ['BPJS Ketenagakerjaan', 'BPJS TK', 'JHT', 'Potongan BPJS TK'], alwaysShow: true },
-      { label: t.bpjsKesDeduction, keys: ['BPJS Kesehatan', 'BPJS Health', 'Potongan BPJS Kesehatan'], alwaysShow: true },
-      { label: t.taxDeduction, keys: ['Income Tax', 'PPh 21', 'PPh21', 'Tax', 'TER', 'Potongan Pajak'], alwaysShow: true },
-      { label: t.lateAbsentDeduction, keys: ['Late Deduction', 'Absent Deduction', 'Unpaid Leave', 'Potongan Absen', 'Potongan Keterlambatan'], alwaysShow: false },
-      { label: t.otherDeduction, keys: ['Other Deduction', 'Other Deductions', 'Loan', 'Kasbon', 'Potongan Lainnya'], alwaysShow: false }
-    ];
+    const empId = getValFromObj(slip, ['Employee ID', 'NIK', 'ID'], getVal(['employee id', 'employeeid', 'id']));
+    const empName = getValFromObj(slip, ['Employee Name', 'Name', 'Nama'], getVal(['name', 'nama', 'fullname']));
+    const idAndName = `${empId} / ${empName}`;
 
-    [...earningDefs, ...deductionDefs].forEach(def => {
-      def.keys.forEach(k => mappedKeys.add(k.toLowerCase()));
-    });
-    ['total earnings', 'gross salary', 'total income', 'total pendapatan', 'gaji kotor',
-     'total deductions', 'total deduction', 'total potongan',
-     'net salary', 'take home pay', 'thp', 'net pay', 'gaji bersih'].forEach(k => mappedKeys.add(k));
+    const jobPosition = getValFromObj(slip, ['Job Title', 'job_title', 'Position'], getVal(['job title', 'job_title', 'position']));
+    const department = getValFromObj(slip, ['Department', 'Dept'], getVal(['department', 'dept']));
 
-    const earnings = earningDefs
-      .map((item) => {
-        const raw = getValFromObj(slip, item.keys, '');
-        return { label: item.label, amount: parseNumeric(raw), alwaysShow: item.alwaysShow };
-      })
-      .filter((item) => item.alwaysShow || item.amount > 0);
+    const jobGrade = getValFromObj(slip, ['Job Grade', 'job_grade'], getVal(['job grade']));
+    const jobLevel = getValFromObj(slip, ['Job Level', 'job_level'], getVal(['job level']));
+    const gradeAndLevel = `${jobGrade} / ${jobLevel}`;
 
-    const deductions = deductionDefs
-      .map((item) => {
-        const raw = getValFromObj(slip, item.keys, '');
-        return { label: item.label, amount: parseNumeric(raw), alwaysShow: item.alwaysShow };
-      })
-      .filter((item) => item.alwaysShow || item.amount > 0);
+    const ptkp = getValFromObj(slip, ['Description Code', 'description_code', 'PTKP'], getVal(['description code', 'kode deskripsi']));
+    const npwp = getValFromObj(slip, ['NPWP Tax Number', 'NPWP Number', 'npwp_number', 'NPWP'], getVal(['NPWP Number', 'npwp number', 'npwp_number']));
 
+    // 1. EARNINGS
     const basicSalary = parseNumeric(getValFromObj(slip, ['Basic Salary', 'Gaji Pokok'], '0'));
+    const mealAllowance = parseNumeric(getValFromObj(slip, ['Meal Allowance', 'Meals Allowance', 'Tunjangan Makan'], '0'));
+    const transportComm = parseNumeric(
+      getValFromObj(slip, ['Travel & Communication Allowance', 'Transport & Communication', 'Transport Allowance'], '0')
+    );
+    const serviceCharge = parseNumeric(getValFromObj(slip, ['Service Charge'], '0'));
+    const otherAllowance = parseNumeric(getValFromObj(slip, ['Other Allowances', 'Other Allowance', 'Tunjangan Lainnya'], '0'));
 
-    const rawTotalEarnings = getValFromObj(slip, ['Total Earnings', 'Gross Salary', 'Total Income', 'Total Pendapatan', 'Gaji Kotor'], '');
-    const totalEarnings = rawTotalEarnings !== '' && rawTotalEarnings !== '-'
-      ? parseNumeric(rawTotalEarnings)
-      : earnings.reduce((sum, item) => sum + item.amount, 0);
+    // Tax Allowance HANYA muncul & dihitung jika kolom "Tax Allowance?" = TRUE
+    const showTaxAllowance = isTaxAllowanceTrue(slip);
+    const taxAllowance = showTaxAllowance
+      ? parseNumeric(getValFromObj(slip, ['Tax Allowance'], '0'))
+      : 0;
 
-    const rawTotalDeductions = getValFromObj(slip, ['Total Deductions', 'Total Deduction', 'Total Potongan'], '');
-    const totalDeductions = rawTotalDeductions !== '' && rawTotalDeductions !== '-'
-      ? parseNumeric(rawTotalDeductions)
-      : deductions.reduce((sum, item) => sum + item.amount, 0);
+    const earnings = [
+      { label: 'Basic Salary', amount: basicSalary },
+      { label: 'Meal Allowance', amount: mealAllowance },
+      { label: 'Transport & Communication', amount: transportComm },
+      { label: 'Service Charge', amount: serviceCharge },
+      { label: 'Other Allowance', amount: otherAllowance },
+      ...(showTaxAllowance ? [{ label: 'Tax Allowance', amount: taxAllowance }] : [])
+    ];
 
-    const rawNet = getValFromObj(slip, ['Net Salary', 'Take Home Pay', 'THP', 'Net Pay', 'Gaji Bersih'], '');
-    const netSalary = rawNet !== '' && rawNet !== '-'
-      ? parseNumeric(rawNet)
-      : totalEarnings - totalDeductions;
+    const calculatedTotalEarnings =
+      basicSalary + mealAllowance + transportComm + serviceCharge + otherAllowance + taxAllowance;
+    const rawTotalEarnings = getValFromObj(slip, ['Total Earnings', 'Gross Salary'], '');
+    const totalEarnings =
+      calculatedTotalEarnings > 0 || rawTotalEarnings === '' || rawTotalEarnings === '-'
+        ? calculatedTotalEarnings
+        : parseNumeric(rawTotalEarnings);
 
-    const extraFields = Object.entries(slip)
-      .filter(([key, val]) => !mappedKeys.has(key.trim().toLowerCase()) && val !== null && val !== '')
-      .map(([key, val]) => ({
-        label: key,
-        value: typeof val === 'number' ? formatCurrency(val) : String(val)
-      }));
+    // 2. DEDUCTIONS
+    const bpjsKesEmployee = parseNumeric(
+      getValFromObj(
+        slip,
+        [
+          'BPJS Health/Jaminan Kesehatan Employee',
+          'BPJS Kesehatan Employee',
+          'BPJS Health Employee',
+          'BPJS Kesehatan'
+        ],
+        '0'
+      )
+    );
+    const jhtEmployee = parseNumeric(
+      getValFromObj(slip, ['JHT Employee', 'BPJS Ketenagakerjaan Employee', 'JHT'], '0')
+    );
+    const jpEmployee = parseNumeric(
+      getValFromObj(slip, ['JP Employee', 'Jaminan Pensiun Employee', 'JP'], '0')
+    );
+    const pph21 = parseNumeric(
+      getValFromObj(slip, ['Income Tax Art. 21', 'PPH21', 'PPh 21', 'PPh21', 'Income Tax'], '0')
+    );
 
-    return { basicSalary, earnings, deductions, totalEarnings, totalDeductions, netSalary, extraFields };
+    const deductions = [
+      { label: 'BPJS Kesehatan Employee', amount: bpjsKesEmployee },
+      { label: 'JHT Employee', amount: jhtEmployee },
+      { label: 'Jaminan Pensiun Employee', amount: jpEmployee },
+      { label: 'PPH21', amount: pph21 }
+    ];
+
+    const calculatedTotalDeductions = bpjsKesEmployee + jhtEmployee + jpEmployee + pph21;
+    const rawTotalDeductions = getValFromObj(slip, ['Total Deductions', 'Total Deduction'], '');
+    const totalDeductions =
+      calculatedTotalDeductions > 0 || rawTotalDeductions === '' || rawTotalDeductions === '-'
+        ? calculatedTotalDeductions
+        : parseNumeric(rawTotalDeductions);
+
+    // 3. TAKE HOME PAY
+    const rawThp = getValFromObj(slip, ['TAKE HOME PAY', 'Take Home Pay', 'Net Salary', 'THP'], '');
+    const takeHomePay =
+      rawThp !== '' && rawThp !== '-'
+        ? parseNumeric(rawThp)
+        : totalEarnings - totalDeductions;
+
+    // 4. BENEFITS*
+    const bpjsTkRate = formatRateDisplay(getValFromObj(slip, ['BPJS Ketenagakerjaan Rate'], '0%'));
+    const bpjsKesRate = formatRateDisplay(getValFromObj(slip, ['BPJS Kesehatan Rate', 'BPJS Health Rate'], '0%'));
+    const jkk = parseNumeric(getValFromObj(slip, ['JKK (Jaminan Kecelakaan Kerja)', 'JKK'], '0'));
+    const jkm = parseNumeric(getValFromObj(slip, ['JKM (Jaminan Kematian)', 'JKM'], '0'));
+    const jhtCompany = parseNumeric(getValFromObj(slip, ['JHT Company'], '0'));
+    const jpCompany = parseNumeric(getValFromObj(slip, ['JP Company', 'Jaminan Pensiun Company'], '0'));
+    const bpjsKesCompany = parseNumeric(
+      getValFromObj(
+        slip,
+        ['BPJS Health/Jaminan Kesehatan Company', 'BPJS Kesehatan Company', 'BPJS Health Company'],
+        '0'
+      )
+    );
+
+    const benefits = [
+      { label: 'BPJS Ketenagakerjaan Rate', displayValue: bpjsTkRate },
+      { label: 'BPJS Kesehatan Rate', displayValue: bpjsKesRate },
+      { label: 'JKK', displayValue: formatCurrency(jkk) },
+      { label: 'JKM', displayValue: formatCurrency(jkm) },
+      { label: 'JHT Company', displayValue: formatCurrency(jhtCompany) },
+      { label: 'Jaminan Pensiun Company', displayValue: formatCurrency(jpCompany) },
+      { label: 'BPJS Kesehatan Company', displayValue: formatCurrency(bpjsKesCompany) }
+    ];
+
+    const calculatedTotalBenefits = jkk + jkm + jhtCompany + jpCompany + bpjsKesCompany;
+    const rawTotalBenefits = getValFromObj(slip, ['Total Benefits'], '');
+    const totalBenefits =
+      calculatedTotalBenefits > 0 || rawTotalBenefits === '' || rawTotalBenefits === '-'
+        ? calculatedTotalBenefits
+        : parseNumeric(rawTotalBenefits);
+
+    return {
+      payrollCutOff,
+      periodShort,
+      empName,
+      idAndName,
+      jobPosition,
+      department,
+      gradeAndLevel,
+      ptkp,
+      npwp,
+      basicSalary,
+      earnings,
+      totalEarnings,
+      deductions,
+      totalDeductions,
+      takeHomePay,
+      benefits,
+      totalBenefits
+    };
   };
 
   // ============================================================================
-  // FUNGSI DOWNLOAD LOCKED PDF (A4 RAPI + WATERMARK CONFIDENTIAL DI TENGAH)
+  // GENERATOR LOCKED PDF SESUAI TEMPLATE PT BINA TATAWISTA / VIVRE GROUP
   // ============================================================================
   const handleDownloadLockedPdf = (slip) => {
     if (!slip) return;
@@ -720,345 +801,217 @@ export default function Account() {
 
     setTimeout(() => {
       try {
-        const { earnings, deductions, totalEarnings, totalDeductions, netSalary, extraFields } = getPayslipSummary(slip);
-        const empName = getValFromObj(slip, ['Employee Name', 'Name', 'Nama'], getVal(['name', 'nama']));
-        const empId = getValFromObj(slip, ['Employee ID', 'NIK', 'ID'], getVal(['employee id', 'id']));
-        const dept = getValFromObj(slip, ['Department', 'Dept'], getVal(['department']));
-        const jobTitle = getValFromObj(slip, ['Job Title', 'Position'], getVal(['job title']));
-        const bankName = getValFromObj(slip, ['Bank Name', 'Nama Bank'], getVal(['bank name']));
-        const bankAcc = getValFromObj(slip, ['Bank Account Number', 'No Rekening'], getVal(['bank account number']));
-        const periodLabel = getValFromObj(
-          slip,
-          ['Period', 'Payroll Period', 'Month', 'Periode', 'Bulan'],
-          formatIndoDateOnly(getValFromObj(slip, ['Payment Date', 'Pay Date', 'created_at'], '-'))
-        );
-        const payDateLabel = formatIndoDateOnly(
-          getValFromObj(slip, ['Payment Date', 'Pay Date', 'Tanggal Pembayaran', 'created_at'], '-')
-        );
-        const statusLabel = getValFromObj(slip, ['Status', 'Payment Status'], 'Locked');
+        const d = getTemplatePayslipData(slip);
 
-        // Buat Canvas A4 (1240 x 1754 px @ 150 DPI)
+        // Canvas A4 @ 150 DPI (1240 x 1754)
         const canvas = document.createElement('canvas');
         canvas.width = 1240;
         canvas.height = 1754;
         const ctx = canvas.getContext('2d');
 
-        const drawRoundRect = (x, y, w, h, r) => {
-          ctx.beginPath();
-          ctx.moveTo(x + r, y);
-          ctx.lineTo(x + w - r, y);
-          ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-          ctx.lineTo(x + w, y + h - r);
-          ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-          ctx.lineTo(x + r, y + h);
-          ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-          ctx.lineTo(x, y + r);
-          ctx.quadraticCurveTo(x, y, x + r, y);
-          ctx.closePath();
-        };
-
-        // 1. Background Putih Bersih + Bingkai Dokumen
+        // 1. Background Putih Bersih
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        ctx.strokeStyle = '#E5E7EB';
-        ctx.lineWidth = 2;
-        drawRoundRect(44, 44, 1152, 1666, 20);
-        ctx.stroke();
+        // 2. Top Right: *CONFIDENTIAL (Merah)
+        ctx.fillStyle = '#EF4444';
+        ctx.font = 'bold 17px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('*CONFIDENTIAL', 1152, 76);
+        ctx.textAlign = 'left';
 
-        // 2. Header Judul Slip Gaji
+        // 3. Top Left: Logo Vivre group
+        ctx.fillStyle = '#1F2937';
+        ctx.font = 'bold 42px Georgia, serif';
+        ctx.fillText('Vivre', 96, 128);
+
+        ctx.fillStyle = '#4B5563';
+        ctx.font = '18px Georgia, serif';
+        ctx.fillText('group', 162, 148);
+
+        // 4. Company Name & PAYSLIP Title
         ctx.fillStyle = '#111827';
-        ctx.font = 'bold 30px sans-serif';
-        ctx.fillText(t.payslipDetailTitle.toUpperCase(), 76, 102);
+        ctx.font = '24px sans-serif';
+        ctx.fillText('PT Bina Tatawista', 88, 248);
 
-        ctx.fillStyle = '#6B7280';
-        ctx.font = '16px sans-serif';
-        ctx.fillText(`${t.periodCol}: ${periodLabel}   •   ${t.payDateCol}: ${payDateLabel}`, 76, 130);
-
-        // Badge Lock di kanan atas
-        ctx.fillStyle = '#EFF6FF';
-        drawRoundRect(928, 74, 236, 42, 21);
-        ctx.fill();
-        ctx.strokeStyle = '#BFDBFE';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        ctx.fillStyle = '#1D4ED8';
-        ctx.font = 'bold 14px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('LOCKED • READ-ONLY PDF', 1046, 100);
+        ctx.textAlign = 'right';
+        ctx.fillText('PAYSLIP', 1152, 248);
         ctx.textAlign = 'left';
 
-        // 3. Banner Take Home Pay (Biru Solid agar tidak pudar)
-        const grad = ctx.createLinearGradient(76, 156, 1164, 276);
-        grad.addColorStop(0, '#1D4ED8');
-        grad.addColorStop(1, '#2563EB');
-        ctx.fillStyle = grad;
-        drawRoundRect(76, 156, 1088, 122, 18);
-        ctx.fill();
-
-        ctx.fillStyle = '#DBEAFE';
-        ctx.font = 'bold 14px sans-serif';
-        ctx.fillText(t.takeHomePay.toUpperCase(), 108, 194);
-
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 40px sans-serif';
-        ctx.fillText(formatCurrency(netSalary), 108, 246);
-
-        // Pill status di banner
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
-        drawRoundRect(1010, 198, 124, 38, 19);
-        ctx.fill();
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 15px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(statusLabel, 1072, 222);
-        ctx.textAlign = 'left';
-
-        // 4. Kotak Informasi Karyawan (2 Kolom)
-        ctx.fillStyle = '#F9FAFB';
-        drawRoundRect(76, 302, 1088, 174, 16);
-        ctx.fill();
-        ctx.strokeStyle = '#E5E7EB';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        const empPairs = [
-          [t.employeeName, empName, t.empId, empId],
-          [t.dept, dept, t.jobTitle, jobTitle],
-          [t.bankName, bankName, t.bankAccNum, bankAcc]
+        // 5. Metadata Karyawan (2 Kolom)
+        const metaLeft = [
+          ['Payroll cut off', d.payrollCutOff],
+          ['ID / Name', d.idAndName],
+          ['Job position', d.jobPosition],
+          ['Department', d.department]
         ];
 
-        empPairs.forEach((row, idx) => {
-          const rowY = 342 + idx * 52;
-          if (idx > 0) {
-            ctx.strokeStyle = '#F3F4F6';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(100, rowY - 30);
-            ctx.lineTo(1140, rowY - 30);
-            ctx.stroke();
-          }
+        const metaRight = [
+          ['Grade / Level', d.gradeAndLevel],
+          ['PTKP', d.ptkp],
+          ['NPWP', d.npwp]
+        ];
 
-          // Kolom Kiri
-          ctx.fillStyle = '#6B7280';
-          ctx.font = '15px sans-serif';
-          ctx.fillText(row[0], 104, rowY);
+        metaLeft.forEach(([label, val], idx) => {
+          const y = 318 + idx * 44;
+          ctx.fillStyle = '#1F2937';
+          ctx.font = '16px sans-serif';
+          ctx.fillText(label, 88, y);
 
-          ctx.fillStyle = '#111827';
-          ctx.font = 'bold 15px sans-serif';
           ctx.textAlign = 'right';
-          ctx.fillText(String(row[1]).slice(0, 32), 595, rowY);
-          ctx.textAlign = 'left';
-
-          // Kolom Kanan
-          ctx.fillStyle = '#6B7280';
-          ctx.font = '15px sans-serif';
-          ctx.fillText(row[2], 640, rowY);
-
-          ctx.fillStyle = '#111827';
-          ctx.font = 'bold 15px sans-serif';
-          ctx.textAlign = 'right';
-          ctx.fillText(String(row[3]).slice(0, 32), 1136, rowY);
+          ctx.fillText(String(val).slice(0, 34), 604, y);
           ctx.textAlign = 'left';
         });
 
-        // 5. Kartu Pendapatan (Kiri) & Potongan (Kanan)
-        const cardTopY = 502;
-        const maxItems = Math.max(earnings.length, deductions.length, 3);
-        const cardHeight = 135 + maxItems * 46;
+        metaRight.forEach(([label, val], idx) => {
+          const y = 318 + idx * 44;
+          ctx.fillStyle = '#1F2937';
+          ctx.font = '16px sans-serif';
+          ctx.fillText(label, 636, y);
 
-        // Bingkai Kartu Earnings
-        ctx.fillStyle = '#FFFFFF';
-        drawRoundRect(76, cardTopY, 528, cardHeight, 16);
-        ctx.fill();
-        ctx.strokeStyle = '#E5E7EB';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        ctx.fillStyle = '#047857';
-        ctx.font = 'bold 18px sans-serif';
-        ctx.fillText(t.earningsTitle, 102, cardTopY + 38);
-
-        ctx.strokeStyle = '#E5E7EB';
-        ctx.beginPath();
-        ctx.moveTo(102, cardTopY + 54);
-        ctx.lineTo(578, cardTopY + 54);
-        ctx.stroke();
-
-        earnings.forEach((item, idx) => {
-          const itemY = cardTopY + 90 + idx * 46;
-          ctx.fillStyle = '#4B5563';
-          ctx.font = '15px sans-serif';
-          ctx.fillText(item.label, 102, itemY);
-
-          ctx.fillStyle = '#111827';
-          ctx.font = 'bold 15px sans-serif';
           ctx.textAlign = 'right';
-          ctx.fillText(formatCurrency(item.amount), 578, itemY);
+          ctx.fillText(String(val).slice(0, 34), 1152, y);
           ctx.textAlign = 'left';
-
-          ctx.strokeStyle = '#F3F4F6';
-          ctx.beginPath();
-          ctx.moveTo(102, itemY + 14);
-          ctx.lineTo(578, itemY + 14);
-          ctx.stroke();
         });
 
-        // Total Earnings
-        const totalY = cardTopY + cardHeight - 26;
-        ctx.strokeStyle = '#D1D5DB';
-        ctx.beginPath();
-        ctx.moveTo(102, totalY - 28);
-        ctx.lineTo(578, totalY - 28);
-        ctx.stroke();
+        // 6. Header Bar Abu-abu: Earnings | Deductions
+        const tableHeaderY = 510;
+        ctx.fillStyle = '#E5E7EB';
+        ctx.fillRect(88, tableHeaderY, 526, 44);
+        ctx.fillRect(626, tableHeaderY, 526, 44);
 
         ctx.fillStyle = '#111827';
-        ctx.font = 'bold 16px sans-serif';
-        ctx.fillText(t.totalEarnings, 102, totalY);
+        ctx.font = 'bold 17px sans-serif';
+        ctx.fillText('Earnings', 96, tableHeaderY + 28);
+        ctx.fillText('Deductions', 634, tableHeaderY + 28);
 
-        ctx.fillStyle = '#047857';
-        ctx.font = 'bold 18px sans-serif';
-        ctx.textAlign = 'right';
-        ctx.fillText(formatCurrency(totalEarnings), 578, totalY);
-        ctx.textAlign = 'left';
+        // 7. Isi Baris Earnings (Kiri) & Deductions (Kanan)
+        const rowStartY = tableHeaderY + 80;
+        const rowStepY = 48;
 
-        // Bingkai Kartu Deductions
-        ctx.fillStyle = '#FFFFFF';
-        drawRoundRect(636, cardTopY, 528, cardHeight, 16);
-        ctx.fill();
-        ctx.strokeStyle = '#E5E7EB';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+        d.earnings.forEach((item, idx) => {
+          const y = rowStartY + idx * rowStepY;
+          ctx.fillStyle = '#1F2937';
+          ctx.font = '16px sans-serif';
+          ctx.fillText(item.label, 96, y);
 
-        ctx.fillStyle = '#BE123C';
-        ctx.font = 'bold 18px sans-serif';
-        ctx.fillText(t.deductionsTitle, 662, cardTopY + 38);
-
-        ctx.strokeStyle = '#E5E7EB';
-        ctx.beginPath();
-        ctx.moveTo(662, cardTopY + 54);
-        ctx.lineTo(1138, cardTopY + 54);
-        ctx.stroke();
-
-        deductions.forEach((item, idx) => {
-          const itemY = cardTopY + 90 + idx * 46;
-          ctx.fillStyle = '#4B5563';
-          ctx.font = '15px sans-serif';
-          ctx.fillText(item.label, 662, itemY);
-
-          ctx.fillStyle = '#111827';
-          ctx.font = 'bold 15px sans-serif';
           ctx.textAlign = 'right';
-          ctx.fillText(formatCurrency(item.amount), 1138, itemY);
+          ctx.fillText(formatCurrency(item.amount), 604, y);
           ctx.textAlign = 'left';
-
-          ctx.strokeStyle = '#F3F4F6';
-          ctx.beginPath();
-          ctx.moveTo(662, itemY + 14);
-          ctx.lineTo(1138, itemY + 14);
-          ctx.stroke();
         });
 
-        // Total Deductions
+        d.deductions.forEach((item, idx) => {
+          const y = rowStartY + idx * rowStepY;
+          ctx.fillStyle = '#1F2937';
+          ctx.font = '16px sans-serif';
+          ctx.fillText(item.label, 634, y);
+
+          ctx.textAlign = 'right';
+          ctx.fillText(formatCurrency(item.amount), 1144, y);
+          ctx.textAlign = 'left';
+        });
+
+        // Garis Pembatas Total Earnings & Total Deductions
+        const maxRows = Math.max(d.earnings.length, d.deductions.length);
+        const dividerY = rowStartY + (maxRows - 1) * rowStepY + 26;
         ctx.strokeStyle = '#D1D5DB';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(662, totalY - 28);
-        ctx.lineTo(1138, totalY - 28);
+        ctx.moveTo(88, dividerY);
+        ctx.lineTo(1152, dividerY);
         ctx.stroke();
 
+        // Baris Total Earnings & Total Deductions
+        const totalRowY = dividerY + 38;
         ctx.fillStyle = '#111827';
-        ctx.font = 'bold 16px sans-serif';
-        ctx.fillText(t.totalDeductions, 662, totalY);
-
-        ctx.fillStyle = '#BE123C';
-        ctx.font = 'bold 18px sans-serif';
+        ctx.font = 'bold 17px sans-serif';
+        ctx.fillText('Total Earnings', 96, totalRowY);
         ctx.textAlign = 'right';
-        ctx.fillText(formatCurrency(totalDeductions), 1138, totalY);
+        ctx.fillText(formatCurrency(d.totalEarnings), 604, totalRowY);
         ctx.textAlign = 'left';
 
-        // 6. Informasi Tambahan (jika ada kolom lain dari payroll)
-        if (extraFields.length > 0) {
-          const extraTopY = cardTopY + cardHeight + 26;
-          const maxExtraRows = Math.min(Math.ceil(extraFields.length / 2), 8);
-          const extraHeight = 76 + maxExtraRows * 42;
+        ctx.fillText('Total Deductions', 634, totalRowY);
+        ctx.textAlign = 'right';
+        ctx.fillText(formatCurrency(d.totalDeductions), 1144, totalRowY);
+        ctx.textAlign = 'left';
 
-          ctx.fillStyle = '#FFFFFF';
-          drawRoundRect(76, extraTopY, 1088, extraHeight, 16);
-          ctx.fill();
-          ctx.strokeStyle = '#E5E7EB';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
+        // 8. Take Home Pay (Kanan Bawah)
+        const thpY = totalRowY + 86;
+        ctx.fillStyle = '#111827';
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillText('Take Home Pay', 634, thpY);
 
-          ctx.fillStyle = '#1D4ED8';
-          ctx.font = 'bold 17px sans-serif';
-          ctx.fillText(t.otherFieldsTitle, 102, extraTopY + 36);
+        ctx.textAlign = 'right';
+        ctx.fillText(formatCurrency(d.takeHomePay), 1144, thpY);
+        ctx.textAlign = 'left';
 
-          ctx.strokeStyle = '#E5E7EB';
-          ctx.beginPath();
-          ctx.moveTo(102, extraTopY + 50);
-          ctx.lineTo(1138, extraTopY + 50);
-          ctx.stroke();
+        // 9. Bagian Benefits* (Kolom Kiri Bawah)
+        const benefitsStartY = thpY + 62;
+        ctx.fillStyle = '#111827';
+        ctx.font = 'bold 17px sans-serif';
+        ctx.fillText('Benefits*', 96, benefitsStartY);
 
-          extraFields.slice(0, maxExtraRows * 2).forEach((field, idx) => {
-            const col = idx % 2;
-            const row = Math.floor(idx / 2);
-            const fx = col === 0 ? 102 : 640;
-            const fRightX = col === 0 ? 595 : 1138;
-            const fy = extraTopY + 82 + row * 42;
+        d.benefits.forEach((bItem, idx) => {
+          const y = benefitsStartY + 44 + idx * 44;
+          ctx.fillStyle = '#1F2937';
+          ctx.font = '16px sans-serif';
+          ctx.fillText(bItem.label, 96, y);
 
-            ctx.fillStyle = '#6B7280';
-            ctx.font = '14px sans-serif';
-            ctx.fillText(field.label, fx, fy);
+          ctx.textAlign = 'right';
+          ctx.fillText(bItem.displayValue, 604, y);
+          ctx.textAlign = 'left';
+        });
 
-            ctx.fillStyle = '#111827';
-            ctx.font = 'bold 14px sans-serif';
-            ctx.textAlign = 'right';
-            ctx.fillText(String(field.value).slice(0, 28), fRightX, fy);
-            ctx.textAlign = 'left';
-          });
-        }
+        const totalBenefitsY = benefitsStartY + 44 + d.benefits.length * 44 + 8;
+        ctx.fillStyle = '#111827';
+        ctx.font = 'bold 17px sans-serif';
+        ctx.fillText('Total Benefits', 96, totalBenefitsY);
 
-        // 7. WATERMARK CONFIDENTIAL MIRING DI TENGAH HALAMAN
+        ctx.textAlign = 'right';
+        ctx.fillText(formatCurrency(d.totalBenefits), 604, totalBenefitsY);
+        ctx.textAlign = 'left';
+
+        // 10. WATERMARK CONFIDENTIAL MIRING DI TENGAH BACKGROUND
         ctx.save();
         ctx.translate(canvas.width / 2, canvas.height / 2);
         ctx.rotate((-32 * Math.PI) / 180);
 
-        ctx.strokeStyle = 'rgba(220, 38, 38, 0.16)';
+        ctx.strokeStyle = 'rgba(220, 38, 38, 0.14)';
         ctx.lineWidth = 5;
         ctx.strokeRect(-470, -76, 940, 152);
 
-        ctx.fillStyle = 'rgba(220, 38, 38, 0.13)';
+        ctx.fillStyle = 'rgba(220, 38, 38, 0.11)';
         ctx.font = 'bold 112px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('CONFIDENTIAL', 0, 4);
         ctx.restore();
 
-        // 8. Footer Keamanan Dokumen
+        // 11. Footer Keamanan Dokumen Terkunci
         ctx.strokeStyle = '#E5E7EB';
         ctx.beginPath();
-        ctx.moveTo(76, 1648);
-        ctx.lineTo(1164, 1648);
+        ctx.moveTo(88, 1665);
+        ctx.lineTo(1152, 1665);
         ctx.stroke();
 
         ctx.fillStyle = '#6B7280';
         ctx.font = '13px sans-serif';
         ctx.fillText(
-          'CONFIDENTIAL • Dokumen ini dibuat otomatis oleh sistem HRIS, dikunci (Read-Only), dan tidak dapat diubah.',
-          76,
-          1678
+          'PT Bina Tatawista • Locked Read-Only Payslip Document (CONFIDENTIAL)',
+          88,
+          1695
         );
 
         ctx.textAlign = 'right';
-        ctx.fillText(`Generated: ${new Date().toLocaleString('id-ID')}`, 1164, 1678);
+        ctx.fillText(`Generated: ${new Date().toLocaleString('id-ID')}`, 1152, 1695);
         ctx.textAlign = 'left';
 
-        // 9. Konversi ke PDF Terenkripsi & Download
+        // 12. Export ke Locked PDF
         const pdfBlob = buildLockedPdfFromCanvas(canvas);
         const url = URL.createObjectURL(pdfBlob);
         const a = document.createElement('a');
-        const safeName = String(empName || 'Employee').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const safePeriod = String(periodLabel || 'Payslip').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const safeName = String(d.empName || 'Employee').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const safePeriod = String(d.periodShort || 'Payslip').replace(/[^a-zA-Z0-9_-]/g, '_');
         a.href = url;
         a.download = `Payslip_${safeName}_${safePeriod}_CONFIDENTIAL.pdf`;
         document.body.appendChild(a);
@@ -1076,7 +1029,7 @@ export default function Account() {
 
   return (
     <div className="w-full text-gray-800 font-sans">
-      {/* CSS Khusus Print Browser agar tidak terpotong & tetap menampilkan watermark CONFIDENTIAL */}
+      {/* CSS Khusus Print Browser agar tetap rapi & tidak terpotong */}
       <style>{`
         @media print {
           body * {
@@ -1310,22 +1263,12 @@ export default function Account() {
                           <th className="py-3 px-4 text-right">{t.grossCol}</th>
                           <th className="py-3 px-4 text-right">{t.deductionCol}</th>
                           <th className="py-3 px-4 text-right">{t.netCol}</th>
-                          <th className="py-3 px-4 text-center">{t.statusCol}</th>
                           <th className="py-3 px-4 text-center">{t.actionCol}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 text-xs">
                         {payslips.map((slip, idx) => {
-                          const summary = getPayslipSummary(slip);
-                          const periodLabel = getValFromObj(
-                            slip,
-                            ['Period', 'Payroll Period', 'Month', 'Periode', 'Bulan'],
-                            formatIndoDateOnly(getValFromObj(slip, ['Payment Date', 'Pay Date', 'created_at'], `#${idx + 1}`))
-                          );
-                          const payDateLabel = formatIndoDateOnly(
-                            getValFromObj(slip, ['Payment Date', 'Pay Date', 'Tanggal Pembayaran', 'created_at'], '-')
-                          );
-                          const statusLabel = getValFromObj(slip, ['Status', 'Payment Status'], 'Paid');
+                          const d = getTemplatePayslipData(slip);
 
                           return (
                             <tr
@@ -1334,17 +1277,12 @@ export default function Account() {
                               className="hover:bg-blue-50/50 transition cursor-pointer"
                             >
                               <td className="py-3 px-4 text-gray-500 font-medium">{idx + 1}</td>
-                              <td className="py-3 px-4 font-bold text-gray-900">{periodLabel}</td>
-                              <td className="py-3 px-4 text-gray-600">{payDateLabel}</td>
-                              <td className="py-3 px-4 text-right text-gray-700">{formatCurrency(summary.basicSalary)}</td>
-                              <td className="py-3 px-4 text-right text-emerald-700 font-medium">{formatCurrency(summary.totalEarnings)}</td>
-                              <td className="py-3 px-4 text-right text-rose-600">{formatCurrency(summary.totalDeductions)}</td>
-                              <td className="py-3 px-4 text-right font-bold text-blue-700">{formatCurrency(summary.netSalary)}</td>
-                              <td className="py-3 px-4 text-center">
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                  {statusLabel}
-                                </span>
-                              </td>
+                              <td className="py-3 px-4 font-bold text-gray-900">{d.periodShort}</td>
+                              <td className="py-3 px-4 text-gray-600">{d.payrollCutOff}</td>
+                              <td className="py-3 px-4 text-right text-gray-700">{formatCurrency(d.basicSalary)}</td>
+                              <td className="py-3 px-4 text-right text-emerald-700 font-medium">{formatCurrency(d.totalEarnings)}</td>
+                              <td className="py-3 px-4 text-right text-rose-600">{formatCurrency(d.totalDeductions)}</td>
+                              <td className="py-3 px-4 text-right font-bold text-blue-700">{formatCurrency(d.takeHomePay)}</td>
                               <td className="py-3 px-4 text-center">
                                 <button
                                   type="button"
@@ -1367,16 +1305,7 @@ export default function Account() {
                   {/* Tampilan List Kartu Mobile */}
                   <div className="md:hidden space-y-3">
                     {payslips.map((slip, idx) => {
-                      const summary = getPayslipSummary(slip);
-                      const periodLabel = getValFromObj(
-                        slip,
-                        ['Period', 'Payroll Period', 'Month', 'Periode', 'Bulan'],
-                        formatIndoDateOnly(getValFromObj(slip, ['Payment Date', 'Pay Date', 'created_at'], `#${idx + 1}`))
-                      );
-                      const payDateLabel = formatIndoDateOnly(
-                        getValFromObj(slip, ['Payment Date', 'Pay Date', 'Tanggal Pembayaran', 'created_at'], '-')
-                      );
-                      const statusLabel = getValFromObj(slip, ['Status', 'Payment Status'], 'Paid');
+                      const d = getTemplatePayslipData(slip);
 
                       return (
                         <div
@@ -1386,17 +1315,17 @@ export default function Account() {
                         >
                           <div className="flex justify-between items-start mb-2">
                             <div>
-                              <span className="text-sm font-bold text-gray-900 block">{periodLabel}</span>
-                              <span className="text-[11px] text-gray-500">{t.payDateCol}: {payDateLabel}</span>
+                              <span className="text-sm font-bold text-gray-900 block">{d.periodShort}</span>
+                              <span className="text-[11px] text-gray-500">{t.payDateCol}: {d.payrollCutOff}</span>
                             </div>
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              {statusLabel}
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-50 text-red-600 border border-red-200">
+                              *CONFIDENTIAL
                             </span>
                           </div>
                           <div className="pt-2 mt-2 border-t border-gray-100 flex justify-between items-center">
                             <div>
                               <span className="text-[11px] text-gray-500 block">{t.netCol}</span>
-                              <span className="text-sm font-bold text-blue-700">{formatCurrency(summary.netSalary)}</span>
+                              <span className="text-sm font-bold text-blue-700">{formatCurrency(d.takeHomePay)}</span>
                             </div>
                             <button
                               type="button"
@@ -1421,137 +1350,212 @@ export default function Account() {
 
       </div>
 
-      {/* Modal Detail Slip Gaji + Watermark CONFIDENTIAL Miring di Tengah */}
+      {/* ========================================================================
+          MODAL DETAIL SLIP GAJI (FORMAT PT BINA TATAWISTA / VIVRE GROUP)
+          ======================================================================== */}
       {selectedPayslip && (() => {
-        const { earnings, deductions, totalEarnings, totalDeductions, netSalary, extraFields } = getPayslipSummary(selectedPayslip);
-        const periodLabel = getValFromObj(
-          selectedPayslip,
-          ['Period', 'Payroll Period', 'Month', 'Periode', 'Bulan'],
-          formatIndoDateOnly(getValFromObj(selectedPayslip, ['Payment Date', 'Pay Date', 'created_at'], '-'))
-        );
-        const payDateLabel = formatIndoDateOnly(
-          getValFromObj(selectedPayslip, ['Payment Date', 'Pay Date', 'Tanggal Pembayaran', 'created_at'], '-')
-        );
-        const statusLabel = getValFromObj(selectedPayslip, ['Status', 'Payment Status'], 'Locked');
+        const d = getTemplatePayslipData(selectedPayslip);
         const pdfLink = getValFromObj(selectedPayslip, ['Payslip Link', 'Link', 'PDF', 'File', 'Url'], '');
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-3 sm:p-5 overflow-y-auto">
             <div
               id="payslip-print-modal"
-              className="relative bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-3xl max-h-[90vh] overflow-y-auto p-5 sm:p-6"
+              className="relative bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-4xl max-h-[92vh] overflow-y-auto p-6 sm:p-10 text-gray-900"
             >
-              {/* Background Watermark CONFIDENTIAL Miring di Tengah */}
+              {/* Watermark Miring CONFIDENTIAL di Tengah Background */}
               <div
                 aria-hidden="true"
                 className="pointer-events-none select-none fixed sm:absolute inset-0 flex items-center justify-center z-20 overflow-hidden"
               >
-                <span className="-rotate-30 border-4 border-red-600/15 px-6 py-2 rounded-lg text-4xl sm:text-6xl font-extrabold tracking-[0.22em] text-red-600/12 uppercase whitespace-nowrap">
+                <span className="-rotate-30 border-4 border-red-600/15 px-6 py-2 rounded-lg text-4xl sm:text-6xl font-extrabold tracking-[0.22em] text-red-600/10 uppercase whitespace-nowrap">
                   CONFIDENTIAL
                 </span>
               </div>
 
-              {/* Modal Header */}
-              <div className="relative z-10 flex flex-wrap justify-between items-center gap-2 pb-3 mb-4 border-b border-gray-200">
-                <div>
-                  <h3 className="text-base sm:text-lg font-bold text-gray-900">{t.payslipDetailTitle}</h3>
-                  <p className="text-xs text-gray-500">{periodLabel} • {t.payDateCol}: {payDateLabel}</p>
-                </div>
-                <div className="flex items-center gap-2 no-print">
-                  {pdfLink && pdfLink !== '-' && (
-                    <a
-                      href={pdfLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold transition"
-                    >
-                      {t.viewFile}
-                    </a>
-                  )}
-                  <button
-                    type="button"
-                    disabled={generatingPdf}
-                    onClick={() => handleDownloadLockedPdf(selectedPayslip)}
-                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              {/* Action Buttons Bar (Tidak ikut ter-print) */}
+              <div className="relative z-30 flex flex-wrap justify-end items-center gap-2 pb-4 mb-5 border-b border-gray-100 no-print">
+                {pdfLink && pdfLink !== '-' && (
+                  <a
+                    href={pdfLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold transition"
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                    <span>{generatingPdf ? t.generatingPdfLabel : t.printPayslip}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPayslip(null)}
-                    className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-semibold transition cursor-pointer"
-                  >
-                    {t.closeModal}
-                  </button>
-                </div>
+                    {t.viewFile}
+                  </a>
+                )}
+                <button
+                  type="button"
+                  disabled={generatingPdf}
+                  onClick={() => handleDownloadLockedPdf(selectedPayslip)}
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  <span>{generatingPdf ? t.generatingPdfLabel : t.printPayslip}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPayslip(null)}
+                  className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                >
+                  {t.closeModal}
+                </button>
               </div>
 
-              {/* Banner Take Home Pay */}
-              <div className="relative z-10 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <span className="text-[11px] uppercase tracking-wider text-blue-100 font-semibold block">
-                    {t.takeHomePay}
+              {/* 1. Top Header: Logo Vivre group & *CONFIDENTIAL */}
+              <div className="relative z-10 flex justify-between items-start mb-8">
+                <div className="leading-none select-none">
+                  <span className="font-serif font-bold text-3xl sm:text-4xl tracking-tight text-gray-900 block">
+                    Vivre
                   </span>
-                  <span className="text-2xl font-bold mt-0.5 block">{formatCurrency(netSalary)}</span>
+                  <span className="font-serif text-xs sm:text-sm text-gray-600 block text-right -mt-1 pr-0.5">
+                    group
+                  </span>
                 </div>
-                <span className="self-start sm:self-center px-3 py-1 rounded-full text-xs font-bold bg-white/20 text-white">
-                  {statusLabel}
+                <span className="text-xs sm:text-sm font-bold text-red-500 tracking-wide">
+                  *CONFIDENTIAL
                 </span>
               </div>
 
-              {/* Identitas Karyawan */}
-              <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5 bg-gray-50/90 p-3.5 rounded-xl border border-gray-100 mb-5">
-                <DetailRow label={t.employeeName} value={getValFromObj(selectedPayslip, ['Employee Name', 'Name', 'Nama'], getVal(['name', 'nama']))} />
-                <DetailRow label={t.empId} value={getValFromObj(selectedPayslip, ['Employee ID', 'NIK', 'ID'], getVal(['employee id', 'id']))} />
-                <DetailRow label={t.dept} value={getValFromObj(selectedPayslip, ['Department', 'Dept'], getVal(['department']))} />
-                <DetailRow label={t.jobTitle} value={getValFromObj(selectedPayslip, ['Job Title', 'Position'], getVal(['job title']))} />
-                <DetailRow label={t.bankName} value={getValFromObj(selectedPayslip, ['Bank Name', 'Nama Bank'], getVal(['bank name']))} />
-                <DetailRow label={t.bankAccNum} value={getValFromObj(selectedPayslip, ['Bank Account Number', 'No Rekening'], getVal(['bank account number']))} />
+              {/* 2. Nama Perusahaan & Judul PAYSLIP */}
+              <div className="relative z-10 flex justify-between items-center mb-6">
+                <h2 className="text-base sm:text-lg font-medium text-gray-900">
+                  PT Bina Tatawista
+                </h2>
+                <span className="text-base sm:text-lg font-medium text-gray-900 tracking-wide">
+                  PAYSLIP
+                </span>
               </div>
 
-              {/* Pendapatan & Potongan */}
-              <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="border border-gray-200 rounded-xl p-4 bg-white/85">
-                  <h4 className="text-sm font-bold text-emerald-700 pb-2 mb-2 border-b border-gray-200">{t.earningsTitle}</h4>
-                  <div className="space-y-0.5">
-                    {earnings.map((item, i) => (
-                      <DetailRow key={i} label={item.label} value={formatCurrency(item.amount)} />
-                    ))}
+              {/* 3. Metadata Karyawan (2 Kolom) */}
+              <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2.5 text-xs mb-7">
+                {/* Kolom Kiri */}
+                <div className="space-y-2.5">
+                  <div className="flex justify-between items-baseline gap-4">
+                    <span className="text-gray-700">Payroll cut off</span>
+                    <span className="text-gray-900 text-right">{d.payrollCutOff}</span>
                   </div>
-                  <div className="mt-3 pt-2 border-t border-gray-200 flex justify-between items-center">
-                    <span className="text-xs font-bold text-gray-800">{t.totalEarnings}</span>
-                    <span className="text-sm font-bold text-emerald-700">{formatCurrency(totalEarnings)}</span>
+                  <div className="flex justify-between items-baseline gap-4">
+                    <span className="text-gray-700">ID / Name</span>
+                    <span className="text-gray-900 text-right">{d.idAndName}</span>
+                  </div>
+                  <div className="flex justify-between items-baseline gap-4">
+                    <span className="text-gray-700">Job position</span>
+                    <span className="text-gray-900 text-right">{d.jobPosition}</span>
+                  </div>
+                  <div className="flex justify-between items-baseline gap-4">
+                    <span className="text-gray-700">Department</span>
+                    <span className="text-gray-900 text-right">{d.department}</span>
                   </div>
                 </div>
 
-                <div className="border border-gray-200 rounded-xl p-4 bg-white/85">
-                  <h4 className="text-sm font-bold text-rose-700 pb-2 mb-2 border-b border-gray-200">{t.deductionsTitle}</h4>
-                  <div className="space-y-0.5">
-                    {deductions.map((item, i) => (
-                      <DetailRow key={i} label={item.label} value={formatCurrency(item.amount)} />
-                    ))}
+                {/* Kolom Kanan */}
+                <div className="space-y-2.5">
+                  <div className="flex justify-between items-baseline gap-4">
+                    <span className="text-gray-700">Grade / Level</span>
+                    <span className="text-gray-900 text-right">{d.gradeAndLevel}</span>
                   </div>
-                  <div className="mt-3 pt-2 border-t border-gray-200 flex justify-between items-center">
-                    <span className="text-xs font-bold text-gray-800">{t.totalDeductions}</span>
-                    <span className="text-sm font-bold text-rose-700">{formatCurrency(totalDeductions)}</span>
+                  <div className="flex justify-between items-baseline gap-4">
+                    <span className="text-gray-700">PTKP</span>
+                    <span className="text-gray-900 text-right">{d.ptkp}</span>
+                  </div>
+                  <div className="flex justify-between items-baseline gap-4">
+                    <span className="text-gray-700">NPWP</span>
+                    <span className="text-gray-900 text-right">{d.npwp}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Komponen Tambahan dari Tabel Payroll */}
-              {extraFields.length > 0 && (
-                <div className="relative z-10 mt-5 border border-gray-200 rounded-xl p-4 bg-white/85">
-                  <h4 className="text-sm font-bold text-blue-700 pb-2 mb-2 border-b border-gray-200">{t.otherFieldsTitle}</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5">
-                    {extraFields.map((field, i) => (
-                      <DetailRow key={i} label={field.label} value={field.value} />
-                    ))}
+              {/* 4. Tabel Earnings (Kiri) & Deductions (Kanan) */}
+              <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6 text-xs">
+                {/* Kolom Earnings */}
+                <div className="flex flex-col justify-between">
+                  <div>
+                    <div className="bg-gray-200/90 px-3 py-2 font-bold text-gray-900 mb-3">
+                      Earnings
+                    </div>
+                    <div className="space-y-3 px-1">
+                      {d.earnings.map((item, idx) => (
+                        <div key={idx} className="flex justify-between items-center gap-4">
+                          <span className="text-gray-800">{item.label}</span>
+                          <span className="text-gray-900 text-right tabular-nums">
+                            {formatCurrency(item.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              )}
+
+                {/* Kolom Deductions */}
+                <div className="flex flex-col justify-between">
+                  <div>
+                    <div className="bg-gray-200/90 px-3 py-2 font-bold text-gray-900 mb-3">
+                      Deductions
+                    </div>
+                    <div className="space-y-3 px-1">
+                      {d.deductions.map((item, idx) => (
+                        <div key={idx} className="flex justify-between items-center gap-4">
+                          <span className="text-gray-800">{item.label}</span>
+                          <span className="text-gray-900 text-right tabular-nums">
+                            {formatCurrency(item.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. Baris Total Earnings & Total Deductions */}
+              <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-xs mt-4 pt-3.5 border-t border-gray-200">
+                <div className="flex justify-between items-center px-1 font-bold text-gray-900">
+                  <span>Total Earnings</span>
+                  <span className="tabular-nums">{formatCurrency(d.totalEarnings)}</span>
+                </div>
+                <div className="flex justify-between items-center px-1 font-bold text-gray-900">
+                  <span>Total Deductions</span>
+                  <span className="tabular-nums">{formatCurrency(d.totalDeductions)}</span>
+                </div>
+              </div>
+
+              {/* 6. Take Home Pay (Kanan Bawah) */}
+              <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-x-6 mt-8">
+                <div className="hidden md:block" />
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-base sm:text-lg font-bold text-gray-900">
+                    Take Home Pay
+                  </span>
+                  <span className="text-base sm:text-lg font-bold text-gray-900 tabular-nums">
+                    {formatCurrency(d.takeHomePay)}
+                  </span>
+                </div>
+              </div>
+
+              {/* 7. Benefits* (Kolom Kiri Bawah) */}
+              <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-x-6 mt-8 text-xs">
+                <div className="px-1">
+                  <h4 className="font-bold text-gray-900 mb-3">Benefits*</h4>
+                  <div className="space-y-2.5">
+                    {d.benefits.map((bItem, idx) => (
+                      <div key={idx} className="flex justify-between items-center gap-4">
+                        <span className="text-gray-800">{bItem.label}</span>
+                        <span className="text-gray-900 text-right tabular-nums">
+                          {bItem.displayValue}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between items-center gap-4 mt-4 pt-2 font-bold text-gray-900">
+                    <span>Total Benefits</span>
+                    <span className="tabular-nums">{formatCurrency(d.totalBenefits)}</span>
+                  </div>
+                </div>
+                <div className="hidden md:block" />
+              </div>
 
             </div>
           </div>
