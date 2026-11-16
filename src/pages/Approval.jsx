@@ -159,22 +159,32 @@ const getValidPropCaseInsensitive = (obj, candidateKeys, fallback = '') => {
 
 const normalizeText = (val) => String(val || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-const fetchAllRows = async (tableName, maxRows = 10000) => {
+const fetchAllRows = async (tableName, maxRows = 5000) => {
   const pageSize = 1000;
-  let allData = [];
-  let from = 0;
-  while (from < maxRows) {
-    const { data, error } = await supabase
-      .from(tableName)
-      .select('*')
-      .range(from, from + pageSize - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    allData = allData.concat(data);
-    if (data.length < pageSize) break;
-    from += pageSize;
+  const pages = Math.ceil(maxRows / pageSize);
+  const promises = [];
+  
+  // Menggunakan fetch paralel untuk mempercepat waktu tunggu jaringan
+  for (let i = 0; i < pages; i++) {
+    const from = i * pageSize;
+    const to = from + pageSize - 1;
+    promises.push(supabase.from(tableName).select('*').range(from, to));
   }
-  return allData;
+  
+  try {
+    const results = await Promise.all(promises);
+    let allData = [];
+    for (const res of results) {
+      if (res.error) throw res.error;
+      if (res.data && res.data.length > 0) {
+        allData = allData.concat(res.data);
+      }
+    }
+    return allData;
+  } catch (error) {
+    console.error(`Error fetching ${tableName}:`, error);
+    return [];
+  }
 };
 
 const resolveTableColumn = (knownCols, candidates) => {
@@ -745,13 +755,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
     setLoading(true);
 
     try {
+      // Membatasi pengambilan data yang tidak perlu & fetch paralel
       const [dirRes, compRes, holRes, lvRes, attRes, schedRes] = await Promise.allSettled([
-        fetchAllRows('employee_directory', 10000),
-        fetchAllRows('company', 2000),
-        fetchAllRows('holiday_balance', 10000),
-        fetchAllRows('leave_requests', 10000),
-        fetchAllRows('attendance', 10000),
-        fetchAllRows('schedule', 10000)
+        fetchAllRows('employee_directory', 2000),
+        fetchAllRows('company', 1000),
+        fetchAllRows('holiday_balance', 5000),
+        fetchAllRows('leave_requests', 5000),
+        fetchAllRows('attendance', 8000),
+        fetchAllRows('schedule', 8000)
       ]);
 
       const dirData = dirRes.status === 'fulfilled' && Array.isArray(dirRes.value) ? dirRes.value : [];
