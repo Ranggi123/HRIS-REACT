@@ -159,69 +159,56 @@ const getValidPropCaseInsensitive = (obj, candidateKeys, fallback = '') => {
 
 const normalizeText = (val) => String(val || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-const fetchAllRows = async (tableName, maxRows = 50000) => {
+const fetchAllRows = async (tableName, maxRows = 100000) => {
   const pageSize = 1000;
+  const batchPages = 5;
+  let allData = [];
+  let startPage = 0;
 
-  // 1. Ambil halaman pertama sekaligus meminta total count
-  const { data: firstPage, count, error: firstErr } = await supabase
-    .from(tableName)
-    .select('*', { count: 'exact' })
-    .range(0, pageSize - 1);
+  while (startPage * pageSize < maxRows) {
+    const promises = [];
+    for (let i = 0; i < batchPages; i++) {
+      const pageIdx = startPage + i;
+      const from = pageIdx * pageSize;
+      if (from >= maxRows) break;
+      const to = from + pageSize - 1;
+      promises.push(
+        supabase
+          .from(tableName)
+          .select('*')
+          .range(from, to)
+      );
+    }
 
-  if (firstErr) {
-    console.error(`[Approval] Error fetching ${tableName}:`, firstErr);
-    return [];
-  }
+    const results = await Promise.all(promises);
+    let reachedEnd = false;
 
-  if (!firstPage || firstPage.length === 0) return [];
-  if (firstPage.length < pageSize) return firstPage;
-
-  let allData = [...firstPage];
-
-  // 2. Jika count tersedia dan valid, tarik sisa halaman secara paralel per batch (aman dari rate-limit)
-  if (typeof count === 'number' && count > pageSize) {
-    const targetRows = Math.min(count, maxRows);
-    const totalPages = Math.ceil(targetRows / pageSize);
-    const batchSize = 4;
-
-    for (let p = 1; p < totalPages; p += batchSize) {
-      const batchPromises = [];
-      for (let j = p; j < Math.min(p + batchSize, totalPages); j++) {
-        const from = j * pageSize;
+    for (let i = 0; i < results.length; i++) {
+      let res = results[i];
+      if (res.error) {
+        const from = (startPage + i) * pageSize;
         const to = from + pageSize - 1;
-        batchPromises.push(
-          supabase.from(tableName).select('*').range(from, to)
-        );
+        res = await supabase.from(tableName).select('*').range(from, to);
       }
-      const results = await Promise.all(batchPromises);
-      for (const res of results) {
-        if (res.error) {
-          console.warn(`[Approval] Partial error on ${tableName}:`, res.error);
-          continue;
-        }
-        if (res.data && res.data.length > 0) {
-          allData = allData.concat(res.data);
-        }
-      }
-    }
-    return allData;
-  }
 
-  // 3. Fallback jika header count tidak tersedia (null): lanjutkan pagination hingga habis
-  let from = pageSize;
-  while (from < maxRows) {
-    const { data, error } = await supabase
-      .from(tableName)
-      .select('*')
-      .range(from, from + pageSize - 1);
-    if (error) {
-      console.warn(`[Approval] Fallback pagination stopped on ${tableName}:`, error);
-      break;
+      if (res.error) {
+        console.warn(`[Approval] Error fetching ${tableName} page ${startPage + i}:`, res.error);
+        reachedEnd = true;
+        break;
+      }
+
+      const rows = Array.isArray(res.data) ? res.data : [];
+      if (rows.length > 0) {
+        allData = allData.concat(rows);
+      }
+      if (rows.length < pageSize) {
+        reachedEnd = true;
+        break;
+      }
     }
-    if (!data || data.length === 0) break;
-    allData = allData.concat(data);
-    if (data.length < pageSize) break;
-    from += pageSize;
+
+    if (reachedEnd) break;
+    startPage += batchPages;
   }
 
   return allData;
@@ -793,10 +780,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const [dirRes, compRes, holRes, lvRes, attRes, schedRes] = await Promise.allSettled([
         fetchAllRows('employee_directory', 20000),
         fetchAllRows('company', 5000),
-        fetchAllRows('holiday_balance', 30000),
-        fetchAllRows('leave_requests', 30000),
-        fetchAllRows('attendance', 50000),
-        fetchAllRows('schedule', 50000)
+        fetchAllRows('holiday_balance', 50000),
+        fetchAllRows('leave_requests', 50000),
+        fetchAllRows('attendance', 100000),
+        fetchAllRows('schedule', 100000)
       ]);
 
       const dirData = dirRes.status === 'fulfilled' && Array.isArray(dirRes.value) ? dirRes.value : [];
@@ -1354,7 +1341,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
       let workingCount = 0; let sickCount = 0; let offCount = 0; let leaveCount = 0;
       teamOnThisDay.forEach(item => {
-        const typ = (getPropCaseInsensitive(item, ['type', 'Type', 'status']) || '').toLowerCase();
+        const typ = (getPropCaseInsensitive(item, ['type', 'Type', 'status', 'Status', 'schedule_type', 'Schedule Type']) || '').toLowerCase();
         if (typ.includes('working') || typ === 'work' || typ.includes('kerja')) workingCount++;
         else if (typ.includes('sick') || typ.includes('maternity') || typ.includes('sakit') || typ.includes('melahirkan')) sickCount++;
         else if (typ.includes('day off') || typ === 'off' || typ.includes('holiday') || typ.includes('libur')) offCount++;
