@@ -639,10 +639,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
     legWorking: 'Hari Kerja',
     legSick: 'Sakit / Melahirkan',
     legOff: 'Hari Libur',
+    legPublicHoliday: 'Public Holiday',
     legLeave: 'Cuti Tahunan / DP / EO',
     legNoSched: 'Tidak Ada Jadwal',
     btnThisMonth: 'Bulan Ini',
     statOff: 'Libur',
+    statPublicHoliday: 'Public Holiday',
     statWork: 'Kerja',
     statSick: 'Sakit/Lain',
     statLeave: 'Cuti',
@@ -749,11 +751,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
     legend: 'Legend',
     legWorking: 'Working Day',
     legSick: 'Sick / Maternity',
-    legOff: 'Day Off / Holiday',
+    legOff: 'Day Off',
+    legPublicHoliday: 'Public Holiday',
     legLeave: 'Annual Leave / DP / EO',
     legNoSched: 'No Schedule',
     btnThisMonth: 'This Month',
     statOff: 'Day Off',
+    statPublicHoliday: 'Public Holiday',
     statWork: 'Work',
     statSick: 'Sick/Oth',
     statLeave: 'Leave',
@@ -1226,12 +1230,23 @@ export default function Approval({ currentUser: propCurrentUser }) {
         });
 
         const dept = normalizeText(getValidPropCaseInsensitive(emp, ['Department', 'department', 'dept', 'Dept'], ''));
+        const empCompany = getValidPropCaseInsensitive(emp, companyCandidateKeys, '');
+        const empReligion = getValidPropCaseInsensitive(emp, ['Religion', 'religion', 'Agama', 'agama'], '');
+        const empLineMgr = getValidPropCaseInsensitive(emp, [
+          'Line Manager work email', 'line_manager_work_email',
+          'Line Manager Email', 'line_manager_email',
+          'Line Manager', 'line_manager', 'Line_Manager', 'linemanager',
+          'manager_email', 'Manager Email', 'Manager', 'manager'
+        ], '');
         uniqueMap.set(email, {
           email,
           emails: empAllEmails,
           name,
           barcode: barcodeVal,
           department: dept,
+          company: empCompany,
+          religion: empReligion,
+          lineManager: empLineMgr,
           standart_working_day: getValidPropCaseInsensitive(emp, ['Standart Working Day', 'standart_working_day', 'Standard Working Day', 'standard_working_day']) || 'BACKOFFICE52',
           annual_leave_balance: getValidPropCaseInsensitive(emp, ['Annual Leave Balance', 'annual_leave_balance', 'Annual Leave', 'annualleave']) || '0',
           day_off_payment_balance: empDayOff,
@@ -1525,9 +1540,20 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const { calendarDays, calendarStats } = useMemo(() => {
     const days = [];
     let totalOff = 0;
+    let totalPublicHoliday = 0;
     let totalWork = 0;
     let totalSick = 0;
     let totalLeave = 0;
+
+    const singleTargetEmailForCal = selectedEmployee !== 'all'
+      ? selectedEmployee
+      : calendarSelectedEmployees.length === 1
+      ? calendarSelectedEmployees[0]
+      : null;
+    const singleTargetMember = singleTargetEmailForCal
+      ? teamMembers.find(m => m.email.toLowerCase() === singleTargetEmailForCal.toLowerCase()) || null
+      : null;
+    const singleTargetReligion = normalizeText(singleTargetMember?.religion || '');
 
     for (let day = 1; day <= totalDays; day++) {
       const currLoopDate = new Date(year, month, day);
@@ -1538,15 +1564,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
         return checkDateMatch(dbDate, year, month, day);
       });
 
-      let workingCount = 0; let sickCount = 0; let offCount = 0; let leaveCount = 0;
+      let workingCount = 0; let sickCount = 0; let offCount = 0; let publicHolidayCount = 0; let leaveCount = 0;
       let requestedWorkOnPh = false;
       teamOnThisDay.forEach(item => {
         const typ = (getPropCaseInsensitive(item, ['type', 'Type', 'status', 'Status', 'schedule_type', 'Schedule Type']) || '').toLowerCase();
         if (typ.includes('working') || typ === 'work' || typ.includes('kerja')) workingCount++;
         else if (typ.includes('sick') || typ.includes('maternity') || typ.includes('sakit') || typ.includes('melahirkan')) sickCount++;
-        else if (typ.includes('public holiday') || typ === 'holiday' || typ.includes('nasional')) {
-          // Public Holiday is separate from Day Off
-        } else if (typ.includes('day off') || typ === 'off' || typ.includes('libur')) offCount++;
+        else if (typ.includes('public holiday') || typ === 'holiday' || typ.includes('nasional')) publicHolidayCount++;
+        else if (typ.includes('day off') || typ === 'off' || typ.includes('libur')) offCount++;
         else if (typ) leaveCount++;
         
         const reqPhVal = getPropCaseInsensitive(item, [
@@ -1562,14 +1587,34 @@ export default function Approval({ currentUser: propCurrentUser }) {
         const dateVal = item.date || item.Date || item.tanggal || item.Tanggal || item.DATE;
         return checkDateMatch(dateVal, year, month, day);
       });
-      const matchingHolidayName = holidaysOnDate.length > 0 
-        ? (holidaysOnDate[0].Remarks || holidaysOnDate[0].remarks || holidaysOnDate[0].holiday_name || holidaysOnDate[0].name || holidaysOnDate[0].description || holidaysOnDate[0].type || 'Public Holiday')
+
+      let matchedHolidayForView = null;
+      if (holidaysOnDate.length > 0) {
+        if (isSingleEmployeeCalendar && singleTargetReligion) {
+          matchedHolidayForView =
+            holidaysOnDate.find(h => normalizeText(getPropCaseInsensitive(h, ['Religion', 'religion', 'Agama', 'agama'], '')) === singleTargetReligion) ||
+            holidaysOnDate.find(h => {
+              const r = normalizeText(getPropCaseInsensitive(h, ['Religion', 'religion', 'Agama', 'agama'], ''));
+              return !r || r === '-' || r === 'all' || r === 'national' || r === 'nasional' || r === 'umum';
+            }) ||
+            null;
+        } else {
+          matchedHolidayForView = holidaysOnDate[0];
+        }
+      }
+
+      const matchingHolidayName = matchedHolidayForView
+        ? (matchedHolidayForView.Remarks || matchedHolidayForView.remarks || matchedHolidayForView.holiday_name || matchedHolidayForView.name || matchedHolidayForView.description || matchedHolidayForView.type || 'Public Holiday')
         : '';
         
-      const isPublicHoliday = holidaysOnDate.length > 0 || (teamOnThisDay.length > 0 && (getPropCaseInsensitive(teamOnThisDay[0], ['type', 'Type', 'status', 'Status']) || '').toLowerCase().includes('public holiday'));
-      
+      const isPublicHoliday = publicHolidayCount > 0 || Boolean(matchedHolidayForView);
+
+      if (isSingleEmployeeCalendar && teamOnThisDay.length === 0 && matchedHolidayForView) {
+        publicHolidayCount = 1;
+      }
 
       totalOff += offCount;
+      totalPublicHoliday += publicHolidayCount;
       totalWork += workingCount;
       totalSick += sickCount;
       totalLeave += leaveCount;
@@ -1578,34 +1623,41 @@ export default function Approval({ currentUser: propCurrentUser }) {
       let singleBadgeClass = '';
       let singleBadgeText = '';
       let singleIcon = '';
-      if (isSingleEmployeeCalendar && teamOnThisDay.length > 0) {
-        const firstRec = teamOnThisDay[0];
-        const rawTyp = getPropCaseInsensitive(firstRec, ['type', 'Type', 'status', 'Status', 'schedule_type', 'Schedule Type'], '');
-        const shiftVal = getPropCaseInsensitive(firstRec, ['shift', 'Shift', 'jam kerja'], '');
-        const tLower = rawTyp.toLowerCase();
-        if (tLower.includes('working') || tLower === 'work' || tLower.includes('kerja')) {
-          singleCardClass = 'bg-green-100 border-green-300 text-green-950 font-medium';
-          singleBadgeClass = 'bg-green-600 text-white';
-          singleBadgeText = shiftVal && shiftVal !== '-' ? `${t.badgeWork} (${shiftVal})` : t.badgeWork;
-        } else if (tLower.includes('sick') || tLower.includes('maternity') || tLower.includes('sakit') || tLower.includes('melahirkan')) {
-          singleCardClass = 'bg-pink-100 border-pink-300 text-pink-950 font-medium';
-          singleBadgeClass = 'bg-pink-500 text-white';
-          singleBadgeText = rawTyp || t.badgeSick;
-          singleIcon = '💉';
-        } else if (tLower.includes('public holiday') || tLower === 'holiday' || tLower.includes('nasional')) {
+      if (isSingleEmployeeCalendar) {
+        if (teamOnThisDay.length > 0) {
+          const firstRec = teamOnThisDay[0];
+          const rawTyp = getPropCaseInsensitive(firstRec, ['type', 'Type', 'status', 'Status', 'schedule_type', 'Schedule Type'], '');
+          const shiftVal = getPropCaseInsensitive(firstRec, ['shift', 'Shift', 'jam kerja'], '');
+          const tLower = rawTyp.toLowerCase();
+          if (tLower.includes('working') || tLower === 'work' || tLower.includes('kerja')) {
+            singleCardClass = 'bg-green-100 border-green-300 text-green-950 font-medium';
+            singleBadgeClass = 'bg-green-600 text-white';
+            singleBadgeText = shiftVal && shiftVal !== '-' ? `${t.badgeWork} (${shiftVal})` : t.badgeWork;
+          } else if (tLower.includes('sick') || tLower.includes('maternity') || tLower.includes('sakit') || tLower.includes('melahirkan')) {
+            singleCardClass = 'bg-pink-100 border-pink-300 text-pink-950 font-medium';
+            singleBadgeClass = 'bg-pink-500 text-white';
+            singleBadgeText = rawTyp || t.badgeSick;
+            singleIcon = '💉';
+          } else if (tLower.includes('public holiday') || tLower === 'holiday' || tLower.includes('nasional')) {
+            singleCardClass = 'bg-purple-100 border-purple-300 text-purple-950 font-medium';
+            singleBadgeClass = 'bg-purple-600 text-white';
+            singleBadgeText = 'PUBLIC HOLIDAY';
+            singleIcon = '🏖️';
+          } else if (tLower.includes('day off') || tLower === 'off' || tLower.includes('libur')) {
+            singleCardClass = 'bg-red-100 border-red-300 text-red-950 font-medium';
+            singleBadgeClass = 'bg-red-600 text-white';
+            singleBadgeText = rawTyp || t.badgeOff;
+            singleIcon = '🏖️';
+          } else if (rawTyp) {
+            singleCardClass = 'bg-orange-100 border-orange-300 text-orange-950 font-medium';
+            singleBadgeClass = 'bg-orange-500 text-white';
+            singleBadgeText = rawTyp;
+            singleIcon = '🏖️';
+          }
+        } else if (matchedHolidayForView) {
           singleCardClass = 'bg-purple-100 border-purple-300 text-purple-950 font-medium';
           singleBadgeClass = 'bg-purple-600 text-white';
           singleBadgeText = 'PUBLIC HOLIDAY';
-          singleIcon = '🏖️';
-        } else if (tLower.includes('day off') || tLower === 'off' || tLower.includes('libur')) {
-          singleCardClass = 'bg-red-100 border-red-300 text-red-950 font-medium';
-          singleBadgeClass = 'bg-red-600 text-white';
-          singleBadgeText = rawTyp || t.badgeOff;
-          singleIcon = '🏖️';
-        } else if (rawTyp) {
-          singleCardClass = 'bg-orange-100 border-orange-300 text-orange-950 font-medium';
-          singleBadgeClass = 'bg-orange-500 text-white';
-          singleBadgeText = rawTyp;
           singleIcon = '🏖️';
         }
       }
@@ -1614,7 +1666,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
         day,
         dateToPass: `${String(day).padStart(2, '0')}-${String(month + 1).padStart(2, '0')}-${year}`,
         teamData: teamOnThisDay,
-        counts: { workingCount, sickCount, offCount, leaveCount },
+        counts: { workingCount, sickCount, offCount, publicHolidayCount, leaveCount },
         singleStyle: { cardClass: singleCardClass, badgeClass: singleBadgeClass, badgeText: singleBadgeText, icon: singleIcon },
         isPublicHoliday,
         requestedWorkOnPh,
@@ -1626,9 +1678,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
     }
     return {
       calendarDays: days,
-      calendarStats: { off: totalOff, work: totalWork, sick: totalSick, leave: totalLeave }
+      calendarStats: { off: totalOff, publicHoliday: totalPublicHoliday, work: totalWork, sick: totalSick, leave: totalLeave }
     };
-  }, [year, month, totalDays, filteredScheduleRecords, today, isSingleEmployeeCalendar, t, publicHolidayRecords]);
+  }, [year, month, totalDays, filteredScheduleRecords, today, isSingleEmployeeCalendar, t, publicHolidayRecords, selectedEmployee, calendarSelectedEmployees, teamMembers]);
 
   const getShiftTimes = (shiftVal, stdWorkingDay = 'BACKOFFICE52') => {
     const shiftInfo = SHIFT_OPTIONS.find(s => s.value === shiftVal) || SHIFT_OPTIONS[8];
@@ -1826,11 +1878,74 @@ export default function Approval({ currentUser: propCurrentUser }) {
          }
       }
 
-      // 2. Insert into holiday_balance
-      const empCompRaw = workOnPhModal.memberProfile?.company || '';
+      // 2. Match schedule Employee in employee_directory for Company, Religion, and Line Manager
+      const cleanSchedEmp = normalizeText(workOnPhModal.email);
+      const dirEmpRecord = rawDirEmployees.find(emp => {
+        const wMail = normalizeText(getValidPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email'], ''));
+        const pMail = normalizeText(getValidPropCaseInsensitive(emp, ['email', 'Email', 'Email Address', 'user_uid'], ''));
+        const bCode = normalizeText(getValidPropCaseInsensitive(emp, ['Barcode', 'barcode', 'Employee ID', 'employee_id', 'id'], ''));
+        const eName = normalizeText(getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], ''));
+        return [wMail, pMail, bCode, eName].filter(Boolean).includes(cleanSchedEmp);
+      }) || {};
+
+      const companyCandidateKeys = [
+        'Company', 'company', 'Company Name', 'company_name', 'companyname',
+        'CompanyUID', 'companyuid', 'company_uid', 'company_id', 'Company Code', 'company_code'
+      ];
+      const compLookupKeys = [
+        'CompanyUID', 'companyuid', 'Company UID', 'company_uid',
+        'Company ID', 'company_id', 'Company Code', 'company_code',
+        'id', 'uid', 'Company Name', 'company_name', 'CompanyName',
+        'Company', 'company', 'name', 'Name', 'Nama Perusahaan'
+      ];
+
+      const empCompRaw = getValidPropCaseInsensitive(dirEmpRecord, companyCandidateKeys, workOnPhModal.memberProfile?.company || '');
+      const empCompanyKeys = new Set();
+      if (empCompRaw) {
+        const normComp = normalizeText(empCompRaw);
+        empCompanyKeys.add(normComp);
+        const matchedCompObj = rawCompanies.find(c =>
+          compLookupKeys.some(k => normalizeText(getValidPropCaseInsensitive(c, [k], '')) === normComp)
+        );
+        if (matchedCompObj) {
+          compLookupKeys.forEach(k => {
+            const v = normalizeText(getValidPropCaseInsensitive(matchedCompObj, [k], ''));
+            if (v) empCompanyKeys.add(v);
+          });
+        }
+      }
+
+      const empReligion = normalizeText(getValidPropCaseInsensitive(dirEmpRecord, ['Religion', 'religion', 'Agama', 'agama'], workOnPhModal.memberProfile?.religion || ''));
+
+      // Lookup Remarks in public_holidays where Date = Schedule Date AND Religion = Schedule Employee Religion
       const expDateIso = addDaysIso(isoSchedDate, 90);
       let desc = workOnPhModal.holidayRemarks || 'Public Holiday';
-      
+      const parsedSchedDate = parseFlexibleDate(isoSchedDate);
+      if (parsedSchedDate && publicHolidayRecords.length > 0) {
+        const tY = parsedSchedDate.getFullYear();
+        const tM = parsedSchedDate.getMonth();
+        const tD = parsedSchedDate.getDate();
+        const sameDateHols = publicHolidayRecords.filter(h => {
+          const dVal = getPropCaseInsensitive(h, ['Date', 'date', 'tanggal', 'Tanggal']);
+          return checkDateMatch(dVal, tY, tM, tD);
+        });
+        if (sameDateHols.length > 0) {
+          const exactRelMatch = empReligion
+            ? sameDateHols.find(h => normalizeText(getPropCaseInsensitive(h, ['Religion', 'religion', 'Agama', 'agama'], '')) === empReligion)
+            : null;
+          const generalMatch = sameDateHols.find(h => {
+            const r = normalizeText(getPropCaseInsensitive(h, ['Religion', 'religion', 'Agama', 'agama'], ''));
+            return !r || r === '-' || r === 'all' || r === 'national' || r === 'nasional' || r === 'umum';
+          });
+          const chosenHol = exactRelMatch || generalMatch || sameDateHols[0];
+          const remarksVal = getValidPropCaseInsensitive(chosenHol, ['Remarks', 'remarks', 'holiday_name', 'name', 'description'], '');
+          if (remarksVal) desc = remarksVal;
+        }
+      }
+
+      const createdByVal = actualUserWorkEmail || topNavEmail || loggedInEmail || loggedInName;
+
+      // 3. Insert into holiday_balance
       const { data: hSample } = await supabase.from('holiday_balance').select('*').limit(1);
       const hCols = hSample && hSample.length > 0 ? Object.keys(hSample[0]) : [];
       const holEmpCol = resolveTableColumn(hCols, ['Employee', 'employee', 'user_uid', 'email']) || 'Employee';
@@ -1850,7 +1965,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
         [holDateCol]: isoSchedDate,
         [holExpCol]: expDateIso,
         [holStatusCol]: 'Unused',
-        [holCreatedByCol]: loggedInName,
+        [holCreatedByCol]: createdByVal,
         [holCreatedDateCol]: nowIso,
         [holDescCol]: desc
       };
@@ -1858,21 +1973,34 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const { error: holErr } = await supabase.from('holiday_balance').insert([holPayload]);
       if (holErr) throw holErr;
       
-      // 3. Email Notification to Line Manager & HR
+      // 4. Email Notification to Line Manager & HR Managers of the matching Company
       const recipientSet = new Set();
-      const lineMgrEmail = workOnPhModal.memberProfile?.['Line Manager work email'] || workOnPhModal.memberProfile?.line_manager_work_email || workOnPhModal.memberProfile?.linemanager || '';
+      const lineMgrEmail = getValidPropCaseInsensitive(dirEmpRecord, [
+        'Line Manager work email', 'line_manager_work_email',
+        'Line Manager Email', 'line_manager_email',
+        'Line Manager', 'line_manager', 'Line_Manager', 'linemanager',
+        'manager_email', 'Manager Email', 'Manager', 'manager'
+      ], workOnPhModal.memberProfile?.lineManager || '');
       if (lineMgrEmail && lineMgrEmail.includes('@')) recipientSet.add(lineMgrEmail.trim().toLowerCase());
       
-      rawDirEmployees.forEach(dirEmp => {
-         const st = (getPropCaseInsensitive(dirEmp, ['Status', 'status', 'Account Status']) || '').toLowerCase();
-         const dept = (getPropCaseInsensitive(dirEmp, ['Department', 'department']) || '').toLowerCase();
-         const lvl = (getPropCaseInsensitive(dirEmp, ['Job Level', 'job_level']) || '').toLowerCase();
-         
-         if (st === 'active' && (dept === 'human resources' || dept === 'hr') && lvl === 'manager') {
-            const hrEmail = getPropCaseInsensitive(dirEmp, ['Employee work email', 'employee_work_email', 'work_email']);
-            if (hrEmail && hrEmail.includes('@')) recipientSet.add(hrEmail.trim().toLowerCase());
-         }
-      });
+      if (empCompanyKeys.size > 0) {
+        rawDirEmployees.forEach(dirEmp => {
+          const st = normalizeText(getValidPropCaseInsensitive(dirEmp, ['Status', 'status', 'STATUS', 'Account Status', 'account_status'], ''));
+          const dept = normalizeText(getValidPropCaseInsensitive(dirEmp, ['Department', 'department', 'dept', 'Dept'], ''));
+          const lvl = normalizeText(getValidPropCaseInsensitive(dirEmp, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], ''));
+          
+          if (st === 'active' && (dept === 'human resources' || dept === 'human resource' || dept === 'hr') && lvl === 'manager') {
+            const rowComps = companyCandidateKeys
+              .map(k => normalizeText(getValidPropCaseInsensitive(dirEmp, [k], '')))
+              .filter(Boolean);
+            const isSameCompany = rowComps.some(c => empCompanyKeys.has(c));
+            if (isSameCompany) {
+              const hrEmail = getValidPropCaseInsensitive(dirEmp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email'], '');
+              if (hrEmail && hrEmail.includes('@')) recipientSet.add(hrEmail.trim().toLowerCase());
+            }
+          }
+        });
+      }
       
       if (recipientSet.size > 0) {
         const subjectTitle = `Work on Public Holiday - ${workOnPhModal.name} (${isoSchedDate})`;
@@ -3283,10 +3411,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-4 border border-gray-200 rounded-xl overflow-hidden divide-x divide-gray-100 text-center py-2.5 bg-white shadow-xs mb-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 border border-gray-200 rounded-xl overflow-hidden divide-x divide-y sm:divide-y-0 divide-gray-100 text-center py-2.5 bg-white shadow-xs mb-3">
           <div>
             <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statOff}</span>
             <span className="text-base sm:text-lg font-black text-red-600 leading-tight">{calendarStats.off}</span>
+          </div>
+          <div>
+            <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statPublicHoliday}</span>
+            <span className="text-base sm:text-lg font-black text-purple-600 leading-tight">{calendarStats.publicHoliday}</span>
           </div>
           <div>
             <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statWork}</span>
@@ -3296,7 +3428,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
             <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statSick}</span>
             <span className="text-base sm:text-lg font-black text-pink-600 leading-tight">{calendarStats.sick}</span>
           </div>
-          <div>
+          <div className="col-span-2 sm:col-span-1">
             <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statLeave}</span>
             <span className="text-base sm:text-lg font-black text-orange-600 leading-tight">{calendarStats.leave}</span>
           </div>
@@ -3322,9 +3454,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
               ? calendarSelectedEmployees[0]
               : null;
 
+            const hasSingleBadge = isSingleEmployeeCalendar && Boolean(d.singleStyle.badgeText);
             return (
               <div 
                 key={`day-${d.day}`}
+                title={d.holidayRemarks || undefined}
                 onClick={() => {
                   if (d.teamData.length > 0) {
                     setTeamScheduleModalData({ 
@@ -3337,40 +3471,70 @@ export default function Approval({ currentUser: propCurrentUser }) {
                   } else if (singleTargetEmail) {
                     const empData = teamMembers.find(m => m.email.toLowerCase() === singleTargetEmail.toLowerCase());
                     if (empData) {
-                      openSingleScheduleEdit({
-                        Employee: empData.email,
-                        Name: empData.name,
-                        type: 'Working Day',
-                        shift: 'M9'
-                      }, d.dateToPass);
+                      if (d.isPublicHoliday) {
+                        setTeamScheduleModalData({
+                          date: d.dateToPass,
+                          records: [{
+                            Employee: empData.email,
+                            Name: empData.name,
+                            Type: 'Public Holiday',
+                            Shift: '-'
+                          }],
+                          isPublicHoliday: true,
+                          requestedWorkOnPh: false,
+                          holidayRemarks: d.holidayRemarks
+                        });
+                      } else {
+                        openSingleScheduleEdit({
+                          Employee: empData.email,
+                          Name: empData.name,
+                          type: 'Working Day',
+                          shift: 'M9'
+                        }, d.dateToPass);
+                      }
                     }
                   }
                 }}
-                className={`relative h-20 sm:h-24 p-1 sm:p-2 rounded-xl border transition flex flex-col overflow-hidden ${isSingleEmployeeCalendar && d.teamData.length > 0 ? d.singleStyle.cardClass : 'bg-white border-gray-200'} ${d.teamData.length > 0 || singleTargetEmail ? 'cursor-pointer hover:shadow-md hover:border-blue-300' : ''} ${d.isToday ? 'ring-2 ring-blue-500 ring-offset-1 border-blue-300' : ''}`}
+                className={`relative h-20 sm:h-24 p-1 sm:p-2 rounded-xl border transition flex flex-col overflow-hidden ${hasSingleBadge ? d.singleStyle.cardClass : 'bg-white border-gray-200'} ${d.teamData.length > 0 || singleTargetEmail ? 'cursor-pointer hover:shadow-md hover:border-blue-300' : ''} ${d.isToday ? 'ring-2 ring-blue-500 ring-offset-1 border-blue-300' : ''}`}
               >
                 <div className="flex justify-between items-start w-full">
                   <span className={`text-xs sm:text-sm font-extrabold leading-none ${d.isToday ? 'text-blue-600' : d.isSunday ? 'text-red-500' : 'text-gray-800'}`}>
                     {d.day}
                   </span>
-                  {isSingleEmployeeCalendar && d.singleStyle.icon && (
+                  {hasSingleBadge && d.singleStyle.icon && (
                     <span className="text-sm sm:text-base leading-none select-none">{d.singleStyle.icon}</span>
                   )}
                 </div>
 
-                {isSingleEmployeeCalendar && d.teamData.length > 0 && d.singleStyle.badgeText ? (
-                  <div className="w-full flex items-center justify-center my-auto">
+                {hasSingleBadge ? (
+                  <div className="w-full flex flex-col items-center justify-center my-auto gap-0.5">
                     <span className={`w-full py-0.5 px-1 rounded-md text-[9px] sm:text-[10px] font-bold text-center truncate shadow-2xs ${d.singleStyle.badgeClass}`}>
                       {d.singleStyle.badgeText}
                     </span>
+                    {d.holidayRemarks && (
+                      <span className="hidden sm:block w-full text-[9px] text-purple-900 font-medium truncate text-center">
+                        {d.holidayRemarks}
+                      </span>
+                    )}
                   </div>
                 ) : (
-                  <div className="w-full flex flex-col gap-0.5 sm:gap-1 my-auto mt-1">
+                  <div className="w-full flex flex-col gap-0.5 sm:gap-1 my-auto mt-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
                     {d.counts.workingCount > 0 && (
                       <div className="flex items-center justify-between bg-green-100/90 border border-green-300 rounded px-1 sm:px-1.5 py-0.5 w-full">
                         <span className="text-[8px] sm:text-[9px] font-bold text-green-900 uppercase tracking-tight truncate">{t.statWork}</span>
                         <span className="bg-green-600 text-white text-[9px] sm:text-[10px] font-black px-1 sm:px-1.5 rounded-sm leading-tight">{d.counts.workingCount}</span>
                       </div>
                     )}
+                    {d.counts.publicHolidayCount > 0 ? (
+                      <div className="flex items-center justify-between bg-purple-100/90 border border-purple-300 rounded px-1 sm:px-1.5 py-0.5 w-full">
+                        <span className="text-[8px] sm:text-[9px] font-bold text-purple-900 uppercase tracking-tight truncate">PUBLIC HOLIDAY</span>
+                        <span className="bg-purple-600 text-white text-[9px] sm:text-[10px] font-black px-1 sm:px-1.5 rounded-sm leading-tight">{d.counts.publicHolidayCount}</span>
+                      </div>
+                    ) : d.isPublicHoliday ? (
+                      <div className="flex items-center justify-center bg-purple-100/90 border border-purple-300 rounded px-1 sm:px-1.5 py-0.5 w-full">
+                        <span className="text-[8px] sm:text-[9px] font-bold text-purple-900 uppercase tracking-tight truncate">PUBLIC HOLIDAY</span>
+                      </div>
+                    ) : null}
                     {d.counts.sickCount > 0 && (
                       <div className="flex items-center justify-between bg-pink-100/90 border border-pink-300 rounded px-1 sm:px-1.5 py-0.5 w-full">
                         <span className="text-[8px] sm:text-[9px] font-bold text-pink-900 uppercase tracking-tight truncate">{t.statSick}</span>
@@ -3389,7 +3553,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                         <span className="bg-red-600 text-white text-[9px] sm:text-[10px] font-black px-1 sm:px-1.5 rounded-sm leading-tight">{d.counts.offCount}</span>
                       </div>
                     )}
-                    {d.teamData.length === 0 && (
+                    {d.teamData.length === 0 && !d.isPublicHoliday && (
                       <div className="flex items-center justify-center w-full mt-2">
                         <span className="text-[10px] text-gray-300">-</span>
                       </div>
@@ -3404,7 +3568,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
         <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs">
           <h4 className="font-bold text-gray-700 mb-1.5 border-b border-gray-200 pb-1">{t.legend}</h4>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-[11px]">
             <div className="flex items-center space-x-1.5">
               <span className="w-3 h-3 rounded bg-green-500 shrink-0"></span>
               <span className="text-gray-600 font-medium">{t.legWorking}</span>
@@ -3416,6 +3580,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
             <div className="flex items-center space-x-1.5">
               <span className="w-3 h-3 rounded bg-red-500 shrink-0"></span>
               <span className="text-gray-600 font-medium">{t.legOff}</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded bg-purple-600 shrink-0"></span>
+              <span className="text-gray-600 font-medium">{t.legPublicHoliday}</span>
             </div>
             <div className="flex items-center space-x-1.5">
               <span className="w-3 h-3 rounded bg-orange-500 shrink-0"></span>
@@ -3567,11 +3735,20 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 
                 const tLower = typ.toLowerCase();
                 const isWorking = tLower.includes('working') || tLower === 'work' || tLower.includes('kerja');
-                const isOff = tLower.includes('day off') || tLower === 'off' || tLower.includes('libur');
+                const isPublicHolidayType = tLower.includes('public holiday') || tLower === 'holiday' || tLower.includes('nasional');
+                const isOff = !isPublicHolidayType && (tLower.includes('day off') || tLower === 'off' || tLower.includes('libur'));
                 
                 const isLeave = tLower.includes('leave') || tLower.includes('cuti') || tLower.includes('sick') || tLower.includes('sakit') || tLower.includes('maternity');
                 
-                const isEditable = (isWorking || isOff) && !isLeave;
+                const isEditable = (isWorking || isOff) && !isLeave && !isPublicHolidayType;
+
+                const empReqPhRaw = getPropCaseInsensitive(emp, [
+                  'Request to Work on Public Holiday?',
+                  'request_to_work_on_public_holiday',
+                  'Request to Work on Public Holiday',
+                  'requesttoworkonpublicholiday'
+                ], '');
+                const empRequestedWorkOnPh = ['true', '1', 't', 'yes', 'y'].includes(String(empReqPhRaw).trim().toLowerCase());
 
                 if (isWorking) {
                   badgeClass = 'bg-green-50 text-green-700 border-green-200';
@@ -3579,6 +3756,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 } else if (tLower.includes('sick') || tLower.includes('sakit')) {
                   badgeClass = 'bg-pink-50 text-pink-700 border-pink-200';
                   displayType = t.badgeSick;
+                } else if (isPublicHolidayType) {
+                  badgeClass = 'bg-purple-50 text-purple-700 border-purple-200';
+                  displayType = 'PUBLIC HOLIDAY';
                 } else if (isOff) {
                   badgeClass = 'bg-red-50 text-red-700 border-red-200';
                   displayType = t.badgeOff;
@@ -3593,16 +3773,21 @@ export default function Approval({ currentUser: propCurrentUser }) {
                     className={`flex justify-between items-center p-3 border rounded-xl bg-white shadow-xs transition ${isEditable ? 'border-gray-200 hover:border-blue-300 hover:shadow-sm' : 'border-gray-100 bg-gray-50/50'}`}
                   >
                     <div>
-                      <div className="font-bold text-sm text-gray-800 flex items-center gap-2">
+                      <div className="font-bold text-sm text-gray-800 flex items-center gap-2 flex-wrap">
                         <span>{empName}</span>
                         {isEditable && (
                           <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded font-medium border border-blue-100">
                             Editable
                           </span>
                         )}
+                        {empRequestedWorkOnPh && (
+                          <span className="text-[10px] text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded font-bold border border-purple-200">
+                            Work Requested
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] text-gray-500 font-medium mt-0.5 flex flex-wrap items-center gap-1.5">
-                        <span>Shift: {shift !== '-' ? shift : (isOff ? t.badgeOff : '-')}</span>
+                        <span>Shift: {shift !== '-' ? shift : (isPublicHolidayType ? 'PUBLIC HOLIDAY' : isOff ? t.badgeOff : '-')}</span>
                         {isHrActive && empDept && (
                           <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.2 rounded capitalize">
                             • {empDept}
@@ -3610,12 +3795,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold border ${badgeClass}`}>
                         {displayType}
                       </span>
                       
-                      {teamScheduleModalData.isPublicHoliday && !isWorking && !teamScheduleModalData.requestedWorkOnPh && (
+                      {(isPublicHolidayType || teamScheduleModalData.isPublicHoliday) && !isWorking && !empRequestedWorkOnPh && (
                         <button
                           type="button"
                           onClick={(e) => {
