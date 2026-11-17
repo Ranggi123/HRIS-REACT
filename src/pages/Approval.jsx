@@ -4058,7 +4058,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 
                 const isLeave = tLower.includes('leave') || tLower.includes('cuti') || tLower.includes('sick') || tLower.includes('sakit') || tLower.includes('maternity');
                 
-                const isEditable = (isWorking || isOff) && !isLeave && !isPublicHolidayType;
+                const isEditable = (isWorking || isOff) && !isLeave && !isPublicHolidayType && !empRequestedWorkOnPh;
 
                 const empReqPhRaw = getPropCaseInsensitive(emp, [
                   'Request to Work on Public Holiday?',
