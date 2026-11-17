@@ -1718,6 +1718,127 @@ export default function Approval({ currentUser: propCurrentUser }) {
     });
   };
 
+  const insertScheduleRowsSafe = async (rowsToInsert, extraSampleObj = null) => {
+    if (!Array.isArray(rowsToInsert) || rowsToInsert.length === 0) return;
+
+    let sampleRow = extraSampleObj || (rawSchedules && rawSchedules.length > 0 ? rawSchedules[0] : null);
+    if (!sampleRow) {
+      const { data: fetchedSample } = await supabase.from('schedule').select('*').limit(1);
+      if (fetchedSample && fetchedSample.length > 0) sampleRow = fetchedSample[0];
+    }
+
+    const knownCols = Array.from(new Set([
+      ...(sampleRow ? Object.keys(sampleRow) : []),
+      ...(rawSchedules && rawSchedules.length > 0 ? Object.keys(rawSchedules[0]) : [])
+    ]));
+
+    const pkCol = knownCols.find(k => ['id', 'uid', '_id', 'scheduleid', 'schedule_id'].includes(k.toLowerCase().replace(/[\s_-]/g, '')));
+    const samplePkVal = pkCol && sampleRow ? sampleRow[pkCol] : undefined;
+
+    const generateRowId = (idx) => {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+      return `${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 10)}`;
+    };
+
+    const prepareRows = (rawRows, forcedOverrides = {}) => {
+      return rawRows.map((r, idx) => {
+        const cleanRow = {};
+        Object.entries({ ...r, ...forcedOverrides }).forEach(([k, v]) => {
+          if (v === undefined) return;
+          if (knownCols.length > 0) {
+            const matchedCol = resolveTableColumn(knownCols, [k]);
+            if (matchedCol) {
+              cleanRow[matchedCol] = v;
+            }
+          } else {
+            cleanRow[k] = v;
+          }
+        });
+
+        if (pkCol && (cleanRow[pkCol] === undefined || cleanRow[pkCol] === null || cleanRow[pkCol] === '')) {
+          if (typeof samplePkVal === 'string') {
+            cleanRow[pkCol] = generateRowId(idx);
+          }
+        }
+        return cleanRow;
+      });
+    };
+
+    let currentRows = prepareRows(rowsToInsert);
+    let { error: firstErr } = await supabase.from('schedule').insert(currentRows);
+    if (!firstErr) return;
+
+    console.warn('[Approval] First schedule insert attempt failed, inspecting error:', firstErr);
+
+    // Self-healing retry up to 3 times for NOT NULL / type syntax errors
+    const overrides = {};
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const errText = `${firstErr.message || ''} ${firstErr.details || ''}`;
+
+      // 1. Handle NOT NULL constraint violation: null value in column "X"
+      const nullColMatch = errText.match(/null value in column "([^"]+)"/i);
+      if (nullColMatch) {
+        const missingCol = nullColMatch[1];
+        const normMissing = missingCol.toLowerCase().replace(/[\s_-]/g, '');
+        if (['id', 'uid', '_id', 'scheduleid'].includes(normMissing)) {
+          if (typeof samplePkVal === 'number') {
+            const maxNum = (rawSchedules || []).reduce((mx, row) => {
+              const v = Number(row[missingCol]);
+              return !isNaN(v) && v > mx ? v : mx;
+            }, 0);
+            currentRows = currentRows.map((r, idx) => ({ ...r, [missingCol]: maxNum + idx + 1 }));
+            const retryRes = await supabase.from('schedule').insert(currentRows);
+            if (!retryRes.error) return;
+            firstErr = retryRes.error;
+            continue;
+          } else {
+            currentRows = currentRows.map((r, idx) => ({ ...r, [missingCol]: generateRowId(idx) }));
+            const retryRes = await supabase.from('schedule').insert(currentRows);
+            if (!retryRes.error) return;
+            firstErr = retryRes.error;
+            continue;
+          }
+        } else if (normMissing.includes('time')) {
+          overrides[missingCol] = '00:00:00';
+        } else if (normMissing.includes('date')) {
+          overrides[missingCol] = toIsoDateString(new Date().toISOString());
+        } else if (typeof sampleRow?.[missingCol] === 'boolean') {
+          overrides[missingCol] = false;
+        } else if (typeof sampleRow?.[missingCol] === 'number') {
+          overrides[missingCol] = 0;
+        } else {
+          overrides[missingCol] = '-';
+        }
+        currentRows = prepareRows(rowsToInsert, overrides);
+        const retryRes = await supabase.from('schedule').insert(currentRows);
+        if (!retryRes.error) return;
+        firstErr = retryRes.error;
+        continue;
+      }
+
+      // 2. Handle invalid input syntax for type time/timestamp (e.g. "-")
+      if (/invalid input syntax for type (time|timestamp)/i.test(errText)) {
+        currentRows = currentRows.map(r => {
+          const copy = { ...r };
+          Object.keys(copy).forEach(k => {
+            if (copy[k] === '-') copy[k] = null;
+          });
+          return copy;
+        });
+        const retryRes = await supabase.from('schedule').insert(currentRows);
+        if (!retryRes.error) return;
+        firstErr = retryRes.error;
+        continue;
+      }
+
+      break;
+    }
+
+    throw new Error(firstErr.details || firstErr.message || 'Failed inserting schedule');
+  };
+
   const saveSingleScheduleEdit = async () => {
     if (!singleScheduleEdit) return;
     setIsSavingSingleSchedule(true);
@@ -1772,12 +1893,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
             if (saveErr) throw saveErr;
           }
         } else {
-          const { error: saveErr } = await supabase.from('schedule').insert([{
+          await insertScheduleRowsSafe([{
             [schedEmpCol]: singleScheduleEdit.email,
             [schedDateCol]: isoSchedDate,
             ...dbPayload
-          }]);
-          if (saveErr) throw saveErr;
+          }], singleScheduleEdit.rawRecord || null);
         }
       }
 
@@ -2117,7 +2237,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
         if (row.id) {
            await supabase.from('schedule').update(payload).eq('id', row.id);
         } else {
-           await supabase.from('schedule').insert([payload]);
+           await insertScheduleRowsSafe([payload], row.dbRecord || null);
         }
       }
       alert(currentLang === 'id' ? 'Jadwal berhasil diperbarui!' : 'Schedule updated successfully!');
@@ -2518,22 +2638,34 @@ export default function Approval({ currentUser: propCurrentUser }) {
             }
           }
 
+          const schedCompanyCol = resolveTableColumn(schedCols, ['Company', 'company', 'Company Name', 'company_name', 'CompanyUID', 'companyuid']);
+          const resolvedEmpCompany = matchedEmpDir
+            ? getValidPropCaseInsensitive(matchedEmpDir, ['Company', 'company', 'Company Name', 'company_name', 'CompanyUID', 'companyuid'], '')
+            : getValidPropCaseInsensitive(item, ['Company', 'company', 'Company Name', 'company_name', 'CompanyUID', 'companyuid'], '');
+
           const newDates = targetDates.filter(d => !existingByIsoDate.has(d));
           if (newDates.length > 0) {
             const inserts = newDates.map(d => {
               const rowObj = {
                 [schedEmpCol]: targetSchedEmp,
                 [schedDateCol]: d,
-                [schedTypeCol]: leaveType,
-                ...buildNullShiftFields()
+                [schedTypeCol]: leaveType
               };
               if (schedEmpNameCol && resolvedEmpName) {
                 rowObj[schedEmpNameCol] = resolvedEmpName;
               }
+              if (schedCompanyCol && resolvedEmpCompany) {
+                rowObj[schedCompanyCol] = resolvedEmpCompany;
+              }
+              if (schedLastEditByCol) {
+                rowObj[schedLastEditByCol] = actualUserName || userName;
+              }
+              if (schedLastEditDateCol) {
+                rowObj[schedLastEditDateCol] = nowIso;
+              }
               return rowObj;
             });
-            const { error: insErr } = await supabase.from('schedule').insert(inserts);
-            if (insErr) throw insErr;
+            await insertScheduleRowsSafe(inserts, (schedSample && schedSample[0]) || existingSampleForEmp || null);
           }
 
           const { data: dirSample } = await supabase.from('employee_directory').select('*').limit(1);
