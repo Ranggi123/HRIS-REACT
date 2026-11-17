@@ -13,22 +13,90 @@ const parseFlexibleDate = (dateVal) => {
   const str = String(dateVal).trim();
   if (!str || str === '-') return null;
 
-  const parsed = new Date(str);
-  if (!isNaN(parsed.getTime())) return parsed;
-
-  const mIso = str.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
-  if (mIso) {
-    return new Date(parseInt(mIso[1], 10), parseInt(mIso[2], 10) - 1, parseInt(mIso[3], 10));
-  }
-
-  const mSlash = str.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+  const mSlash = str.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM))?)?/i);
   if (mSlash) {
     const n1 = parseInt(mSlash[1], 10);
     const n2 = parseInt(mSlash[2], 10);
     const y = parseInt(mSlash[3], 10);
-    return new Date(y, n2 - 1, n1);
+    let hh = mSlash[4] ? parseInt(mSlash[4], 10) : 0;
+    const mm = mSlash[5] ? parseInt(mSlash[5], 10) : 0;
+    const ss = mSlash[6] ? parseInt(mSlash[6], 10) : 0;
+    const ampm = mSlash[7] ? mSlash[7].toUpperCase() : '';
+    if (ampm === 'PM' && hh < 12) hh += 12;
+    if (ampm === 'AM' && hh === 12) hh = 0;
+    return new Date(y, n2 - 1, n1, hh, mm, ss);
   }
+
+  const mIso = str.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (mIso && !str.includes('Z') && !/[+-]\d{2}:?\d{2}$/.test(str)) {
+    return new Date(
+      parseInt(mIso[1], 10),
+      parseInt(mIso[2], 10) - 1,
+      parseInt(mIso[3], 10),
+      mIso[4] ? parseInt(mIso[4], 10) : 0,
+      mIso[5] ? parseInt(mIso[5], 10) : 0,
+      mIso[6] ? parseInt(mIso[6], 10) : 0
+    );
+  }
+
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) return parsed;
+
   return null;
+};
+
+const toIsoTimestampString = (val, fallbackDateVal = null) => {
+  if (!val || val === '-' || val === 'null' || val === 'undefined') return '';
+  const str = String(val).trim();
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    return str.replace(' ', 'T');
+  }
+
+  const mYmdSlash = str.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM))?)?/i);
+  if (mYmdSlash) {
+    const y = mYmdSlash[1];
+    const m = mYmdSlash[2].padStart(2, '0');
+    const d = mYmdSlash[3].padStart(2, '0');
+    let hh = mYmdSlash[4] ? parseInt(mYmdSlash[4], 10) : 0;
+    const mm = mYmdSlash[5] ? mYmdSlash[5].padStart(2, '0') : '00';
+    const ss = mYmdSlash[6] ? mYmdSlash[6].padStart(2, '0') : '00';
+    const ampm = mYmdSlash[7] ? mYmdSlash[7].toUpperCase() : '';
+    if (ampm === 'PM' && hh < 12) hh += 12;
+    if (ampm === 'AM' && hh === 12) hh = 0;
+    return `${y}-${m}-${d}T${String(hh).padStart(2, '0')}:${mm}:${ss}`;
+  }
+
+  const mDmy = str.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM))?)?/i);
+  if (mDmy) {
+    const d = mDmy[1].padStart(2, '0');
+    const m = mDmy[2].padStart(2, '0');
+    const y = mDmy[3];
+    let hh = mDmy[4] ? parseInt(mDmy[4], 10) : 0;
+    const mm = mDmy[5] ? mDmy[5].padStart(2, '0') : '00';
+    const ss = mDmy[6] ? mDmy[6].padStart(2, '0') : '00';
+    const ampm = mDmy[7] ? mDmy[7].toUpperCase() : '';
+    if (ampm === 'PM' && hh < 12) hh += 12;
+    if (ampm === 'AM' && hh === 12) hh = 0;
+    return `${y}-${m}-${d}T${String(hh).padStart(2, '0')}:${mm}:${ss}`;
+  }
+
+  const mTimeOnly = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM))?$/i);
+  if (mTimeOnly && fallbackDateVal) {
+    let hh = parseInt(mTimeOnly[1], 10);
+    const mm = mTimeOnly[2].padStart(2, '0');
+    const ss = mTimeOnly[3] ? mTimeOnly[3].padStart(2, '0') : '00';
+    const ampm = mTimeOnly[4] ? mTimeOnly[4].toUpperCase() : '';
+    if (ampm === 'PM' && hh < 12) hh += 12;
+    if (ampm === 'AM' && hh === 12) hh = 0;
+    const fbIso = toIsoTimestampString(fallbackDateVal);
+    const datePart = fbIso ? fbIso.split('T')[0] : '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+      return `${datePart}T${String(hh).padStart(2, '0')}:${mm}:${ss}`;
+    }
+  }
+
+  return str;
 };
 
 const formatDateTimeDisplay = (dateVal, lang = 'en') => {
@@ -1766,7 +1834,18 @@ export default function Approval({ currentUser: propCurrentUser }) {
         const attDate = getPropCaseInsensitive(item, ['Date', 'date', 'Tanggal', 'attendance_date', 'CreatedDate']);
         
         if (empEmail && attDate) {
-          const { data: schedData } = await supabase.from('schedule').select('*').ilike('Employee', `%${empEmail}%`).eq('Date', attDate).limit(1);
+          const parsedAttDate = parseFlexibleDate(attDate);
+          const dateCandidates = new Set([attDate]);
+          if (parsedAttDate) {
+            const dd = String(parsedAttDate.getDate()).padStart(2, '0');
+            const mm = String(parsedAttDate.getMonth() + 1).padStart(2, '0');
+            const yyyy = parsedAttDate.getFullYear();
+            dateCandidates.add(`${dd}-${mm}-${yyyy}`);
+            dateCandidates.add(`${dd}/${mm}/${yyyy}`);
+            dateCandidates.add(`${yyyy}-${mm}-${dd}`);
+          }
+          const orDateFilter = Array.from(dateCandidates).map(d => `Date.eq.${d}`).join(',');
+          const { data: schedData } = await supabase.from('schedule').select('*').ilike('Employee', `%${empEmail}%`).or(orDateFilter).limit(1);
           if (schedData && schedData.length > 0) {
             schedRow = schedData[0];
           }
@@ -1778,6 +1857,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
         const checkoutTimeVal = getPropCaseInsensitive(item, ['Checkout Time', 'checkout_time', 'Time Out', 'time_out', 'Time', 'time']);
         const checkinTimeVal = getPropCaseInsensitive(item, ['Time', 'time', 'Time In', 'time_in']);
+        const isoCheckoutTime = toIsoTimestampString(checkoutTimeVal, attDate);
+        const isoCheckinTime = toIsoTimestampString(checkinTimeVal, attDate);
         
         const attActionCol = resolveTableColumn(cols, ['Action', 'action', 'Attendance Action', 'attendance_action']) || 'Action';
         const attTimeCol = resolveTableColumn(cols, ['Time', 'time', 'Attendance Time', 'attendance_time']) || 'Time';
@@ -1791,11 +1872,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
         if (newStatus === 'Approved') {
           if (isCheckout) {
             payload[attActionCol] = 'Checked Out';
-            if (checkoutTimeVal) payload[attTimeCol] = checkoutTimeVal;
+            if (isoCheckoutTime) payload[attTimeCol] = isoCheckoutTime;
             targetStatus = 'Approved';
             
-            schedCheckedOut = checkoutTimeVal;
-            scheduleUpdatePayload['Checked Out At'] = checkoutTimeVal;
+            schedCheckedOut = isoCheckoutTime || checkoutTimeVal;
+            scheduleUpdatePayload['Checked Out At'] = schedCheckedOut;
             scheduleUpdatePayload['LastEditDate'] = nowIso;
             scheduleUpdatePayload['LastEditBy'] = actualUserName || userName;
             
@@ -1814,8 +1895,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
             payload[attActionCol] = 'Checked In';
             targetStatus = 'Approved';
             
-            schedCheckedIn = checkinTimeVal;
-            scheduleUpdatePayload['Checked In At'] = checkinTimeVal;
+            schedCheckedIn = isoCheckinTime || checkinTimeVal;
+            scheduleUpdatePayload['Checked In At'] = schedCheckedIn;
             scheduleUpdatePayload['LastEditDate'] = nowIso;
             scheduleUpdatePayload['LastEditBy'] = actualUserName || userName;
             
@@ -1834,11 +1915,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
         } else if (newStatus === 'Rejected') {
           if (isCheckout) {
             payload[attActionCol] = 'Checked Out';
-            if (checkoutTimeVal) payload[attTimeCol] = checkoutTimeVal;
+            if (isoCheckoutTime) payload[attTimeCol] = isoCheckoutTime;
             targetStatus = 'Approved';
             
-            schedCheckedOut = checkoutTimeVal;
-            scheduleUpdatePayload['Checked Out At'] = checkoutTimeVal;
+            schedCheckedOut = isoCheckoutTime || checkoutTimeVal;
+            scheduleUpdatePayload['Checked Out At'] = schedCheckedOut;
             scheduleUpdatePayload['LastEditDate'] = nowIso;
             scheduleUpdatePayload['LastEditBy'] = actualUserName || userName;
             
