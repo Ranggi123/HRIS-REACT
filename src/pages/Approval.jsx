@@ -529,7 +529,19 @@ export default function Approval({ currentUser: propCurrentUser }) {
     sumEo: 'Libur Ekstra:',
     calTitle: 'Kalender Tim',
     calDescAll: 'Menampilkan jadwal semua anggota tim',
+    calDescAllCompany: 'Menampilkan jadwal seluruh karyawan perusahaan',
+    calDescMulti: 'Menampilkan jadwal untuk {count} karyawan terpilih',
     calDescOne: 'Menampilkan jadwal untuk:',
+    calFilterEmpBtn: 'Filter Karyawan',
+    calFilterAllOpt: 'Semua Karyawan',
+    calFilterSearchPh: 'Cari nama karyawan...',
+    calFilterClear: 'Reset',
+    legend: 'Legenda',
+    legWorking: 'Hari Kerja',
+    legSick: 'Sakit / Melahirkan',
+    legOff: 'Hari Libur',
+    legLeave: 'Cuti Tahunan / DP / EO',
+    legNoSched: 'Tidak Ada Jadwal',
     btnThisMonth: 'Bulan Ini',
     statOff: 'Libur',
     statWork: 'Kerja',
@@ -622,7 +634,19 @@ export default function Approval({ currentUser: propCurrentUser }) {
     sumEo: 'Extra Off:',
     calTitle: 'Team Calendar',
     calDescAll: 'Showing schedules for all team members',
+    calDescAllCompany: 'Showing schedules for all company employees',
+    calDescMulti: 'Showing schedules for {count} selected employees',
     calDescOne: 'Showing schedule for:',
+    calFilterEmpBtn: 'Filter Employees',
+    calFilterAllOpt: 'All Employees',
+    calFilterSearchPh: 'Search employee name...',
+    calFilterClear: 'Reset',
+    legend: 'Legend',
+    legWorking: 'Working Day',
+    legSick: 'Sick / Maternity',
+    legOff: 'Day Off / Holiday',
+    legLeave: 'Annual Leave / DP / EO',
+    legNoSched: 'No Schedule',
     btnThisMonth: 'This Month',
     statOff: 'Day Off',
     statWork: 'Work',
@@ -720,6 +744,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const [statusTab, setStatusTab] = useState('pending');
   const [selectedDepartment, setSelectedDepartment] = useState('all');
   const [selectedEmployee, setSelectedEmployee] = useState('all');
+  const [calendarSelectedEmployees, setCalendarSelectedEmployees] = useState([]);
+  const [isCalEmpDropdownOpen, setIsCalEmpDropdownOpen] = useState(false);
+  const [calEmpSearch, setCalEmpSearch] = useState('');
+  const calEmpDropdownRef = useRef(null);
 
   const employeeDropdownRef = useRef(null); 
   const [showFilterAlert, setShowFilterAlert] = useState(false); 
@@ -836,6 +864,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
     teamScheduleRecords,
     resolvedUserWorkEmail,
     resolvedUserName,
+    isHrActive,
     isHrManagerActive
   } = useMemo(() => {
     const cleanLoginEmail = (topNavEmail || userWorkEmail || '').trim().toLowerCase();
@@ -924,10 +953,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
       }
     }
 
-    const isHrDept = profileDept === 'human resources' || profileDept === 'human resource';
+    const isHrDept = profileDept === 'human resources' || profileDept === 'human resource' || profileDept === 'hr';
     const isManagerJobLevel = profileJobLevel === 'manager';
     const isStatusActive = profileStatus === 'active';
-    const isHrManagerActive = isHrDept && isManagerJobLevel && isStatusActive && userCompanyKeys.size > 0;
+    const isHrActive = isHrDept && isStatusActive && userCompanyKeys.size > 0;
+    const isHrManagerActive = isHrActive && isManagerJobLevel;
 
     const getRowCompanyValues = (obj) => {
       if (!obj) return [];
@@ -1002,7 +1032,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const statusRaw = normalizeText(getValidPropCaseInsensitive(row, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
       if (statusRaw !== 'active') return false;
 
-      if (isHrManagerActive) {
+      if (isHrActive) {
         return rowBelongsToUserCompany(row, (r) => matchesLineManagerWorkEmail(r, cleanEffectiveWorkEmail));
       }
 
@@ -1045,10 +1075,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
         'user_uid'
       ]) || '').trim().toLowerCase();
 
+      const userUidVal = (getValidPropCaseInsensitive(emp, ['USER_UID', 'user_uid', 'uid']) || '').trim().toLowerCase();
       const barcodeVal = (getValidPropCaseInsensitive(emp, ['Barcode', 'barcode', 'Employee ID', 'employee_id', 'id', 'nik', 'nip']) || '').trim();
       const name = getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], workMail || personalMail || barcodeVal);
       const email = workMail || personalMail || barcodeVal.toLowerCase();
-      const empAllEmails = Array.from(new Set([workMail, personalMail, barcodeVal.toLowerCase()].filter(Boolean)));
+      const empAllEmails = Array.from(new Set([workMail, personalMail, userUidVal, barcodeVal.toLowerCase()].filter(Boolean)));
 
       empAllEmails.forEach(m => {
         subordinateEmailSet.add(m);
@@ -1126,7 +1157,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
         if (!isRelevant) return false;
         if (!isRowEmployeeActive(row)) return false;
 
-        if (isHrManagerActive) {
+        if (isHrActive) {
           return rowBelongsToUserCompany(row, matchesScopedEmployee);
         }
 
@@ -1157,7 +1188,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
         if (!isRelevant) return false;
         if (!isRowEmployeeActive(row)) return false;
 
-        if (isHrManagerActive) {
+        if (isHrActive) {
           return rowBelongsToUserCompany(row, matchesScopedEmployee);
         }
 
@@ -1184,8 +1215,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
     const filteredSchedules = rawSchedules.filter(row => {
       if (!isRowEmployeeActive(row)) return false;
 
-      if (isHrManagerActive) {
-        return rowBelongsToUserCompany(row, (r) => matchesLineManagerWorkEmail(r, cleanEffectiveWorkEmail));
+      if (isHrActive) {
+        return rowBelongsToUserCompany(row, matchesScopedEmployee);
       }
 
       if (!hasValidWorkEmail) return false;
@@ -1199,6 +1230,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       teamScheduleRecords: filteredSchedules,
       resolvedUserWorkEmail: hasValidWorkEmail ? cleanEffectiveWorkEmail : '',
       resolvedUserName: realName,
+      isHrActive,
       isHrManagerActive
     };
   }, [
@@ -1224,6 +1256,18 @@ export default function Approval({ currentUser: propCurrentUser }) {
     setActualUserWorkEmail(resolvedUserWorkEmail || '');
     setActualUserName(resolvedUserName || userName);
   }, [resolvedUserWorkEmail, resolvedUserName, userName]);
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (calEmpDropdownRef.current && !calEmpDropdownRef.current.contains(e.target)) {
+        setIsCalEmpDropdownOpen(false);
+      }
+    };
+    if (isCalEmpDropdownOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isCalEmpDropdownOpen]);
 
   useEffect(() => {
       if (showFilterAlert && employeeDropdownRef.current) {
@@ -1278,14 +1322,24 @@ export default function Approval({ currentUser: propCurrentUser }) {
     };
   }, [selectedEmployee, selectedMemberObj]);
 
+  const scopedCalendarMembers = useMemo(() => {
+    if (!selectedDepartment || selectedDepartment === 'all') return teamMembers;
+    const targetDept = selectedDepartment.toLowerCase();
+    return teamMembers.filter(m => (m.department || '') === targetDept);
+  }, [teamMembers, selectedDepartment]);
+
+  const isSingleEmployeeCalendar = useMemo(() => {
+    if (selectedEmployee && selectedEmployee !== 'all') return true;
+    if (calendarSelectedEmployees.length === 1) return true;
+    return false;
+  }, [selectedEmployee, calendarSelectedEmployees]);
+
   const filteredScheduleRecords = useMemo(() => {
     let records = teamScheduleRecords;
 
     if (selectedDepartment && selectedDepartment !== 'all') {
-      const targetDept = selectedDepartment.toLowerCase();
       const validDeptKeys = new Set(
-        teamMembers
-          .filter(m => (m.department || '') === targetDept)
+        scopedCalendarMembers
           .flatMap(m => [
             m.email,
             ...(m.emails || []),
@@ -1303,32 +1357,59 @@ export default function Approval({ currentUser: propCurrentUser }) {
       });
     }
 
-    if (!selectedEmployee || selectedEmployee === 'all') {
-      return records;
+    if (selectedEmployee && selectedEmployee !== 'all') {
+      const target = selectedEmployee.toLowerCase();
+      const validKeys = new Set([
+        target,
+        ...(selectedMemberObj?.emails || []),
+        selectedMemberObj?.name ? normalizeText(selectedMemberObj.name) : '',
+        selectedMemberObj?.barcode ? normalizeText(selectedMemberObj.barcode) : ''
+      ].filter(Boolean));
+      return records.filter(item => {
+        const email = normalizeText(getPropCaseInsensitive(item, [
+          'Employee',
+          'employee',
+          'email',
+          'user_uid',
+          'employee_email',
+          'work_email',
+          'Employee work email'
+        ]));
+        return validKeys.has(email);
+      });
     }
-    const target = selectedEmployee.toLowerCase();
-    const validKeys = new Set([
-      target,
-      ...(selectedMemberObj?.emails || []),
-      selectedMemberObj?.name ? normalizeText(selectedMemberObj.name) : '',
-      selectedMemberObj?.barcode ? normalizeText(selectedMemberObj.barcode) : ''
-    ].filter(Boolean));
-    return records.filter(item => {
-      const email = normalizeText(getPropCaseInsensitive(item, [
-        'Employee',
-        'employee',
-        'email',
-        'user_uid',
-        'employee_email',
-        'work_email',
-        'Employee work email'
-      ]));
-      return validKeys.has(email);
-    });
-  }, [teamScheduleRecords, selectedDepartment, selectedEmployee, selectedMemberObj, teamMembers]);
 
-  const { calendarDays } = useMemo(() => {
+    if (calendarSelectedEmployees.length > 0) {
+      const selectedSet = new Set(calendarSelectedEmployees.map(e => e.toLowerCase()));
+      const validMultiKeys = new Set(
+        scopedCalendarMembers
+          .filter(m => selectedSet.has(m.email.toLowerCase()))
+          .flatMap(m => [
+            m.email,
+            ...(m.emails || []),
+            m.name ? normalizeText(m.name) : '',
+            m.barcode ? normalizeText(m.barcode) : ''
+          ])
+          .map(v => normalizeText(v))
+          .filter(Boolean)
+      );
+      return records.filter(item => {
+        const email = normalizeText(getPropCaseInsensitive(item, [
+          'Employee', 'employee', 'email', 'user_uid', 'employee_email', 'work_email', 'Employee work email'
+        ]));
+        return validMultiKeys.has(email);
+      });
+    }
+
+    return records;
+  }, [teamScheduleRecords, selectedDepartment, selectedEmployee, selectedMemberObj, scopedCalendarMembers, calendarSelectedEmployees]);
+
+  const { calendarDays, calendarStats } = useMemo(() => {
     const days = [];
+    let totalOff = 0;
+    let totalWork = 0;
+    let totalSick = 0;
+    let totalLeave = 0;
 
     for (let day = 1; day <= totalDays; day++) {
       const currLoopDate = new Date(year, month, day);
@@ -1347,19 +1428,59 @@ export default function Approval({ currentUser: propCurrentUser }) {
         else if (typ.includes('day off') || typ === 'off' || typ.includes('holiday') || typ.includes('libur')) offCount++;
         else if (typ) leaveCount++;
       });
+
+      totalOff += offCount;
+      totalWork += workingCount;
+      totalSick += sickCount;
+      totalLeave += leaveCount;
+
+      let singleCardClass = 'bg-white border-gray-200 text-gray-700';
+      let singleBadgeClass = '';
+      let singleBadgeText = '';
+      let singleIcon = '';
+      if (isSingleEmployeeCalendar && teamOnThisDay.length > 0) {
+        const firstRec = teamOnThisDay[0];
+        const rawTyp = getPropCaseInsensitive(firstRec, ['type', 'Type', 'status', 'Status', 'schedule_type', 'Schedule Type'], '');
+        const shiftVal = getPropCaseInsensitive(firstRec, ['shift', 'Shift', 'jam kerja'], '');
+        const tLower = rawTyp.toLowerCase();
+        if (tLower.includes('working') || tLower === 'work' || tLower.includes('kerja')) {
+          singleCardClass = 'bg-green-100 border-green-300 text-green-950 font-medium';
+          singleBadgeClass = 'bg-green-600 text-white';
+          singleBadgeText = shiftVal && shiftVal !== '-' ? `${t.badgeWork} (${shiftVal})` : t.badgeWork;
+        } else if (tLower.includes('sick') || tLower.includes('maternity') || tLower.includes('sakit') || tLower.includes('melahirkan')) {
+          singleCardClass = 'bg-pink-100 border-pink-300 text-pink-950 font-medium';
+          singleBadgeClass = 'bg-pink-500 text-white';
+          singleBadgeText = rawTyp || t.badgeSick;
+          singleIcon = '💉';
+        } else if (tLower.includes('day off') || tLower === 'off' || tLower.includes('holiday') || tLower.includes('libur')) {
+          singleCardClass = 'bg-red-100 border-red-300 text-red-950 font-medium';
+          singleBadgeClass = 'bg-red-600 text-white';
+          singleBadgeText = rawTyp || t.badgeOff;
+          singleIcon = '🏖️';
+        } else if (rawTyp) {
+          singleCardClass = 'bg-orange-100 border-orange-300 text-orange-950 font-medium';
+          singleBadgeClass = 'bg-orange-500 text-white';
+          singleBadgeText = rawTyp;
+          singleIcon = '🏖️';
+        }
+      }
       
       days.push({
         day,
         dateToPass: `${String(day).padStart(2, '0')}-${String(month + 1).padStart(2, '0')}-${year}`,
         teamData: teamOnThisDay,
         counts: { workingCount, sickCount, offCount, leaveCount },
+        singleStyle: { cardClass: singleCardClass, badgeClass: singleBadgeClass, badgeText: singleBadgeText, icon: singleIcon },
         isToday,
         isSunday: currLoopDate.getDay() === 0,
         isSaturday: currLoopDate.getDay() === 6
       });
     }
-    return { calendarDays: days };
-  }, [year, month, totalDays, filteredScheduleRecords, today]);
+    return {
+      calendarDays: days,
+      calendarStats: { off: totalOff, work: totalWork, sick: totalSick, leave: totalLeave }
+    };
+  }, [year, month, totalDays, filteredScheduleRecords, today, isSingleEmployeeCalendar, t]);
 
   const getShiftTimes = (shiftVal, stdWorkingDay = 'BACKOFFICE52') => {
     const shiftInfo = SHIFT_OPTIONS.find(s => s.value === shiftVal) || SHIFT_OPTIONS[8];
@@ -2439,6 +2560,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
               value={selectedEmployee}
               onChange={(e) => {
                  setSelectedEmployee(e.target.value);
+                 setCalendarSelectedEmployees([]);
                  if (showFilterAlert) setShowFilterAlert(false);
               }}
               className="w-full pl-3.5 pr-8 py-1.5 text-[13px] font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm cursor-pointer transition relative z-0"
@@ -2638,16 +2760,99 @@ export default function Approval({ currentUser: propCurrentUser }) {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 w-full">
         <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end pb-4 mb-4 border-b border-gray-100 gap-4">
           <div className="flex-1 min-w-0 w-full xl:w-auto flex flex-col gap-3">
-            <div>
-              <h3 className="text-sm sm:text-lg font-bold text-gray-900 flex flex-wrap items-center gap-1.5 sm:gap-2">
-                <svg className="w-5 h-5 text-blue-600 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                {t.calTitle}
-              </h3>
-              <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 break-words">
-                {selectedEmployee === 'all' 
-                  ? t.calDescAll 
-                  : `${t.calDescOne} ${teamMembers.find(m => m.email === selectedEmployee)?.name || selectedEmployee}`}
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm sm:text-lg font-bold text-gray-900 flex flex-wrap items-center gap-1.5 sm:gap-2">
+                  <svg className="w-5 h-5 text-blue-600 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  {t.calTitle}
+                </h3>
+                <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 break-words">
+                  {selectedEmployee !== 'all'
+                    ? `${t.calDescOne} ${teamMembers.find(m => m.email === selectedEmployee)?.name || selectedEmployee}`
+                    : calendarSelectedEmployees.length > 0
+                    ? t.calDescMulti.replace('{count}', calendarSelectedEmployees.length)
+                    : isHrActive
+                    ? `${t.calDescAllCompany} (${scopedCalendarMembers.length})`
+                    : `${t.calDescAll} (${scopedCalendarMembers.length})`}
+                </p>
+              </div>
+
+              {selectedEmployee === 'all' && scopedCalendarMembers.length > 1 && (
+                <div className="relative" ref={calEmpDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsCalEmpDropdownOpen(!isCalEmpDropdownOpen)}
+                    className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+                  >
+                    <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span>
+                      {calendarSelectedEmployees.length === 0
+                        ? `${t.calFilterAllOpt} (${scopedCalendarMembers.length})`
+                        : `${t.calFilterEmpBtn} (${calendarSelectedEmployees.length})`}
+                    </span>
+                    <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {isCalEmpDropdownOpen && (
+                    <div className="absolute left-0 sm:right-0 sm:left-auto mt-1.5 w-64 bg-white border border-gray-200 rounded-2xl shadow-xl z-40 p-2">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <input
+                          type="text"
+                          value={calEmpSearch}
+                          onChange={(e) => setCalEmpSearch(e.target.value)}
+                          placeholder={t.calFilterSearchPh}
+                          className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-gray-50"
+                        />
+                        {calendarSelectedEmployees.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setCalendarSelectedEmployees([])}
+                            className="px-2 py-1.5 text-[11px] font-bold text-red-600 hover:bg-red-50 rounded-lg shrink-0"
+                          >
+                            {t.calFilterClear}
+                          </button>
+                        )}
+                      </div>
+                      <div className="max-h-56 overflow-y-auto divide-y divide-gray-50">
+                        {scopedCalendarMembers
+                          .filter(m => !calEmpSearch || m.name.toLowerCase().includes(calEmpSearch.toLowerCase()) || m.email.toLowerCase().includes(calEmpSearch.toLowerCase()))
+                          .map((member) => {
+                            const checked = calendarSelectedEmployees.includes(member.email);
+                            return (
+                              <label
+                                key={member.email}
+                                className="flex items-center gap-2 px-2 py-1.5 hover:bg-blue-50/60 rounded-lg cursor-pointer text-xs"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    setCalendarSelectedEmployees(prev =>
+                                      prev.includes(member.email)
+                                        ? prev.filter(e => e !== member.email)
+                                        : [...prev, member.email]
+                                    );
+                                  }}
+                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-semibold text-gray-800 truncate">{member.name}</div>
+                                  {isHrActive && member.department && (
+                                    <div className="text-[10px] text-gray-400 capitalize truncate">{member.department}</div>
+                                  )}
+                                </div>
+                              </label>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Inline Summary Balance Cards */}
@@ -2685,6 +2890,25 @@ export default function Approval({ currentUser: propCurrentUser }) {
           </div>
         </div>
 
+        <div className="grid grid-cols-4 border border-gray-200 rounded-xl overflow-hidden divide-x divide-gray-100 text-center py-2.5 bg-white shadow-xs mb-3">
+          <div>
+            <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statOff}</span>
+            <span className="text-base sm:text-lg font-black text-red-600 leading-tight">{calendarStats.off}</span>
+          </div>
+          <div>
+            <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statWork}</span>
+            <span className="text-base sm:text-lg font-black text-green-600 leading-tight">{calendarStats.work}</span>
+          </div>
+          <div>
+            <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statSick}</span>
+            <span className="text-base sm:text-lg font-black text-pink-600 leading-tight">{calendarStats.sick}</span>
+          </div>
+          <div>
+            <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statLeave}</span>
+            <span className="text-base sm:text-lg font-black text-orange-600 leading-tight">{calendarStats.leave}</span>
+          </div>
+        </div>
+
         <div className="grid grid-cols-7 text-center text-xs font-bold pt-1 mb-1">
           {t.daysOfWeek.map((day, idx) => (
             <span key={idx} className={idx === 0 ? 'text-red-500' : idx === 6 ? 'text-blue-600' : 'text-gray-700'}>
@@ -2698,66 +2922,111 @@ export default function Approval({ currentUser: propCurrentUser }) {
             <div key={`empty-${idx}`} className="h-20 sm:h-24 bg-gray-50 border border-dashed border-gray-200 rounded-xl opacity-40"></div>
           ))}
 
-          {calendarDays.map((d) => (
-            <div 
-              key={`day-${d.day}`}
-              onClick={() => {
-                if (d.teamData.length > 0) {
-                  setTeamScheduleModalData({ date: d.dateToPass, records: d.teamData });
-                } else if (selectedEmployee && selectedEmployee !== 'all') {
-                  const empData = teamMembers.find(m => m.email.toLowerCase() === selectedEmployee.toLowerCase());
-                  if (empData) {
-                    openSingleScheduleEdit({
-                      Employee: empData.email,
-                      Name: empData.name,
-                      type: 'Working Day',
-                      shift: 'M9'
-                    }, d.dateToPass);
-                  }
-                }
-              }}
-              className={`relative h-20 sm:h-24 p-1 sm:p-2 rounded-xl border transition flex flex-col overflow-hidden bg-white ${d.teamData.length > 0 || (selectedEmployee && selectedEmployee !== 'all') ? 'cursor-pointer hover:shadow-md hover:border-blue-300' : ''} ${d.isToday ? 'ring-2 ring-blue-500 ring-offset-1 border-blue-300' : 'border-gray-200'}`}
-            >
-              <div className="flex justify-between items-start w-full">
-                <span className={`text-xs sm:text-sm font-extrabold leading-none ${d.isToday ? 'text-blue-600' : d.isSunday ? 'text-red-500' : 'text-gray-800'}`}>
-                  {d.day}
-                </span>
-              </div>
+          {calendarDays.map((d) => {
+            const singleTargetEmail = selectedEmployee !== 'all'
+              ? selectedEmployee
+              : calendarSelectedEmployees.length === 1
+              ? calendarSelectedEmployees[0]
+              : null;
 
-              <div className="w-full flex flex-col gap-1 my-auto mt-2">
-                {d.counts.workingCount > 0 && (
-                  <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded px-1.5 py-0.5 w-full">
-                    <span className="text-[8px] sm:text-[9px] font-bold text-green-700 uppercase tracking-tight">{t.statWork}</span>
-                    <span className="bg-green-600 text-white text-[9px] sm:text-[10px] font-black px-1.5 rounded-sm">{d.counts.workingCount}</span>
+            return (
+              <div 
+                key={`day-${d.day}`}
+                onClick={() => {
+                  if (d.teamData.length > 0) {
+                    setTeamScheduleModalData({ date: d.dateToPass, records: d.teamData });
+                  } else if (singleTargetEmail) {
+                    const empData = teamMembers.find(m => m.email.toLowerCase() === singleTargetEmail.toLowerCase());
+                    if (empData) {
+                      openSingleScheduleEdit({
+                        Employee: empData.email,
+                        Name: empData.name,
+                        type: 'Working Day',
+                        shift: 'M9'
+                      }, d.dateToPass);
+                    }
+                  }
+                }}
+                className={`relative h-20 sm:h-24 p-1 sm:p-2 rounded-xl border transition flex flex-col overflow-hidden ${isSingleEmployeeCalendar && d.teamData.length > 0 ? d.singleStyle.cardClass : 'bg-white border-gray-200'} ${d.teamData.length > 0 || singleTargetEmail ? 'cursor-pointer hover:shadow-md hover:border-blue-300' : ''} ${d.isToday ? 'ring-2 ring-blue-500 ring-offset-1 border-blue-300' : ''}`}
+              >
+                <div className="flex justify-between items-start w-full">
+                  <span className={`text-xs sm:text-sm font-extrabold leading-none ${d.isToday ? 'text-blue-600' : d.isSunday ? 'text-red-500' : 'text-gray-800'}`}>
+                    {d.day}
+                  </span>
+                  {isSingleEmployeeCalendar && d.singleStyle.icon && (
+                    <span className="text-sm sm:text-base leading-none select-none">{d.singleStyle.icon}</span>
+                  )}
+                </div>
+
+                {isSingleEmployeeCalendar && d.teamData.length > 0 && d.singleStyle.badgeText ? (
+                  <div className="w-full flex items-center justify-center my-auto">
+                    <span className={`w-full py-0.5 px-1 rounded-md text-[9px] sm:text-[10px] font-bold text-center truncate shadow-2xs ${d.singleStyle.badgeClass}`}>
+                      {d.singleStyle.badgeText}
+                    </span>
                   </div>
-                )}
-                {d.counts.sickCount > 0 && (
-                  <div className="flex items-center justify-between bg-pink-50 border border-pink-200 rounded px-1.5 py-0.5 w-full">
-                    <span className="text-[8px] sm:text-[9px] font-bold text-pink-700 uppercase tracking-tight">{t.statSick}</span>
-                    <span className="bg-pink-500 text-white text-[9px] sm:text-[10px] font-black px-1.5 rounded-sm">{d.counts.sickCount}</span>
-                  </div>
-                )}
-                {d.counts.leaveCount > 0 && (
-                  <div className="flex items-center justify-between bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 w-full">
-                    <span className="text-[8px] sm:text-[9px] font-bold text-orange-700 uppercase tracking-tight">{t.statLeave}</span>
-                    <span className="bg-orange-500 text-white text-[9px] sm:text-[10px] font-black px-1.5 rounded-sm">{d.counts.leaveCount}</span>
-                  </div>
-                )}
-                {d.counts.offCount > 0 && (
-                  <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded px-1.5 py-0.5 w-full">
-                    <span className="text-[8px] sm:text-[9px] font-bold text-red-700 uppercase tracking-tight">{t.statOff}</span>
-                    <span className="bg-red-600 text-white text-[9px] sm:text-[10px] font-black px-1.5 rounded-sm">{d.counts.offCount}</span>
-                  </div>
-                )}
-                {d.teamData.length === 0 && (
-                  <div className="flex items-center justify-center w-full mt-2">
-                    <span className="text-[10px] text-gray-300">-</span>
+                ) : (
+                  <div className="w-full flex flex-col gap-0.5 sm:gap-1 my-auto mt-1">
+                    {d.counts.workingCount > 0 && (
+                      <div className="flex items-center justify-between bg-green-100/90 border border-green-300 rounded px-1 sm:px-1.5 py-0.5 w-full">
+                        <span className="text-[8px] sm:text-[9px] font-bold text-green-900 uppercase tracking-tight truncate">{t.statWork}</span>
+                        <span className="bg-green-600 text-white text-[9px] sm:text-[10px] font-black px-1 sm:px-1.5 rounded-sm leading-tight">{d.counts.workingCount}</span>
+                      </div>
+                    )}
+                    {d.counts.sickCount > 0 && (
+                      <div className="flex items-center justify-between bg-pink-100/90 border border-pink-300 rounded px-1 sm:px-1.5 py-0.5 w-full">
+                        <span className="text-[8px] sm:text-[9px] font-bold text-pink-900 uppercase tracking-tight truncate">{t.statSick}</span>
+                        <span className="bg-pink-500 text-white text-[9px] sm:text-[10px] font-black px-1 sm:px-1.5 rounded-sm leading-tight">{d.counts.sickCount}</span>
+                      </div>
+                    )}
+                    {d.counts.leaveCount > 0 && (
+                      <div className="flex items-center justify-between bg-orange-100/90 border border-orange-300 rounded px-1 sm:px-1.5 py-0.5 w-full">
+                        <span className="text-[8px] sm:text-[9px] font-bold text-orange-900 uppercase tracking-tight truncate">{t.statLeave}</span>
+                        <span className="bg-orange-500 text-white text-[9px] sm:text-[10px] font-black px-1 sm:px-1.5 rounded-sm leading-tight">{d.counts.leaveCount}</span>
+                      </div>
+                    )}
+                    {d.counts.offCount > 0 && (
+                      <div className="flex items-center justify-between bg-red-100/90 border border-red-300 rounded px-1 sm:px-1.5 py-0.5 w-full">
+                        <span className="text-[8px] sm:text-[9px] font-bold text-red-900 uppercase tracking-tight truncate">{t.statOff}</span>
+                        <span className="bg-red-600 text-white text-[9px] sm:text-[10px] font-black px-1 sm:px-1.5 rounded-sm leading-tight">{d.counts.offCount}</span>
+                      </div>
+                    )}
+                    {d.teamData.length === 0 && (
+                      <div className="flex items-center justify-center w-full mt-2">
+                        <span className="text-[10px] text-gray-300">-</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         
+        </div>
+
+        <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs">
+          <h4 className="font-bold text-gray-700 mb-1.5 border-b border-gray-200 pb-1">{t.legend}</h4>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded bg-green-500 shrink-0"></span>
+              <span className="text-gray-600 font-medium">{t.legWorking}</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded bg-pink-500 shrink-0"></span>
+              <span className="text-gray-600 font-medium">{t.legSick}</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded bg-red-500 shrink-0"></span>
+              <span className="text-gray-600 font-medium">{t.legOff}</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded bg-orange-500 shrink-0"></span>
+              <span className="text-gray-600 font-medium">{t.legLeave}</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded border border-gray-300 bg-white shrink-0"></span>
+              <span className="text-gray-600 font-medium">{t.legNoSched}</span>
+            </div>
+          </div>
         </div>
         
         <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
@@ -2882,7 +3151,15 @@ export default function Approval({ currentUser: propCurrentUser }) {
             
             <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
               {teamScheduleModalData.records.map((emp, idx) => {
-                const empName = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'employee_name', 'Employee'], 'Employee');
+                const rawEmpKey = normalizeText(getPropCaseInsensitive(emp, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'Barcode', 'barcode'], ''));
+                const matchedMember = teamMembers.find(m =>
+                  m.email.toLowerCase() === rawEmpKey ||
+                  (m.emails && m.emails.includes(rawEmpKey)) ||
+                  normalizeText(m.name) === rawEmpKey ||
+                  normalizeText(m.barcode) === rawEmpKey
+                );
+                const empName = matchedMember?.name || getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'employee_name', 'Employee'], 'Employee');
+                const empDept = matchedMember?.department || '';
                 const typ = getPropCaseInsensitive(emp, ['type', 'Type', 'status'], '-');
                 const shift = getPropCaseInsensitive(emp, ['shift', 'jam kerja'], '-');
                 
@@ -2925,8 +3202,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-gray-500 font-medium mt-0.5">
-                        Shift: {shift !== '-' ? shift : (isOff ? t.badgeOff : '-')}
+                      <div className="text-[11px] text-gray-500 font-medium mt-0.5 flex flex-wrap items-center gap-1.5">
+                        <span>Shift: {shift !== '-' ? shift : (isOff ? t.badgeOff : '-')}</span>
+                        {isHrActive && empDept && (
+                          <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.2 rounded capitalize">
+                            • {empDept}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
