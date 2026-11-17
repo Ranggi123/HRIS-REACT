@@ -99,6 +99,16 @@ const toIsoTimestampString = (val, fallbackDateVal = null) => {
   return str;
 };
 
+const addDaysIso = (dateVal, daysToAdd) => {
+  const parsed = parseFlexibleDate(dateVal);
+  if (!parsed || isNaN(parsed.getTime())) return '';
+  const res = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate() + daysToAdd);
+  const y = res.getFullYear();
+  const m = String(res.getMonth() + 1).padStart(2, '0');
+  const d = String(res.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const toIsoDateString = (val) => {
   if (!val || val === '-' || val === 'null' || val === 'undefined') return '';
   const str = String(val).trim();
@@ -658,15 +668,21 @@ export default function Approval({ currentUser: propCurrentUser }) {
     badgeLeave: 'Cuti Tahunan',
     editModalTitle: 'Edit Jadwal Tanggal',
     editModalSub: 'Perbarui shift atau tipe kerja karyawan',
+    btnRequestWork: 'Request Work',
+    btnSubmitRequest: 'Kirim Permintaan',
+    phModalTitle: 'Work on Public Holiday',
+    phModalSub: 'Ajukan permintaan bekerja pada hari libur nasional',
     lblDate: 'Tanggal (Hanya Baca)',
     lblBarcode: 'Barcode Karyawan',
     lblName: 'Nama Karyawan',
     lblType: 'Tipe Hari',
+    lblTypeReadOnly: 'Tipe Hari (Tidak Dapat Diubah)',
     lblShift: 'Shift Kerja',
     lblShiftHint: 'Angka belakang menunjukkan jam mulai',
     lblAutoCalc: 'Kalkulasi Jam Kerja Otomatis',
     lblStart: 'Waktu Mulai:',
     lblEnd: 'Waktu Selesai:',
+    phAlreadyRequested: 'Request to Work on Public Holiday sudah diajukan',
     msgOffDay: 'Status Libur tidak memerlukan jam kerja (Mulai & Selesai diisi \'-\').',
     reqDetailTitle: 'Detail Permintaan',
     reqEmpInfo: 'Informasi Karyawan',
@@ -763,15 +779,21 @@ export default function Approval({ currentUser: propCurrentUser }) {
     badgeLeave: 'Leave',
     editModalTitle: 'Edit Schedule Date',
     editModalSub: 'Update employee shift or type',
+    btnRequestWork: 'Request Work',
+    btnSubmitRequest: 'Submit Request',
+    phModalTitle: 'Work on Public Holiday',
+    phModalSub: 'Submit request to work on public holiday',
     lblDate: 'Date (Read-Only)',
     lblBarcode: 'Employee Barcode',
     lblName: 'Employee Name',
     lblType: 'Day Type',
+    lblTypeReadOnly: 'Day Type (Read-Only)',
     lblShift: 'Work Shift',
     lblShiftHint: 'Trailing number indicates start hour',
     lblAutoCalc: 'Auto Calculate Work Hours',
     lblStart: 'Start Time:',
     lblEnd: 'End Time:',
+    phAlreadyRequested: 'Work on Public Holiday already requested',
     msgOffDay: 'Day Off status requires no hours (Start & End set to \'-\').',
     reqDetailTitle: 'Request Detail',
     reqEmpInfo: 'Employee Information',
@@ -858,6 +880,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const [singleScheduleEdit, setSingleScheduleEdit] = useState(null);
   const [isSavingSingleSchedule, setIsSavingSingleSchedule] = useState(false);
 
+  const [publicHolidayRecords, setPublicHolidayRecords] = useState([]);
+  const [workOnPhModal, setWorkOnPhModal] = useState(null);
+  const [isSavingWorkOnPh, setIsSavingWorkOnPh] = useState(false);
+
   const userWorkEmail = useMemo(() => {
     return (
       getValidPropCaseInsensitive(currentUser, [
@@ -894,14 +920,17 @@ export default function Approval({ currentUser: propCurrentUser }) {
     setLoading(true);
 
     try {
-      const [dirRes, compRes, holRes, lvRes, attRes, schedRes] = await Promise.allSettled([
+      const [dirRes, compRes, holRes, lvRes, attRes, schedRes, pubHolRes] = await Promise.allSettled([
         fetchAllRows('employee_directory', 20000),
         fetchAllRows('company', 5000),
         fetchAllRows('holiday_balance', 50000),
         fetchAllRows('leave_requests', 50000),
         fetchAllRows('attendance', 100000),
-        fetchAllRows('schedule', 100000)
+        fetchAllRows('schedule', 100000),
+        fetchAllRows('public_holidays', 2000)
       ]);
+      const pubHolData = pubHolRes.status === 'fulfilled' && Array.isArray(pubHolRes.value) ? pubHolRes.value : [];
+      setPublicHolidayRecords(pubHolData);
 
       const dirData = dirRes.status === 'fulfilled' && Array.isArray(dirRes.value) ? dirRes.value : [];
       const compData = compRes.status === 'fulfilled' && Array.isArray(compRes.value) ? compRes.value : [];
@@ -1510,13 +1539,35 @@ export default function Approval({ currentUser: propCurrentUser }) {
       });
 
       let workingCount = 0; let sickCount = 0; let offCount = 0; let leaveCount = 0;
+      let requestedWorkOnPh = false;
       teamOnThisDay.forEach(item => {
         const typ = (getPropCaseInsensitive(item, ['type', 'Type', 'status', 'Status', 'schedule_type', 'Schedule Type']) || '').toLowerCase();
         if (typ.includes('working') || typ === 'work' || typ.includes('kerja')) workingCount++;
         else if (typ.includes('sick') || typ.includes('maternity') || typ.includes('sakit') || typ.includes('melahirkan')) sickCount++;
-        else if (typ.includes('day off') || typ === 'off' || typ.includes('holiday') || typ.includes('libur')) offCount++;
+        else if (typ.includes('public holiday') || typ === 'holiday' || typ.includes('nasional')) {
+          // Public Holiday is separate from Day Off
+        } else if (typ.includes('day off') || typ === 'off' || typ.includes('libur')) offCount++;
         else if (typ) leaveCount++;
+        
+        const reqPhVal = getPropCaseInsensitive(item, [
+            'Request to Work on Public Holiday?',
+            'request_to_work_on_public_holiday',
+            'Request to Work on Public Holiday',
+            'requesttoworkonpublicholiday'
+        ], '');
+        if (['true', '1', 't', 'yes', 'y'].includes(String(reqPhVal).trim().toLowerCase())) requestedWorkOnPh = true;
       });
+      
+      const holidaysOnDate = publicHolidayRecords.filter(item => {
+        const dateVal = item.date || item.Date || item.tanggal || item.Tanggal || item.DATE;
+        return checkDateMatch(dateVal, year, month, day);
+      });
+      const matchingHolidayName = holidaysOnDate.length > 0 
+        ? (holidaysOnDate[0].Remarks || holidaysOnDate[0].remarks || holidaysOnDate[0].holiday_name || holidaysOnDate[0].name || holidaysOnDate[0].description || holidaysOnDate[0].type || 'Public Holiday')
+        : '';
+        
+      const isPublicHoliday = holidaysOnDate.length > 0 || (teamOnThisDay.length > 0 && (getPropCaseInsensitive(teamOnThisDay[0], ['type', 'Type', 'status', 'Status']) || '').toLowerCase().includes('public holiday'));
+      
 
       totalOff += offCount;
       totalWork += workingCount;
@@ -1541,7 +1592,12 @@ export default function Approval({ currentUser: propCurrentUser }) {
           singleBadgeClass = 'bg-pink-500 text-white';
           singleBadgeText = rawTyp || t.badgeSick;
           singleIcon = '💉';
-        } else if (tLower.includes('day off') || tLower === 'off' || tLower.includes('holiday') || tLower.includes('libur')) {
+        } else if (tLower.includes('public holiday') || tLower === 'holiday' || tLower.includes('nasional')) {
+          singleCardClass = 'bg-purple-100 border-purple-300 text-purple-950 font-medium';
+          singleBadgeClass = 'bg-purple-600 text-white';
+          singleBadgeText = 'PUBLIC HOLIDAY';
+          singleIcon = '🏖️';
+        } else if (tLower.includes('day off') || tLower === 'off' || tLower.includes('libur')) {
           singleCardClass = 'bg-red-100 border-red-300 text-red-950 font-medium';
           singleBadgeClass = 'bg-red-600 text-white';
           singleBadgeText = rawTyp || t.badgeOff;
@@ -1560,6 +1616,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
         teamData: teamOnThisDay,
         counts: { workingCount, sickCount, offCount, leaveCount },
         singleStyle: { cardClass: singleCardClass, badgeClass: singleBadgeClass, badgeText: singleBadgeText, icon: singleIcon },
+        isPublicHoliday,
+        requestedWorkOnPh,
+        holidayRemarks: matchingHolidayName,
         isToday,
         isSunday: currLoopDate.getDay() === 0,
         isSaturday: currLoopDate.getDay() === 6
@@ -1569,7 +1628,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
       calendarDays: days,
       calendarStats: { off: totalOff, work: totalWork, sick: totalSick, leave: totalLeave }
     };
-  }, [year, month, totalDays, filteredScheduleRecords, today, isSingleEmployeeCalendar, t]);
+  }, [year, month, totalDays, filteredScheduleRecords, today, isSingleEmployeeCalendar, t, publicHolidayRecords]);
 
   const getShiftTimes = (shiftVal, stdWorkingDay = 'BACKOFFICE52') => {
     const shiftInfo = SHIFT_OPTIONS.find(s => s.value === shiftVal) || SHIFT_OPTIONS[8];
@@ -1679,6 +1738,179 @@ export default function Approval({ currentUser: propCurrentUser }) {
       alert((currentLang === 'id' ? 'Gagal memperbarui jadwal: ' : 'Failed to save schedule: ') + err.message);
     }
     setIsSavingSingleSchedule(false);
+  };
+
+  const openWorkOnPublicHolidayModal = (emp, dateStr, remarks) => {
+    const empEmail = (getPropCaseInsensitive(emp, ['Employee', 'employee', 'email', 'user_uid', 'employee_email']) || '').trim().toLowerCase();
+    const memberProfile = teamMembers.find(m => m.email.toLowerCase() === empEmail || (m.emails && m.emails.includes(empEmail))) || {};
+    const empName = getPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'employee_name'], memberProfile.name || empEmail);
+    const barcode = memberProfile.barcode || getPropCaseInsensitive(emp, ['barcode', 'Barcode', 'nik', 'nip', 'id', 'employee_id']) || '-';
+    const stdWorkingDay = memberProfile.standart_working_day || 'BACKOFFICE52';
+    const initialShift = getPropCaseInsensitive(emp, ['shift', 'Shift', 'jam kerja'], 'M9');
+    const validShift = SHIFT_OPTIONS.some(s => s.value === initialShift) ? initialShift : 'M9';
+    
+    setWorkOnPhModal({
+      id: emp.id || getPropCaseInsensitive(emp, ['id', 'ID', 'uid', '_id']),
+      date: dateStr,
+      email: empEmail,
+      name: empName,
+      barcode: barcode,
+      standart_working_day: stdWorkingDay,
+      type: 'Working Day',
+      shift: validShift,
+      holidayRemarks: remarks,
+      rawRecord: emp,
+      memberProfile: memberProfile
+    });
+    setTeamScheduleModalData(null);
+  };
+
+  const saveWorkOnPublicHoliday = async () => {
+    if (!workOnPhModal) return;
+    setIsSavingWorkOnPh(true);
+    
+    try {
+      const { startTime, endTime } = getShiftTimes(workOnPhModal.shift, workOnPhModal.standart_working_day);
+      const isoSchedDate = toIsoDateString(workOnPhModal.date) || workOnPhModal.date;
+      const nowIso = new Date().toISOString();
+      
+      const loggedInEmail = getValidPropCaseInsensitive(currentUser, ['Employee work email', 'work_email', 'email', 'Email', 'USER_UID'], '');
+      const loggedInName = getValidPropCaseInsensitive(currentUser, ['Name', 'name', 'nama', 'fullname'], loggedInEmail || 'Employee');
+
+      // 1. Update/Insert Schedule row
+      const payload = {
+        Employee: workOnPhModal.email,
+        Date: isoSchedDate,
+        Type: 'Working Day',
+        Shift: workOnPhModal.shift,
+        'Start Time': startTime,
+        'End Time': endTime,
+        'Request to Work on Public Holiday?': true,
+        'Request to Work on Public Holiday': true
+      };
+      
+      const rawKeys = Object.keys(workOnPhModal.rawRecord || {});
+      const schedTypeCol = resolveTableColumn(rawKeys, ['Type', 'type', 'schedule_type']) || 'Type';
+      const schedShiftCol = resolveTableColumn(rawKeys, ['Shift', 'shift', 'jam kerja']) || 'Shift';
+      const schedStartCol = resolveTableColumn(rawKeys, ['Start Time', 'start_time', 'starttime']) || 'Start Time';
+      const schedEndCol = resolveTableColumn(rawKeys, ['End Time', 'end_time', 'endtime']) || 'End Time';
+      const schedReqCol = resolveTableColumn(rawKeys, ['Request to Work on Public Holiday?', 'request_to_work_on_public_holiday', 'Request to Work on Public Holiday']) || 'Request to Work on Public Holiday?';
+      const schedEmpCol = resolveTableColumn(rawKeys, ['Employee', 'employee', 'email']) || 'Employee';
+      const schedDateCol = resolveTableColumn(rawKeys, ['Date', 'date', 'Tanggal', 'scheduledate', 'schedule_date']) || 'Date';
+      
+      const dbPayload = {
+        [schedTypeCol]: 'Working Day',
+        [schedShiftCol]: workOnPhModal.shift,
+        [schedStartCol]: startTime,
+        [schedEndCol]: endTime,
+        [schedReqCol]: true
+      };
+
+      if (workOnPhModal.id) {
+         const { error: saveErr } = await supabase.from('schedule').update(dbPayload).eq('id', workOnPhModal.id);
+         if (saveErr) throw saveErr;
+      } else {
+         const { data: existingCheck } = await supabase.from('schedule').select('*').ilike(schedEmpCol, workOnPhModal.email).eq(schedDateCol, isoSchedDate).limit(1);
+         if (existingCheck && existingCheck.length > 0) {
+            const rowId = existingCheck[0].id;
+            if (rowId) {
+                const { error: saveErr } = await supabase.from('schedule').update(dbPayload).eq('id', rowId);
+                if (saveErr) throw saveErr;
+            } else {
+                const { error: saveErr } = await supabase.from('schedule').update(dbPayload).ilike(schedEmpCol, workOnPhModal.email).eq(schedDateCol, isoSchedDate);
+                if (saveErr) throw saveErr;
+            }
+         } else {
+            const { error: saveErr } = await supabase.from('schedule').insert([{ [schedEmpCol]: workOnPhModal.email, [schedDateCol]: isoSchedDate, ...dbPayload }]);
+            if (saveErr) throw saveErr;
+         }
+      }
+
+      // 2. Insert into holiday_balance
+      const empCompRaw = workOnPhModal.memberProfile?.company || '';
+      const expDateIso = addDaysIso(isoSchedDate, 90);
+      let desc = workOnPhModal.holidayRemarks || 'Public Holiday';
+      
+      const { data: hSample } = await supabase.from('holiday_balance').select('*').limit(1);
+      const hCols = hSample && hSample.length > 0 ? Object.keys(hSample[0]) : [];
+      const holEmpCol = resolveTableColumn(hCols, ['Employee', 'employee', 'user_uid', 'email']) || 'Employee';
+      const holEmpNameCol = resolveTableColumn(hCols, ['Employee Name', 'employee_name', 'Name', 'name']) || 'Employee Name';
+      const holTypeCol = resolveTableColumn(hCols, ['Type', 'type', 'Type Holiday', 'type_holiday']) || 'Type';
+      const holDateCol = resolveTableColumn(hCols, ['Date', 'date']) || 'Date';
+      const holExpCol = resolveTableColumn(hCols, ['Expiration Date', 'expiration_date', 'exp_date', 'Expired Date']) || 'Expiration Date';
+      const holStatusCol = resolveTableColumn(hCols, ['Status', 'status', 'STATUS']) || 'Status';
+      const holCreatedByCol = resolveTableColumn(hCols, ['CreatedBy', 'created_by', 'createdby', 'Created By']) || 'CreatedBy';
+      const holCreatedDateCol = resolveTableColumn(hCols, ['CreatedDate', 'created_date', 'createddate', 'Created Date', 'created_at']) || 'CreatedDate';
+      const holDescCol = resolveTableColumn(hCols, ['Description', 'description', 'Remarks', 'remarks', 'Notes', 'notes']) || 'Description';
+
+      const holPayload = {
+        [holEmpCol]: workOnPhModal.email,
+        [holEmpNameCol]: workOnPhModal.name,
+        [holTypeCol]: 'Day Off Payment',
+        [holDateCol]: isoSchedDate,
+        [holExpCol]: expDateIso,
+        [holStatusCol]: 'Unused',
+        [holCreatedByCol]: loggedInName,
+        [holCreatedDateCol]: nowIso,
+        [holDescCol]: desc
+      };
+      
+      const { error: holErr } = await supabase.from('holiday_balance').insert([holPayload]);
+      if (holErr) throw holErr;
+      
+      // 3. Email Notification to Line Manager & HR
+      const recipientSet = new Set();
+      const lineMgrEmail = workOnPhModal.memberProfile?.['Line Manager work email'] || workOnPhModal.memberProfile?.line_manager_work_email || workOnPhModal.memberProfile?.linemanager || '';
+      if (lineMgrEmail && lineMgrEmail.includes('@')) recipientSet.add(lineMgrEmail.trim().toLowerCase());
+      
+      rawDirEmployees.forEach(dirEmp => {
+         const st = (getPropCaseInsensitive(dirEmp, ['Status', 'status', 'Account Status']) || '').toLowerCase();
+         const dept = (getPropCaseInsensitive(dirEmp, ['Department', 'department']) || '').toLowerCase();
+         const lvl = (getPropCaseInsensitive(dirEmp, ['Job Level', 'job_level']) || '').toLowerCase();
+         
+         if (st === 'active' && (dept === 'human resources' || dept === 'hr') && lvl === 'manager') {
+            const hrEmail = getPropCaseInsensitive(dirEmp, ['Employee work email', 'employee_work_email', 'work_email']);
+            if (hrEmail && hrEmail.includes('@')) recipientSet.add(hrEmail.trim().toLowerCase());
+         }
+      });
+      
+      if (recipientSet.size > 0) {
+        const subjectTitle = `Work on Public Holiday - ${workOnPhModal.name} (${isoSchedDate})`;
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
+            <h2 style="color: #7c3aed; margin-top: 0; font-size: 18px;">Work on Public Holiday Notification</h2>
+            <p style="font-size: 14px;"><strong>${workOnPhModal.name}</strong> has submitted a request to work on a Public Holiday.</p>
+            <div style="margin-top: 16px; padding: 14px; background: #f8fafc; border-radius: 8px; font-size: 13px; border: 1px solid #e2e8f0;">
+              <p style="margin: 4px 0;"><strong>Employee:</strong> ${workOnPhModal.name} (${workOnPhModal.email})</p>
+              <p style="margin: 4px 0;"><strong>Company:</strong> ${empCompRaw || '-'}</p>
+              <p style="margin: 4px 0;"><strong>Date:</strong> ${isoSchedDate}</p>
+              <p style="margin: 4px 0;"><strong>Public Holiday:</strong> ${desc}</p>
+              <p style="margin: 4px 0;"><strong>Day Type:</strong> Working Day</p>
+              <p style="margin: 4px 0;"><strong>Shift:</strong> ${workOnPhModal.shift} (${startTime} - ${endTime})</p>
+              <p style="margin: 4px 0;"><strong>Day Off Payment Earned:</strong> 1 Day (Expires: ${expDateIso})</p>
+            </div>
+          </div>
+        `;
+
+        await Promise.allSettled(
+          Array.from(recipientSet).map(toEmail =>
+            fetch(GAS_WEB_APP_URL, {
+              method: 'POST',
+              headers: { "Content-Type": "text/plain;charset=utf-8" },
+              body: JSON.stringify({ action: "sendEmail", to: toEmail, subject: subjectTitle, body: emailHtml, htmlBody: emailHtml, fromEmail: loggedInEmail })
+            })
+          )
+        );
+      }
+
+      alert(currentLang === 'id' ? 'Permintaan Work on Public Holiday berhasil disimpan dan Day Off Payment telah ditambahkan!' : 'Work on Public Holiday request submitted and Day Off Payment balance has been created!');
+      setWorkOnPhModal(null);
+      refreshAllData();
+    } catch (err) {
+      console.error('Error submitting Work on Public Holiday:', err);
+      alert((currentLang === 'id' ? 'Gagal mengajukan Work on Public Holiday: ' : 'Failed to submit Work on Public Holiday: ') + err.message);
+    }
+    setIsSavingWorkOnPh(false);
   };
 
   const openBulkEditModal = () => {
@@ -3095,7 +3327,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 key={`day-${d.day}`}
                 onClick={() => {
                   if (d.teamData.length > 0) {
-                    setTeamScheduleModalData({ date: d.dateToPass, records: d.teamData });
+                    setTeamScheduleModalData({ 
+                        date: d.dateToPass, 
+                        records: d.teamData, 
+                        isPublicHoliday: d.isPublicHoliday, 
+                        requestedWorkOnPh: d.requestedWorkOnPh,
+                        holidayRemarks: d.holidayRemarks
+                    });
                   } else if (singleTargetEmail) {
                     const empData = teamMembers.find(m => m.email.toLowerCase() === singleTargetEmail.toLowerCase());
                     if (empData) {
@@ -3376,6 +3614,21 @@ export default function Approval({ currentUser: propCurrentUser }) {
                       <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold border ${badgeClass}`}>
                         {displayType}
                       </span>
+                      
+                      {teamScheduleModalData.isPublicHoliday && !isWorking && !teamScheduleModalData.requestedWorkOnPh && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openWorkOnPublicHolidayModal(emp, teamScheduleModalData.date, teamScheduleModalData.holidayRemarks);
+                          }}
+                          className="px-2.5 py-1 text-xs font-bold text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                          <span>{t.btnRequestWork}</span>
+                        </button>
+                      )}
+                      
                       {isEditable && (
                         <button
                           type="button"
@@ -3857,6 +4110,165 @@ export default function Approval({ currentUser: propCurrentUser }) {
           </div>
         </div>
       )}
+
+            {workOnPhModal && (
+        <div 
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => !isSavingWorkOnPh && setWorkOnPhModal(null)}
+        >
+          <div 
+            className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-0 border border-gray-100 flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-4 sm:p-5 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-purple-50/70 to-indigo-50/40">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center shadow-xs">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">{t.phModalTitle}</h3>
+                  <p className="text-xs text-gray-500">{t.phModalSub}</p>
+                </div>
+              </div>
+              <button 
+                disabled={isSavingWorkOnPh}
+                onClick={() => setWorkOnPhModal(null)}
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-white transition"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-5 space-y-3.5">
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                  1. {t.lblDate}
+                </label>
+                <input 
+                  type="text"
+                  readOnly
+                  value={workOnPhModal.date}
+                  className="w-full px-3 py-2 text-xs font-bold text-gray-700 bg-gray-100 border border-gray-200 rounded-xl cursor-not-allowed select-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                    2. {t.lblBarcode}
+                  </label>
+                  <input 
+                    type="text"
+                    readOnly
+                    value={workOnPhModal.barcode || '-'}
+                    className="w-full px-3 py-2 text-xs font-bold text-gray-700 bg-gray-100 border border-gray-200 rounded-xl cursor-not-allowed select-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                    3. {t.lblName}
+                  </label>
+                  <input 
+                    type="text"
+                    readOnly
+                    value={workOnPhModal.name}
+                    className="w-full px-3 py-2 text-xs font-bold text-gray-700 bg-gray-100 border border-gray-200 rounded-xl cursor-not-allowed select-none truncate"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                  4. {t.lblTypeReadOnly}
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  disabled
+                  value="Working Day"
+                  className="w-full px-3 py-2 text-xs font-bold text-gray-700 bg-gray-100 border border-gray-200 rounded-xl cursor-not-allowed select-none"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider">
+                    5. {t.lblShift}
+                  </label>
+                  <span className="text-[10px] text-gray-400 italic">
+                    {t.lblShiftHint}
+                  </span>
+                </div>
+                <select
+                  value={workOnPhModal.shift}
+                  disabled={isSavingWorkOnPh}
+                  onChange={(e) => setWorkOnPhModal({ ...workOnPhModal, shift: e.target.value })}
+                  className="w-full px-3 py-2 text-xs font-bold text-gray-800 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500/20 focus:outline-none cursor-pointer"
+                >
+                  {SHIFT_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label} — Start {opt.start}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {(() => {
+                const times = getShiftTimes(workOnPhModal.shift, workOnPhModal.standart_working_day);
+                return (
+                  <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-xl">
+                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block mb-1.5">
+                      6 & 7. {t.lblAutoCalc}
+                    </span>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="bg-white p-2 rounded-lg border border-blue-100">
+                        <span className="text-[10px] text-gray-500 block">{t.lblStart}</span>
+                        <span className="font-extrabold text-blue-700 text-sm">{times.startTime}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-blue-100">
+                        <span className="text-[10px] text-gray-500 block">{t.lblEnd}</span>
+                        <span className="font-extrabold text-blue-700 text-sm">{times.endTime}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="p-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={isSavingWorkOnPh}
+                onClick={() => setWorkOnPhModal(null)}
+                className="px-4 py-2 bg-white hover:bg-gray-100 border border-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition cursor-pointer"
+              >
+                {t.btnCancel}
+              </button>
+              <button
+                type="button"
+                disabled={isSavingWorkOnPh}
+                onClick={saveWorkOnPublicHoliday}
+                className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl shadow-sm transition cursor-pointer flex items-center gap-1.5"
+              >
+                {isSavingWorkOnPh ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                    <span>{t.btnSaving}</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                    <span>{t.btnSubmitRequest}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Reject Modal Dialog */}
       {isRejectModalOpen && itemToReject && (
