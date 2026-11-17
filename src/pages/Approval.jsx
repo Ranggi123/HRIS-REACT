@@ -1703,7 +1703,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
     const currentTypeRaw = getPropCaseInsensitive(emp, ['type', 'Type', 'status'], 'Working Day');
     const isOff = currentTypeRaw.toLowerCase().includes('off') || currentTypeRaw.toLowerCase().includes('libur');
     const initialType = isOff ? 'Day Off' : 'Working Day';
-    const initialShift = getPropCaseInsensitive(emp, ['shift', 'Shift', 'jam kerja'], 'M9');
+    const rawShift = getPropCaseInsensitive(emp, ['shift', 'Shift', 'jam kerja'], 'M9');
+    const initialShift = isOff ? '-' : (rawShift === '-' ? 'M9' : rawShift);
     
     setSingleScheduleEdit({
       id: emp.id || getPropCaseInsensitive(emp, ['id', 'ID', 'uid', '_id']),
@@ -2180,8 +2181,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
          return rEmail === selectedEmployee.toLowerCase() || validEmails.includes(rEmail);
       });
       
-      const defaultShift = existing ? getPropCaseInsensitive(existing, ['shift', 'jam kerja'], 'M9') : 'M9';
       const defaultType = existing ? getPropCaseInsensitive(existing, ['type', 'Type', 'status'], 'Working Day') : 'Working Day';
+      const rawShift = existing ? getPropCaseInsensitive(existing, ['shift', 'jam kerja'], 'M9') : 'M9';
+      const isOff = defaultType.toLowerCase().includes('off') || defaultType.toLowerCase().includes('libur');
+      const defaultShift = isOff ? '-' : (rawShift === '-' ? 'M9' : rawShift);
       const existingId = existing ? getPropCaseInsensitive(existing, ['id', 'ID', 'uid']) : null;
       
       return {
@@ -2201,6 +2204,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
   const handleBulkChange = (index, field, value) => {
     const updated = [...bulkEditData];
     updated[index][field] = value;
+    if (field === 'type' && value === 'Day Off') {
+        updated[index]['shift'] = '-';
+    } else if (field === 'type' && value === 'Working Day' && updated[index]['shift'] === '-') {
+        updated[index]['shift'] = 'M9';
+    }
     setBulkEditData(updated);
   };
 
@@ -3864,6 +3872,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                                onChange={(e) => handleBulkChange(idx, 'shift', e.target.value)}
                                className={`w-full sm:w-40 p-2 text-xs border border-gray-300 rounded-lg focus:outline-none disabled:text-gray-400 ${row.type === 'Working Day' && !isLockedType ? 'focus:ring-2 focus:ring-blue-500 bg-white' : 'bg-gray-200'}`}
                             >
+                               <option value="-" disabled className="hidden">-</option>
                                {SHIFT_OPTIONS.map(opt => (
                                  <option key={opt.value} value={opt.value}>{opt.label} (Start {opt.start})</option>
                                ))}
@@ -4014,7 +4023,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                         {displayType}
                       </span>
                       
-                      {(isPublicHolidayType || teamScheduleModalData.isPublicHoliday) && !isWorking && !empRequestedWorkOnPh && (
+                      {(isPublicHolidayType || (teamScheduleModalData.isPublicHoliday && !emp.id)) && !isWorking && !isOff && !empRequestedWorkOnPh && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -4123,7 +4132,11 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 </label>
                 <select
                   value={singleScheduleEdit.type}
-                  onChange={(e) => setSingleScheduleEdit({ ...singleScheduleEdit, type: e.target.value })}
+                  onChange={(e) => {
+                    const newType = e.target.value;
+                    const newShift = newType === 'Day Off' ? '-' : (singleScheduleEdit.shift === '-' ? 'M9' : singleScheduleEdit.shift);
+                    setSingleScheduleEdit({ ...singleScheduleEdit, type: newType, shift: newShift });
+                  }}
                   className="w-full px-3 py-2 text-xs font-bold text-gray-800 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:outline-none cursor-pointer"
                 >
                   <option value="Working Day">{t.bulkTypeWork}</option>
@@ -4146,6 +4159,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                   onChange={(e) => setSingleScheduleEdit({ ...singleScheduleEdit, shift: e.target.value })}
                   className={`w-full px-3 py-2 text-xs font-bold text-gray-800 border rounded-xl focus:outline-none ${singleScheduleEdit.type === 'Working Day' ? 'bg-white border-gray-300 focus:ring-2 focus:ring-blue-500/20 cursor-pointer' : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'}`}
                 >
+                  <option value="-" disabled className="hidden">-</option>
                   {SHIFT_OPTIONS.map(opt => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label} — Start {opt.start}
