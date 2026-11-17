@@ -728,7 +728,7 @@ Period: ${formattedStart} - ${formattedEnd} (${durLabel})
 
 Please review via the HRIS Portal.
 
-Go to HRIS: https://hris.arratechs.com/leave`;
+Go to HRIS: https://hris.arratechs.com/approval`;
 
       const emailHtml = `
 <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
@@ -741,7 +741,7 @@ Go to HRIS: https://hris.arratechs.com/leave`;
   </div>
   <p style="font-size: 14px; margin-bottom: 20px;">Please review via the HRIS Portal.</p>
   <div style="margin: 24px 0 10px 0;">
-    <a href="https://hris.arratechs.com/leave" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">Go to HRIS</a>
+    <a href="https://hris.arratechs.com/approval" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">Go to HRIS</a>
   </div>
 </div>
 `;
@@ -802,7 +802,7 @@ Go to HRIS: https://hris.arratechs.com/leave`;
       const durLabel = `${rDur} day(s)`;
       const lineManager = getPropCaseInsensitive(currentUser, ['Line Manager', 'line_manager', 'Manager Email', 'Approver', 'Atasan Email'], 'ranggiit@gmail.com');
       
-      const emailText = `Hi,\n\nA pending leave request has been CANCELLED by the employee:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nNo further action is required.\n\nGo to HRIS: https://hris.arratechs.com/leave`;
+      const emailText = `Hi,\n\nA pending leave request has been CANCELLED by the employee:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nNo further action is required.\n\nGo to HRIS: https://hris.arratechs.com/approval`;
       const emailHtml = `
 <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
   <p style="margin-top: 0; font-size: 15px;">Hi,</p>
@@ -814,7 +814,7 @@ Go to HRIS: https://hris.arratechs.com/leave`;
   </div>
   <p style="font-size: 14px; margin-bottom: 20px;">No further action is required.</p>
   <div style="margin: 24px 0 10px 0;">
-    <a href="https://hris.arratechs.com/leave" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">Go to HRIS</a>
+    <a href="https://hris.arratechs.com/approval" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">Go to HRIS</a>
   </div>
 </div>
 `;
@@ -874,7 +874,7 @@ Go to HRIS: https://hris.arratechs.com/leave`;
       const durLabel = `${rDur} day(s)`;
       const lineManager = getPropCaseInsensitive(currentUser, ['Line Manager', 'line_manager', 'Manager Email', 'Approver', 'Atasan Email'], 'ranggiit@gmail.com');
       
-      const emailText = `Hi,\n\nA request to CANCEL an APPROVED leave has been submitted by the employee:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nPlease review via the HRIS Portal.\n\nGo to HRIS: https://hris.arratechs.com/leave`;
+      const emailText = `Hi,\n\nA request to CANCEL an APPROVED leave has been submitted by the employee:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nPlease review via the HRIS Portal.\n\nGo to HRIS: https://hris.arratechs.com/approval`;
       const emailHtml = `
 <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
   <p style="margin-top: 0; font-size: 15px;">Hi,</p>
@@ -886,7 +886,7 @@ Go to HRIS: https://hris.arratechs.com/leave`;
   </div>
   <p style="font-size: 14px; margin-bottom: 20px;">Please review via the HRIS Portal.</p>
   <div style="margin: 24px 0 10px 0;">
-    <a href="https://hris.arratechs.com/leave" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">Go to HRIS</a>
+    <a href="https://hris.arratechs.com/approval" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">Go to HRIS</a>
   </div>
 </div>
 `;
@@ -946,7 +946,7 @@ Go to HRIS: https://hris.arratechs.com/leave`;
       const durLabel = `${rDur} day(s)`;
       const lineManager = getPropCaseInsensitive(currentUser, ['Line Manager', 'line_manager', 'Manager Email', 'Approver', 'Atasan Email'], 'ranggiit@gmail.com');
       
-      const emailText = `Hi,\n\nThe employee has ABORTED their request to cancel the approved leave. The leave remains APPROVED:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nNo further action is required.\n\nGo to HRIS: https://hris.arratechs.com/leave`;
+      const emailText = `Hi,\n\nThe employee has ABORTED their request to cancel the approved leave. The leave remains APPROVED:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nNo further action is required.\n\nGo to HRIS: https://hris.arratechs.com/approval`;
       const emailHtml = `
 <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
   <p style="margin-top: 0; font-size: 15px;">Hi,</p>
@@ -958,7 +958,7 @@ Go to HRIS: https://hris.arratechs.com/leave`;
   </div>
   <p style="font-size: 14px; margin-bottom: 20px;">No further action is required.</p>
   <div style="margin: 24px 0 10px 0;">
-    <a href="https://hris.arratechs.com/leave" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">Go to HRIS</a>
+    <a href="https://hris.arratechs.com/approval" target="_blank" rel="noopener noreferrer" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">Go to HRIS</a>
   </div>
 </div>
 `;
