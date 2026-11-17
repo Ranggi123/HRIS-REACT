@@ -1640,7 +1640,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
             singleIcon = '💉';
           } else if (tLower.includes('public holiday') || tLower === 'holiday' || tLower.includes('nasional')) {
             singleCardClass = 'bg-amber-100 border-amber-300 text-amber-950 font-medium';
-            singleBadgeClass = 'bg-amber-600 text-white';
+            singleBadgeClass = 'bg-amber-500 text-white';
             singleBadgeText = 'PUBLIC HOLIDAY';
             singleIcon = '🏖️';
           } else if (tLower.includes('day off') || tLower === 'off' || tLower.includes('libur')) {
@@ -3728,7 +3728,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
           </div>
           <div className="px-0.5 sm:px-2 flex flex-col items-center justify-between">
             <span className="block text-[8px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-tight leading-tight">{t.statPublicHoliday}</span>
-            <span className="text-sm sm:text-lg font-black text-purple-600 leading-tight mt-0.5">{calendarStats.publicHoliday}</span>
+            <span className="text-sm sm:text-lg font-black text-amber-500 leading-tight mt-0.5">{calendarStats.publicHoliday}</span>
           </div>
           <div className="px-0.5 sm:px-2 flex flex-col items-center justify-between">
             <span className="block text-[8px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-tight leading-tight">{t.statWork}</span>
@@ -3838,7 +3838,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                     {d.counts.publicHolidayCount > 0 ? (
                       <div className="flex items-center justify-between bg-amber-100/90 border border-amber-300 rounded px-1 sm:px-1.5 py-0.5 w-full">
                         <span className="text-[8px] sm:text-[9px] font-bold text-amber-900 uppercase tracking-tight truncate">PUBLIC HOLIDAY</span>
-                        <span className="bg-amber-600 text-white text-[9px] sm:text-[10px] font-black px-1 sm:px-1.5 rounded-sm leading-tight">{d.counts.publicHolidayCount}</span>
+                        <span className="bg-amber-500 text-white text-[9px] sm:text-[10px] font-black px-1 sm:px-1.5 rounded-sm leading-tight">{d.counts.publicHolidayCount}</span>
                       </div>
                     ) : d.isPublicHoliday ? (
                       <div className="flex items-center justify-center bg-amber-100/90 border border-amber-300 rounded px-1 sm:px-1.5 py-0.5 w-full">
@@ -3892,7 +3892,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
               <span className="text-gray-600 font-medium">{t.legOff}</span>
             </div>
             <div className="flex items-center space-x-1.5">
-              <span className="w-3 h-3 rounded bg-purple-600 shrink-0"></span>
+              <span className="w-3 h-3 rounded bg-amber-500 shrink-0"></span>
               <span className="text-gray-600 font-medium">{t.legPublicHoliday}</span>
             </div>
             <div className="flex items-center space-x-1.5">
@@ -4075,7 +4075,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                   badgeClass = 'bg-pink-50 text-pink-700 border-pink-200';
                   displayType = t.badgeSick;
                 } else if (isPublicHolidayType) {
-                  badgeClass = 'bg-purple-50 text-purple-700 border-purple-200';
+                  badgeClass = 'bg-amber-50 text-amber-700 border-amber-300';
                   displayType = 'PUBLIC HOLIDAY';
                 } else if (isOff) {
                   badgeClass = 'bg-red-50 text-red-700 border-red-200';
@@ -4088,33 +4088,34 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 return (
                   <div 
                     key={idx} 
-                    className={`flex justify-between items-center p-3 border rounded-xl bg-white shadow-xs transition ${isEditable ? 'border-gray-200 hover:border-blue-300 hover:shadow-sm' : 'border-gray-100 bg-gray-50/50'}`}
+                    className={`flex justify-between items-center gap-3 p-3 border rounded-xl bg-white shadow-xs transition ${isEditable ? 'border-gray-200 hover:border-blue-300 hover:shadow-sm' : 'border-gray-100 bg-gray-50/50'}`}
                   >
-                    <div>
-                      <div className="font-bold text-sm text-gray-800 flex items-center gap-2 flex-wrap">
-                        <span>{empName}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
+                        <span className="truncate">{empName}</span>
                         {isEditable && (
-                          <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded font-medium border border-blue-100">
+                          <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded font-medium border border-blue-100 shrink-0">
                             Editable
                           </span>
                         )}
-                        {empRequestedWorkOnPh && (
-                          <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-bold border border-amber-200">
-                            Work Requested
-                          </span>
-                        )}
                       </div>
-                      <div className="text-[11px] text-gray-500 font-medium mt-0.5 flex flex-wrap items-center gap-1.5">
+                      <div className="text-[11px] text-gray-500 font-medium mt-0.5 flex items-center gap-1.5 truncate">
                         <span>Shift: {shift !== '-' ? shift : (isPublicHolidayType ? 'PUBLIC HOLIDAY' : isOff ? t.badgeOff : '-')}</span>
                         {isHrActive && empDept && (
-                          <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.2 rounded capitalize">
+                          <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.2 rounded capitalize truncate">
                             • {empDept}
                           </span>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold border ${badgeClass}`}>
+                    <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0">
+                      {empRequestedWorkOnPh && (
+                        <span className="px-2 py-1 rounded-md text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 whitespace-nowrap">
+                          Work Requested
+                        </span>
+                      )}
+
+                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold border whitespace-nowrap ${badgeClass}`}>
                         {displayType}
                       </span>
                       
@@ -4125,9 +4126,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
                             e.stopPropagation();
                             openWorkOnPublicHolidayModal(emp, teamScheduleModalData.date, teamScheduleModalData.holidayRemarks);
                           }}
-                          className="px-2.5 py-1 text-xs font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                          className="px-2.5 py-1 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 whitespace-nowrap"
                         >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                          <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                           <span>{t.btnRequestWork}</span>
                         </button>
                       )}
@@ -4139,9 +4140,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
                             e.stopPropagation();
                             openSingleScheduleEdit(emp, teamScheduleModalData.date);
                           }}
-                          className="px-2.5 py-1 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                          className="px-2.5 py-1 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 whitespace-nowrap"
                         >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                          <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                           <span>Edit</span>
                         </button>
                       )}
