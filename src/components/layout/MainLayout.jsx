@@ -4,7 +4,7 @@ import TopNav from './TopNav';
 import BottomNav from './BottomNav';
 import { supabase } from '../../lib/supabase';
 
-const TABLE_EMPLOYEES = ['employee_directory', 'employee directory', 'Employee Directory', 'employees'];
+const TABLE_EMPLOYEES = ['employee_directory'];
 
 const i18n = {
   en: {
@@ -626,8 +626,9 @@ export default function MainLayout() {
             const data = await fetchAllRowsFromTable(tbl, 10000);
             if (data && data.length > 0) {
               const matched = data.find(row => {
-                const rowEmail = String(getCleanProp(row, ['email', 'email address', 'user_uid']) || '').trim().toLowerCase();
-                return rowEmail === emailToMatch;
+                const personalEmail = String(getCleanProp(row, ['email', 'email address', 'user_uid']) || '').trim().toLowerCase();
+                const workEmailVal = String(getCleanProp(row, ['Employee work email', 'employee_work_email', 'work_email', 'work email', 'Work Email']) || '').trim().toLowerCase();
+                return personalEmail === emailToMatch || workEmailVal === emailToMatch;
               });
 
               if (matched) {
