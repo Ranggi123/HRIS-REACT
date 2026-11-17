@@ -2050,6 +2050,56 @@ export default function Approval({ currentUser: propCurrentUser }) {
           const schedTypeCol = resolveTableColumn(schedCols, ['Type', 'type', 'schedule_type']) || 'Type';
           const schedEmpCol = resolveTableColumn(schedCols, ['Employee', 'employee']) || 'Employee';
           const schedDateCol = resolveTableColumn(schedCols, ['Date', 'date']) || 'Date';
+          const schedShiftCol = resolveTableColumn(schedCols, ['Shift', 'shift', 'jam kerja']) || 'Shift';
+          const schedStartCol = resolveTableColumn(schedCols, ['Start Time', 'start_time', 'starttime']) || 'Start Time';
+          const schedEndCol = resolveTableColumn(schedCols, ['End Time', 'end_time', 'endtime']) || 'End Time';
+
+          const startD = parseFlexibleDate(fromDate);
+          const endD = parseFlexibleDate(toDate && toDate !== '-' && toDate !== 'null' ? toDate : fromDate) || startD;
+          const targetDates = [];
+          if (startD && endD) {
+              let curr = new Date(startD);
+              while (curr <= endD) {
+                  const y = curr.getFullYear();
+                  const m = String(curr.getMonth() + 1).padStart(2, '0');
+                  const d = String(curr.getDate()).padStart(2, '0');
+                  targetDates.push(`${y}-${m}-${d}`);
+                  curr.setDate(curr.getDate() + 1);
+              }
+          } else {
+              targetDates.push(toIsoDateString(fromDate) || fromDate);
+          }
+
+          const { data: existingScheds } = await supabase.from('schedule')
+            .select('*')
+            .ilike(schedEmpCol, `%${empEmail}%`)
+            .in(schedDateCol, targetDates);
+
+          const existingDates = new Set((existingScheds || []).map(r => toIsoDateString(r[schedDateCol]) || r[schedDateCol]));
+
+          if (existingDates.size > 0) {
+             await supabase.from('schedule').update({
+               [schedTypeCol]: leaveType,
+               [schedShiftCol]: '-',
+               [schedStartCol]: '-',
+               [schedEndCol]: '-'
+             })
+             .ilike(schedEmpCol, `%${empEmail}%`)
+             .in(schedDateCol, targetDates);
+          }
+
+          const newDates = targetDates.filter(d => !existingDates.has(d) && !existingDates.has(toIsoDateString(d)));
+          if (newDates.length > 0) {
+             const inserts = newDates.map(d => ({
+               [schedEmpCol]: empEmail,
+               [schedDateCol]: d,
+               [schedTypeCol]: leaveType,
+               [schedShiftCol]: '-',
+               [schedStartCol]: '-',
+               [schedEndCol]: '-'
+             }));
+             await supabase.from('schedule').insert(inserts);
+          }
 
           const { data: dirSample } = await supabase.from('employee_directory').select('*').limit(1);
           const dirCols = dirSample && dirSample.length > 0 ? Object.keys(dirSample[0]) : [];
@@ -2132,12 +2182,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
               }
             }
 
-            await supabase.from('schedule').update({
-              [schedTypeCol]: leaveType
-            })
-            .ilike(schedEmpCol, `%${empEmail}%`)
-            .eq(schedDateCol, fromDate);
-
             let recheckQuery = supabase.from('holiday_balance').select('*').limit(5000);
             if (orConditions) {
                recheckQuery = recheckQuery.or(orConditions);
@@ -2171,13 +2215,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
               [balCol]: unusedCount
             }).ilike(dirEmailCol, empEmail);
           } else if (leaveType === 'Annual Leave') {
-            await supabase.from('schedule').update({
-              [schedTypeCol]: leaveType
-            })
-            .ilike(schedEmpCol, `%${empEmail}%`)
-            .gte(schedDateCol, fromDate)
-            .lte(schedDateCol, toDate);
-
             const { data: emps } = await supabase.from('employee_directory').select('*').ilike(dirEmailCol, empEmail).limit(1);
             if (emps && emps.length > 0) {
               const empData = emps[0];
@@ -2188,12 +2225,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
               }).ilike(dirEmailCol, empEmail);
             }
           } else if (['Sick Leave', 'Maternity Leave', 'Compassionate Leave', 'Unpaid Leave'].includes(leaveType)) {
-            await supabase.from('schedule').update({
-              [schedTypeCol]: leaveType
-            })
-            .ilike(schedEmpCol, `%${empEmail}%`)
-            .gte(schedDateCol, fromDate)
-            .lte(schedDateCol, toDate);
+            // Already handled by universal schedule upsert above
           }
 
         } catch (sideErr) {
