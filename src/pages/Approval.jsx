@@ -1994,8 +1994,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 if (saveErr) throw saveErr;
             }
          } else {
-            const { error: saveErr } = await supabase.from('schedule').insert([{ [schedEmpCol]: workOnPhModal.email, [schedDateCol]: isoSchedDate, ...dbPayload }]);
-            if (saveErr) throw saveErr;
+            await insertScheduleRowsSafe([{ [schedEmpCol]: workOnPhModal.email, [schedDateCol]: isoSchedDate, ...dbPayload }], workOnPhModal.rawRecord || null);
          }
       }
 
@@ -2066,9 +2065,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
       const createdByVal = actualUserWorkEmail || topNavEmail || loggedInEmail || loggedInName;
 
-      // 3. Insert into holiday_balance
+      // 3. Insert into holiday_balance (including required Holiday ID)
       const { data: hSample } = await supabase.from('holiday_balance').select('*').limit(1);
-      const hCols = hSample && hSample.length > 0 ? Object.keys(hSample[0]) : [];
+      const hCols = Array.from(new Set([
+        ...(hSample && hSample.length > 0 ? Object.keys(hSample[0]) : []),
+        ...(rawHolidays && rawHolidays.length > 0 ? Object.keys(rawHolidays[0]) : [])
+      ]));
+      const holIdCol = resolveTableColumn(hCols, ['Holiday ID', 'holiday_id', 'UID', 'uid', 'id', 'ID']) || 'Holiday ID';
       const holEmpCol = resolveTableColumn(hCols, ['Employee', 'employee', 'user_uid', 'email']) || 'Employee';
       const holEmpNameCol = resolveTableColumn(hCols, ['Employee Name', 'employee_name', 'Name', 'name']) || 'Employee Name';
       const holTypeCol = resolveTableColumn(hCols, ['Type', 'type', 'Type Holiday', 'type_holiday']) || 'Type';
@@ -2079,7 +2082,52 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const holCreatedDateCol = resolveTableColumn(hCols, ['CreatedDate', 'created_date', 'createddate', 'Created Date', 'created_at']) || 'CreatedDate';
       const holDescCol = resolveTableColumn(hCols, ['Description', 'description', 'Remarks', 'remarks', 'Notes', 'notes']) || 'Description';
 
+      const generateHolidayId = () => {
+        const sampleRefRow = (hSample && hSample.length > 0 ? hSample[0] : null) || (rawHolidays && rawHolidays.length > 0 ? rawHolidays[0] : null);
+        const sampleVal = sampleRefRow ? sampleRefRow[holIdCol] : undefined;
+        const shortHex = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+          ? crypto.randomUUID().replace(/-/g, '').slice(0, 8)
+          : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.slice(0, 8);
+
+        if (typeof sampleVal === 'number') {
+          const maxNum = (rawHolidays || []).reduce((mx, r) => {
+            const n = Number(r[holIdCol]);
+            return !isNaN(n) && n > mx ? n : mx;
+          }, sampleVal);
+          return maxNum + 1;
+        }
+        if (typeof sampleVal === 'string') {
+          const trimmed = sampleVal.trim();
+          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
+            return (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : shortHex;
+          }
+          if (/^\d+$/.test(trimmed)) {
+            const maxNum = (rawHolidays || []).reduce((mx, r) => {
+              const n = parseInt(String(r[holIdCol] || '').trim(), 10);
+              return !isNaN(n) && n > mx ? n : mx;
+            }, parseInt(trimmed, 10));
+            return String(maxNum + 1).padStart(trimmed.length, '0');
+          }
+          const prefixMatch = trimmed.match(/^([A-Za-z_-]+)(\d+)$/);
+          if (prefixMatch) {
+            const prefix = prefixMatch[1];
+            const numLen = prefixMatch[2].length;
+            const maxNum = (rawHolidays || []).reduce((mx, r) => {
+              const m = String(r[holIdCol] || '').trim().match(/^([A-Za-z_-]+)(\d+)$/);
+              if (m && m[1] === prefix) {
+                const n = parseInt(m[2], 10);
+                return !isNaN(n) && n > mx ? n : mx;
+              }
+              return mx;
+            }, parseInt(prefixMatch[2], 10));
+            return `${prefix}${String(maxNum + 1).padStart(numLen, '0')}`;
+          }
+        }
+        return shortHex;
+      };
+
       const holPayload = {
+        [holIdCol]: generateHolidayId(),
         [holEmpCol]: workOnPhModal.email,
         [holEmpNameCol]: workOnPhModal.name,
         [holTypeCol]: 'Day Off Payment',
@@ -2090,9 +2138,53 @@ export default function Approval({ currentUser: propCurrentUser }) {
         [holCreatedDateCol]: nowIso,
         [holDescCol]: desc
       };
-      
-      const { error: holErr } = await supabase.from('holiday_balance').insert([holPayload]);
+
+      let { error: holErr } = await supabase.from('holiday_balance').insert([holPayload]);
+      if (holErr) {
+        const errText = `${holErr.message || ''} ${holErr.details || ''}`;
+        const nullColMatch = errText.match(/null value in column "([^"]+)"/i);
+        if (nullColMatch) {
+          const missingCol = nullColMatch[1];
+          holPayload[missingCol] = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+            ? crypto.randomUUID().replace(/-/g, '').slice(0, 8)
+            : String(Date.now());
+          const retryHol = await supabase.from('holiday_balance').insert([holPayload]);
+          holErr = retryHol.error;
+        }
+      }
       if (holErr) throw holErr;
+
+      // Sync Day Off Payment Balance on employee_directory
+      try {
+        const { data: dirSample } = await supabase.from('employee_directory').select('*').limit(1);
+        const dirCols = dirSample && dirSample.length > 0 ? Object.keys(dirSample[0]) : [];
+        const dirEmailCol = resolveTableColumn(dirCols, ['Employee work email', 'employee_work_email', 'work_email', 'Email', 'email']) || 'Employee work email';
+        const dopBalCol = resolveTableColumn(dirCols, ['Day Off Payment Balance', 'day_off_payment_balance', 'Day Off Payment', 'dayoffbalance']) || 'Day Off Payment Balance';
+        const validEmpKeys = Array.from(new Set([
+          workOnPhModal.email,
+          ...(workOnPhModal.memberProfile?.emails || []),
+          normalizeText(workOnPhModal.name),
+          normalizeText(workOnPhModal.barcode)
+        ].map(v => String(v || '').trim().toLowerCase()).filter(Boolean)));
+
+        const orConditions = validEmpKeys.map(k => `${holEmpCol}.ilike.%${k}%`).join(',');
+        let recheckQuery = supabase.from('holiday_balance').select('*').limit(5000);
+        if (orConditions) recheckQuery = recheckQuery.or(orConditions);
+        const { data: latestHols } = await recheckQuery;
+        if (Array.isArray(latestHols)) {
+          const unusedDopCount = latestHols.filter(row => {
+            const s = getPropCaseInsensitive(row, ['status', 'Status', 'STATUS'], '').trim().toLowerCase();
+            if (s !== 'unused') return false;
+            const typ = getPropCaseInsensitive(row, ['Type Holiday', 'type_holiday', 'Type', 'type'], '').trim().toLowerCase();
+            if (typ !== 'day off payment') return false;
+            const empVal = getPropCaseInsensitive(row, ['employee', 'Employee', 'user_uid', 'email', 'employee_id', 'Name', 'name']).trim().toLowerCase();
+            return validEmpKeys.some(k => empVal === k || empVal.includes(k) || k.includes(empVal));
+          }).length;
+          await supabase.from('employee_directory').update({ [dopBalCol]: unusedDopCount }).ilike(dirEmailCol, workOnPhModal.email);
+        }
+      } catch (syncBalErr) {
+        console.warn('[Approval] Could not sync Day Off Payment Balance:', syncBalErr);
+      }
       
       // 4. Email Notification to Line Manager & HR Managers of the matching Company
       const recipientSet = new Set();
