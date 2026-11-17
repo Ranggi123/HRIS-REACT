@@ -132,7 +132,7 @@ export default function MainLayout() {
     const dept = normalizeText(getValidProp(user, ['Department', 'department', 'dept', 'Dept'], ''));
     const jobLevel = normalizeText(getValidProp(user, ['Job Level', 'job_level', 'joblevel', 'Job_Level', 'level', 'Level'], ''));
     const status = normalizeText(getValidProp(user, ['Status', 'status', 'STATUS', 'Account Status', 'account_status', 'accountstatus'], ''));
-    return (dept === 'human resources' || dept === 'human resource') && jobLevel === 'manager' && status === 'active';
+    return (dept === 'human resources' || dept === 'human resource' || dept === 'hr') && jobLevel === 'manager' && status === 'active';
   };
 
   const checkIsApprovalEligible = (user) => {
@@ -408,7 +408,7 @@ export default function MainLayout() {
         }
       }
 
-      const isHrDept = profileDept === 'human resources' || profileDept === 'human resource';
+      const isHrDept = profileDept === 'human resources' || profileDept === 'human resource' || profileDept === 'hr';
       const isManagerJobLevel = profileJobLevel === 'manager';
       const isStatusActive = profileStatus === 'active';
       const isHrManagerActive = isHrDept && isManagerJobLevel && isStatusActive && userCompanyKeys.size > 0;
@@ -1065,7 +1065,7 @@ export default function MainLayout() {
 
             {canShowApproval && (
               <Link 
-                to="/Approval" 
+                to="/approval" 
                 className={`p-4 rounded-2xl border transition flex flex-col items-center text-center relative ${currentPath.toLowerCase() === '/approval' ? 'bg-blue-50/60 border-blue-400 shadow-sm ring-2 ring-blue-400 ring-opacity-30' : 'bg-white border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300'}`}
               >
                 <div className="relative mb-2">
