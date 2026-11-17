@@ -4057,8 +4057,6 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 const isOff = !isPublicHolidayType && (tLower.includes('day off') || tLower === 'off' || tLower.includes('libur'));
                 
                 const isLeave = tLower.includes('leave') || tLower.includes('cuti') || tLower.includes('sick') || tLower.includes('sakit') || tLower.includes('maternity');
-                
-                const isEditable = (isWorking || isOff) && !isLeave && !isPublicHolidayType && !empRequestedWorkOnPh;
 
                 const empReqPhRaw = getPropCaseInsensitive(emp, [
                   'Request to Work on Public Holiday?',
@@ -4067,6 +4065,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
                   'requesttoworkonpublicholiday'
                 ], '');
                 const empRequestedWorkOnPh = ['true', '1', 't', 'yes', 'y'].includes(String(empReqPhRaw).trim().toLowerCase());
+                
+                const isEditable = (isWorking || isOff) && !isLeave && !isPublicHolidayType && !empRequestedWorkOnPh;
 
                 if (isWorking) {
                   badgeClass = 'bg-green-50 text-green-700 border-green-200';
