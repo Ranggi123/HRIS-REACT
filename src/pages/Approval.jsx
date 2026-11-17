@@ -1729,9 +1729,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
         Employee: singleScheduleEdit.email,
         Date: isoSchedDate,
         Type: singleScheduleEdit.type,
-        Shift: singleScheduleEdit.type === 'Working Day' ? singleScheduleEdit.shift : '-',
-        'Start Time': singleScheduleEdit.type === 'Working Day' ? startTime : '-',
-        'End Time': singleScheduleEdit.type === 'Working Day' ? endTime : '-'
+        Shift: singleScheduleEdit.type === 'Working Day' ? singleScheduleEdit.shift : null,
+        'Start Time': singleScheduleEdit.type === 'Working Day' ? startTime : null,
+        'End Time': singleScheduleEdit.type === 'Working Day' ? endTime : null
       };
       
       const rawKeys = Object.keys(singleScheduleEdit.rawRecord || {});
@@ -2109,9 +2109,9 @@ export default function Approval({ currentUser: propCurrentUser }) {
           Employee: bulkEditEmployee.email,
           Date: toIsoDateString(row.date) || row.date,
           Type: row.type,
-          Shift: row.type === 'Working Day' ? row.shift : '-',
-          'Start Time': row.type === 'Working Day' ? startTime : '-',
-          'End Time': row.type === 'Working Day' ? endTime : '-'
+          Shift: row.type === 'Working Day' ? row.shift : null,
+          'Start Time': row.type === 'Working Day' ? startTime : null,
+          'End Time': row.type === 'Working Day' ? endTime : null
         };
 
         if (row.id) {
@@ -2406,59 +2406,134 @@ export default function Approval({ currentUser: propCurrentUser }) {
 
         try {
           const { data: schedSample } = await supabase.from('schedule').select('*').limit(1);
-          const schedCols = schedSample && schedSample.length > 0 ? Object.keys(schedSample[0]) : [];
+          const schedCols = Array.from(new Set([
+            ...(schedSample && schedSample.length > 0 ? Object.keys(schedSample[0]) : []),
+            ...(rawSchedules && rawSchedules.length > 0 ? Object.keys(rawSchedules[0]) : [])
+          ]));
           const schedTypeCol = resolveTableColumn(schedCols, ['Type', 'type', 'schedule_type']) || 'Type';
           const schedEmpCol = resolveTableColumn(schedCols, ['Employee', 'employee']) || 'Employee';
+          const schedEmpNameCol = resolveTableColumn(schedCols, ['Employee Name', 'employee_name', 'Name', 'name']);
           const schedDateCol = resolveTableColumn(schedCols, ['Date', 'date']) || 'Date';
-          const schedShiftCol = resolveTableColumn(schedCols, ['Shift', 'shift', 'jam kerja']) || 'Shift';
-          const schedStartCol = resolveTableColumn(schedCols, ['Start Time', 'start_time', 'starttime']) || 'Start Time';
-          const schedEndCol = resolveTableColumn(schedCols, ['End Time', 'end_time', 'endtime']) || 'End Time';
+          const schedShiftCol = resolveTableColumn(schedCols, ['Shift', 'shift', 'jam kerja']);
+          const schedStartCol = resolveTableColumn(schedCols, ['Start Time', 'start_time', 'starttime']);
+          const schedEndCol = resolveTableColumn(schedCols, ['End Time', 'end_time', 'endtime']);
+          const schedLastEditByCol = resolveTableColumn(schedCols, ['LastEditBy', 'last_edit_by', 'lasteditby']);
+          const schedLastEditDateCol = resolveTableColumn(schedCols, ['LastEditDate', 'last_edit_date', 'lasteditdate']);
+
+          // Resolve employee identifiers from employee_directory so we match existing schedules accurately
+          const cleanEmp = normalizeText(empEmail);
+          const matchedEmpDir = rawDirEmployees.find(emp => {
+            const wMail = normalizeText(getValidPropCaseInsensitive(emp, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email'], ''));
+            const pMail = normalizeText(getValidPropCaseInsensitive(emp, ['email', 'Email', 'Email Address', 'user_uid'], ''));
+            const bCode = normalizeText(getValidPropCaseInsensitive(emp, ['Barcode', 'barcode', 'Employee ID', 'employee_id', 'id'], ''));
+            const eName = normalizeText(getValidPropCaseInsensitive(emp, ['Name', 'name', 'nama', 'fullname', 'full_name', 'Employee Name'], ''));
+            return [wMail, pMail, bCode, eName].filter(Boolean).includes(cleanEmp);
+          });
+
+          const resolvedEmpName = empName || (matchedEmpDir ? getValidPropCaseInsensitive(matchedEmpDir, ['Name', 'name', 'nama', 'fullname', 'full_name'], '') : '');
+          const empIdentifierCandidates = Array.from(new Set([
+            empEmail,
+            matchedEmpDir ? getValidPropCaseInsensitive(matchedEmpDir, ['Employee work email', 'employee_work_email', 'work_email', 'Work Email'], '') : '',
+            matchedEmpDir ? getValidPropCaseInsensitive(matchedEmpDir, ['email', 'Email', 'Email Address', 'user_uid'], '') : '',
+            matchedEmpDir ? getValidPropCaseInsensitive(matchedEmpDir, ['Barcode', 'barcode', 'Employee ID', 'employee_id'], '') : ''
+          ].map(v => String(v || '').trim()).filter(Boolean)));
+
+          // Prefer existing schedule Employee identifier format if present, otherwise empEmail
+          const existingSampleForEmp = rawSchedules.find(r => {
+            const rEmp = normalizeText(getPropCaseInsensitive(r, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'Barcode', 'barcode']));
+            return empIdentifierCandidates.some(c => normalizeText(c) === rEmp);
+          });
+          const targetSchedEmp = existingSampleForEmp
+            ? getPropCaseInsensitive(existingSampleForEmp, ['Employee', 'employee', 'email', 'user_uid', 'employee_email'], empEmail)
+            : empEmail;
 
           const startD = parseFlexibleDate(fromDate);
           const endD = parseFlexibleDate(toDate && toDate !== '-' && toDate !== 'null' ? toDate : fromDate) || startD;
           const targetDates = [];
           if (startD && endD) {
-              let curr = new Date(startD);
-              while (curr <= endD) {
+              let curr = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate());
+              const endOnly = new Date(endD.getFullYear(), endD.getMonth(), endD.getDate());
+              while (curr <= endOnly) {
                   const y = curr.getFullYear();
                   const m = String(curr.getMonth() + 1).padStart(2, '0');
                   const d = String(curr.getDate()).padStart(2, '0');
                   targetDates.push(`${y}-${m}-${d}`);
                   curr.setDate(curr.getDate() + 1);
               }
-          } else {
+          } else if (fromDate) {
               targetDates.push(toIsoDateString(fromDate) || fromDate);
           }
 
-          const { data: existingScheds } = await supabase.from('schedule')
-            .select('*')
-            .ilike(schedEmpCol, `%${empEmail}%`)
-            .in(schedDateCol, targetDates);
-
-          const existingDates = new Set((existingScheds || []).map(r => toIsoDateString(r[schedDateCol]) || r[schedDateCol]));
-
-          if (existingDates.size > 0) {
-             await supabase.from('schedule').update({
-               [schedTypeCol]: leaveType,
-               [schedShiftCol]: '-',
-               [schedStartCol]: '-',
-               [schedEndCol]: '-'
-             })
-             .ilike(schedEmpCol, `%${empEmail}%`)
-             .in(schedDateCol, targetDates);
+          // Fetch existing schedule rows for this employee to avoid duplicate rows
+          let existingScheds = [];
+          const empOrFilter = empIdentifierCandidates.map(c => `${schedEmpCol}.ilike.${c}`).join(',');
+          if (empOrFilter) {
+            const { data: fetchedScheds } = await supabase
+              .from('schedule')
+              .select('*')
+              .or(empOrFilter)
+              .limit(2000);
+            if (Array.isArray(fetchedScheds)) existingScheds = fetchedScheds;
           }
 
-          const newDates = targetDates.filter(d => !existingDates.has(d) && !existingDates.has(toIsoDateString(d)));
+          const existingByIsoDate = new Map();
+          existingScheds.forEach(r => {
+            const isoD = toIsoDateString(r[schedDateCol]);
+            if (isoD) existingByIsoDate.set(isoD, r);
+          });
+
+          const buildNullShiftFields = () => {
+            const extra = {};
+            if (schedShiftCol) extra[schedShiftCol] = null;
+            if (schedStartCol) extra[schedStartCol] = null;
+            if (schedEndCol) extra[schedEndCol] = null;
+            if (schedLastEditByCol) extra[schedLastEditByCol] = actualUserName || userName;
+            if (schedLastEditDateCol) extra[schedLastEditDateCol] = nowIso;
+            return extra;
+          };
+
+          const existingTargetDates = targetDates.filter(d => existingByIsoDate.has(d));
+          if (existingTargetDates.length > 0) {
+            const updatePayload = {
+              [schedTypeCol]: leaveType,
+              ...buildNullShiftFields()
+            };
+            const existingIds = existingTargetDates
+              .map(d => existingByIsoDate.get(d)?.id)
+              .filter(id => id !== undefined && id !== null);
+
+            if (existingIds.length === existingTargetDates.length) {
+              const { error: updErr } = await supabase
+                .from('schedule')
+                .update(updatePayload)
+                .in('id', existingIds);
+              if (updErr) throw updErr;
+            } else {
+              const { error: updErr } = await supabase
+                .from('schedule')
+                .update(updatePayload)
+                .or(empOrFilter)
+                .in(schedDateCol, existingTargetDates);
+              if (updErr) throw updErr;
+            }
+          }
+
+          const newDates = targetDates.filter(d => !existingByIsoDate.has(d));
           if (newDates.length > 0) {
-             const inserts = newDates.map(d => ({
-               [schedEmpCol]: empEmail,
-               [schedDateCol]: d,
-               [schedTypeCol]: leaveType,
-               [schedShiftCol]: '-',
-               [schedStartCol]: '-',
-               [schedEndCol]: '-'
-             }));
-             await supabase.from('schedule').insert(inserts);
+            const inserts = newDates.map(d => {
+              const rowObj = {
+                [schedEmpCol]: targetSchedEmp,
+                [schedDateCol]: d,
+                [schedTypeCol]: leaveType,
+                ...buildNullShiftFields()
+              };
+              if (schedEmpNameCol && resolvedEmpName) {
+                rowObj[schedEmpNameCol] = resolvedEmpName;
+              }
+              return rowObj;
+            });
+            const { error: insErr } = await supabase.from('schedule').insert(inserts);
+            if (insErr) throw insErr;
           }
 
           const { data: dirSample } = await supabase.from('employee_directory').select('*').limit(1);
@@ -3717,7 +3792,14 @@ export default function Approval({ currentUser: propCurrentUser }) {
             </div>
             
             <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
-              {teamScheduleModalData.records.map((emp, idx) => {
+              {teamScheduleModalData.records.sort((a, b) => {
+                const getEmpName = (record) => {
+                  const rawKey = normalizeText(getPropCaseInsensitive(record, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'Barcode', 'barcode'], ''));
+                  const member = teamMembers.find(m => m.email.toLowerCase() === rawKey || (m.emails && m.emails.includes(rawKey)) || normalizeText(m.name) === rawKey || normalizeText(m.barcode) === rawKey);
+                  return (member?.name || getPropCaseInsensitive(record, ['Name', 'name', 'nama', 'fullname', 'employee_name', 'Employee'], 'Employee')).toLowerCase();
+                };
+                return getEmpName(a).localeCompare(getEmpName(b));
+              }).map((emp, idx) => {
                 const rawEmpKey = normalizeText(getPropCaseInsensitive(emp, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'Barcode', 'barcode'], ''));
                 const matchedMember = teamMembers.find(m =>
                   m.email.toLowerCase() === rawEmpKey ||
