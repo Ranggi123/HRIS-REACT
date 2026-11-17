@@ -7,7 +7,6 @@ export default function TopNav({
   currentLang = 'en', 
   onLangChange = () => {}, 
   onOpenProfile = () => {},
-  approvalCount = 0,
   isSuperAdminMode = false,
   isSuperAdminEligible = false,
   onToggleSuperAdmin = () => {},
@@ -159,27 +158,6 @@ export default function TopNav({
 
   const showSuperAdminToggle = isSuperAdminEligible || isSuperAdminMode;
 
-  const checkDeptHead = (user) => {
-    if (!user) return false;
-    const keys = Object.keys(user);
-    const foundKey = keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g, '') === 'departmenthead');
-    if (foundKey) {
-      const val = user[foundKey];
-      return ['true', '1', 't', 'yes', 'y'].includes(String(val).trim().toLowerCase());
-    }
-    return false;
-  };
-
-  const checkHrManagerActive = (user) => {
-    if (!user) return false;
-    const dept = getPropCaseInsensitiveTopNav(user, ['Department', 'department', 'dept'], '').replace(/\s+/g, ' ').trim().toLowerCase();
-    const jobLevel = getPropCaseInsensitiveTopNav(user, ['Job Level', 'job_level', 'joblevel', 'level'], '').replace(/\s+/g, ' ').trim().toLowerCase();
-    const status = getPropCaseInsensitiveTopNav(user, ['Status', 'status', 'Account Status', 'account_status'], '').replace(/\s+/g, ' ').trim().toLowerCase();
-    return (dept === 'human resources' || dept === 'human resource') && jobLevel === 'manager' && status === 'active';
-  };
-
-  const canShowApproval = checkDeptHead(currentUser) || checkHrManagerActive(currentUser);
-
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut({ scope: 'local' });
@@ -266,19 +244,12 @@ export default function TopNav({
               onClick={() => setDropdownOpen(!dropdownOpen)} 
               className="relative flex items-center space-x-1 sm:space-x-2 bg-blue-700 hover:bg-blue-800 py-1 sm:py-1.5 px-2 sm:px-3 rounded-xl transition focus:outline-none cursor-pointer"
             >
-              <div className="relative">
-                <img 
-                  src={userAvatar} 
-                  alt="Profile" 
-                  className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-inner bg-blue-100" 
-                  onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }}
-                />
-                {canShowApproval && approvalCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center border-2 border-blue-700 shadow-sm animate-bounce">
-                    {approvalCount}
-                  </span>
-                )}
-              </div>
+              <img 
+                src={userAvatar} 
+                alt="Profile" 
+                className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-inner bg-blue-100" 
+                onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }}
+              />
               <span className="text-sm font-semibold hidden sm:inline-block max-w-[150px] truncate">{userName}</span>
               <svg className="w-3.5 h-3.5 text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7"></path>
@@ -456,26 +427,6 @@ export default function TopNav({
                       </>
                     )}
                   </div>
-                )}
-
-                {canShowApproval && (
-                  <Link 
-                    to="/Approval" 
-                    onClick={() => setDropdownOpen(false)}
-                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 hover:text-blue-600 flex items-center justify-between transition border-b border-gray-50"
-                  >
-                    <div className="flex items-center space-x-2.5">
-                      <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                      </svg>
-                      <span className="font-medium text-gray-700">{currentLang === 'id' ? 'Persetujuan' : 'Approval'}</span>
-                    </div>
-                    {approvalCount > 0 && (
-                      <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-xs animate-bounce">
-                        {approvalCount}
-                      </span>
-                    )}
-                  </Link>
                 )}
 
                 <button 
