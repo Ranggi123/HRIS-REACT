@@ -13,7 +13,13 @@ const i18n = {
     jobTitleLabel: 'Job Title',
     statusLabel: 'Account Status:',
     modulesTitle: 'HRIS Module Access',
-    moduleNames: { dashboard: 'Dashboard', empDir: 'Employee Directory', attendance: 'Attendance Requests', leave: 'Leave Requests', payslip: 'Payslip' },
+    moduleNames: {
+      dashboard: 'Dashboard',
+      empDir: 'Employee Directory',
+      attendance: 'Attendance Requests',
+      leave: 'Leave Requests',
+      approval: 'Approval',
+    },
   },
   id: {
     greeting: 'Halo',
@@ -21,8 +27,14 @@ const i18n = {
     jobTitleLabel: 'Jabatan',
     statusLabel: 'Status Akun:',
     modulesTitle: 'Akses Modul HRIS',
-    moduleNames: { dashboard: 'Dasbor', empDir: 'Direktori Karyawan', attendance: 'Permintaan Absensi', leave: 'Pengajuan Cuti', payslip: 'Slip Gaji' },
-  }
+    moduleNames: {
+      dashboard: 'Dasbor',
+      empDir: 'Direktori Karyawan',
+      attendance: 'Permintaan Absensi',
+      leave: 'Pengajuan Cuti',
+      approval: 'Persetujuan',
+    },
+  },
 };
 
 export default function MainLayout() {
@@ -945,6 +957,7 @@ export default function MainLayout() {
   }, [currentUser]);
 
   const t = i18n[currentLang] || i18n.en;
+  const canShowApproval = checkIsApprovalEligible(currentUser);
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-100">
@@ -1001,7 +1014,7 @@ export default function MainLayout() {
 
         <div className="hidden md:block">
           <h3 className="text-sm sm:text-base font-bold text-gray-800 mb-3">{t.modulesTitle}</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          <div className={`grid grid-cols-2 sm:grid-cols-3 ${canShowApproval ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-3`}>
             <Link 
               to="/" 
               className={`p-4 rounded-2xl border transition flex flex-col items-center text-center ${currentPath === '/' ? 'bg-blue-50/60 border-blue-400 shadow-sm ring-2 ring-blue-400 ring-opacity-30' : 'bg-white border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300'}`}
@@ -1050,15 +1063,24 @@ export default function MainLayout() {
               <span className={`text-xs font-semibold ${currentPath === '/leave' ? 'text-blue-700' : 'text-gray-700'}`}>{t.moduleNames.leave}</span>
             </Link>
 
-            <Link 
-              to="/payslip" 
-              className={`p-4 rounded-2xl border transition flex flex-col items-center text-center ${currentPath === '/payslip' ? 'bg-blue-50/60 border-blue-400 shadow-sm ring-2 ring-blue-400 ring-opacity-30' : 'bg-white border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300'}`}
-            >
-              <div className="relative mb-2">
-                <img src="https://cdn-icons-png.flaticon.com/128/10695/10695051.png" alt="Payslip" className="w-8 h-8 object-contain" />
-              </div>
-              <span className={`text-xs font-semibold ${currentPath === '/payslip' ? 'text-blue-700' : 'text-gray-700'}`}>{t.moduleNames.payslip}</span>
-            </Link>
+            {canShowApproval && (
+              <Link 
+                to="/Approval" 
+                className={`p-4 rounded-2xl border transition flex flex-col items-center text-center relative ${currentPath.toLowerCase() === '/approval' ? 'bg-blue-50/60 border-blue-400 shadow-sm ring-2 ring-blue-400 ring-opacity-30' : 'bg-white border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300'}`}
+              >
+                <div className="relative mb-2">
+                  <svg className={`w-8 h-8 ${currentPath.toLowerCase() === '/approval' ? 'text-blue-600' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  {approvalCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center border-2 border-white shadow-sm animate-bounce">
+                      {approvalCount}
+                    </span>
+                  )}
+                </div>
+                <span className={`text-xs font-semibold ${currentPath.toLowerCase() === '/approval' ? 'text-blue-700' : 'text-gray-700'}`}>{t.moduleNames.approval}</span>
+              </Link>
+            )}
           </div>
         </div>
 
@@ -1066,7 +1088,13 @@ export default function MainLayout() {
 
       </main>
       
-      <BottomNav attendanceBadge={attendanceBadge} leaveBadgeCount={leaveBadgeCount} currentLang={currentLang} />
+      <BottomNav 
+        currentUser={currentUser}
+        attendanceBadge={attendanceBadge} 
+        leaveBadgeCount={leaveBadgeCount} 
+        approvalCount={approvalCount}
+        currentLang={currentLang} 
+      />
 
       {isProfileModalOpen && (
         <div 
