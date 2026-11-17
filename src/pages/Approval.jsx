@@ -3626,26 +3626,26 @@ export default function Approval({ currentUser: propCurrentUser }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 border border-gray-200 rounded-xl overflow-hidden divide-x divide-y sm:divide-y-0 divide-gray-100 text-center py-2.5 bg-white shadow-xs mb-3">
-          <div>
-            <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statOff}</span>
-            <span className="text-base sm:text-lg font-black text-red-600 leading-tight">{calendarStats.off}</span>
+        <div className="grid grid-cols-5 border border-gray-200 rounded-xl overflow-hidden divide-x divide-gray-100 text-center py-2 sm:py-2.5 bg-white shadow-xs mb-3">
+          <div className="px-0.5 sm:px-2 flex flex-col items-center justify-between">
+            <span className="block text-[8px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-tight leading-tight">{t.statOff}</span>
+            <span className="text-sm sm:text-lg font-black text-red-600 leading-tight mt-0.5">{calendarStats.off}</span>
           </div>
-          <div>
-            <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statPublicHoliday}</span>
-            <span className="text-base sm:text-lg font-black text-purple-600 leading-tight">{calendarStats.publicHoliday}</span>
+          <div className="px-0.5 sm:px-2 flex flex-col items-center justify-between">
+            <span className="block text-[8px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-tight leading-tight">{t.statPublicHoliday}</span>
+            <span className="text-sm sm:text-lg font-black text-purple-600 leading-tight mt-0.5">{calendarStats.publicHoliday}</span>
           </div>
-          <div>
-            <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statWork}</span>
-            <span className="text-base sm:text-lg font-black text-green-600 leading-tight">{calendarStats.work}</span>
+          <div className="px-0.5 sm:px-2 flex flex-col items-center justify-between">
+            <span className="block text-[8px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-tight leading-tight">{t.statWork}</span>
+            <span className="text-sm sm:text-lg font-black text-green-600 leading-tight mt-0.5">{calendarStats.work}</span>
           </div>
-          <div>
-            <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statSick}</span>
-            <span className="text-base sm:text-lg font-black text-pink-600 leading-tight">{calendarStats.sick}</span>
+          <div className="px-0.5 sm:px-2 flex flex-col items-center justify-between">
+            <span className="block text-[8px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-tight leading-tight">{t.statSick}</span>
+            <span className="text-sm sm:text-lg font-black text-pink-600 leading-tight mt-0.5">{calendarStats.sick}</span>
           </div>
-          <div className="col-span-2 sm:col-span-1">
-            <span className="block text-[10px] font-bold text-gray-500 uppercase tracking-tight">{t.statLeave}</span>
-            <span className="text-base sm:text-lg font-black text-orange-600 leading-tight">{calendarStats.leave}</span>
+          <div className="px-0.5 sm:px-2 flex flex-col items-center justify-between">
+            <span className="block text-[8px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-tight leading-tight">{t.statLeave}</span>
+            <span className="text-sm sm:text-lg font-black text-orange-600 leading-tight mt-0.5">{calendarStats.leave}</span>
           </div>
         </div>
 
