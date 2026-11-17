@@ -99,6 +99,27 @@ const toIsoTimestampString = (val, fallbackDateVal = null) => {
   return str;
 };
 
+const toIsoDateString = (val) => {
+  if (!val || val === '-' || val === 'null' || val === 'undefined') return '';
+  const str = String(val).trim();
+  const mIso = str.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+  if (mIso) {
+    return `${mIso[1]}-${mIso[2].padStart(2, '0')}-${mIso[3].padStart(2, '0')}`;
+  }
+  const mDmy = str.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+  if (mDmy) {
+    return `${mDmy[3]}-${mDmy[2].padStart(2, '0')}-${mDmy[1].padStart(2, '0')}`;
+  }
+  const parsed = parseFlexibleDate(str);
+  if (parsed && !isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return str;
+};
+
 const formatDateTimeDisplay = (dateVal, lang = 'en') => {
   const parsed = parseFlexibleDate(dateVal);
   if (!parsed) return (dateVal && dateVal !== '-') ? String(dateVal) : '-';
@@ -1592,9 +1613,10 @@ export default function Approval({ currentUser: propCurrentUser }) {
     try {
       const { startTime, endTime } = getShiftTimes(singleScheduleEdit.shift, singleScheduleEdit.standart_working_day);
       
+      const isoSchedDate = toIsoDateString(singleScheduleEdit.date) || singleScheduleEdit.date;
       const payload = {
         Employee: singleScheduleEdit.email,
-        Date: singleScheduleEdit.date,
+        Date: isoSchedDate,
         Type: singleScheduleEdit.type,
         Shift: singleScheduleEdit.type === 'Working Day' ? singleScheduleEdit.shift : '-',
         'Start Time': singleScheduleEdit.type === 'Working Day' ? startTime : '-',
@@ -1624,7 +1646,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
         const { data: existingCheck } = await supabase.from('schedule')
           .select('*')
           .ilike(schedEmpCol, singleScheduleEdit.email)
-          .eq(schedDateCol, singleScheduleEdit.date)
+          .eq(schedDateCol, isoSchedDate)
           .limit(1);
           
         if (existingCheck && existingCheck.length > 0) {
@@ -1635,13 +1657,13 @@ export default function Approval({ currentUser: propCurrentUser }) {
           } else {
             const { error: saveErr } = await supabase.from('schedule').update(dbPayload)
               .ilike(schedEmpCol, singleScheduleEdit.email)
-              .eq(schedDateCol, singleScheduleEdit.date);
+              .eq(schedDateCol, isoSchedDate);
             if (saveErr) throw saveErr;
           }
         } else {
           const { error: saveErr } = await supabase.from('schedule').insert([{
             [schedEmpCol]: singleScheduleEdit.email,
-            [schedDateCol]: singleScheduleEdit.date,
+            [schedDateCol]: isoSchedDate,
             ...dbPayload
           }]);
           if (saveErr) throw saveErr;
@@ -1725,7 +1747,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
         
         const payload = {
           Employee: bulkEditEmployee.email,
-          Date: row.date,
+          Date: toIsoDateString(row.date) || row.date,
           Type: row.type,
           Shift: row.type === 'Working Day' ? row.shift : '-',
           'Start Time': row.type === 'Working Day' ? startTime : '-',
@@ -1835,19 +1857,45 @@ export default function Approval({ currentUser: propCurrentUser }) {
         
         if (empEmail && attDate) {
           const parsedAttDate = parseFlexibleDate(attDate);
-          const dateCandidates = new Set([attDate]);
+          const cleanEmp = normalizeText(empEmail);
+          const matchedMember = teamMembers.find(m =>
+            m.email.toLowerCase() === cleanEmp ||
+            (m.emails && m.emails.includes(cleanEmp)) ||
+            normalizeText(m.name) === cleanEmp ||
+            normalizeText(m.barcode) === cleanEmp
+          );
+          const empKeys = new Set([
+            cleanEmp,
+            ...(matchedMember?.emails || []),
+            matchedMember?.name ? normalizeText(matchedMember.name) : '',
+            matchedMember?.barcode ? normalizeText(matchedMember.barcode) : ''
+          ].filter(Boolean));
+
           if (parsedAttDate) {
-            const dd = String(parsedAttDate.getDate()).padStart(2, '0');
-            const mm = String(parsedAttDate.getMonth() + 1).padStart(2, '0');
-            const yyyy = parsedAttDate.getFullYear();
-            dateCandidates.add(`${dd}-${mm}-${yyyy}`);
-            dateCandidates.add(`${dd}/${mm}/${yyyy}`);
-            dateCandidates.add(`${yyyy}-${mm}-${dd}`);
-          }
-          const orDateFilter = Array.from(dateCandidates).map(d => `Date.eq.${d}`).join(',');
-          const { data: schedData } = await supabase.from('schedule').select('*').ilike('Employee', `%${empEmail}%`).or(orDateFilter).limit(1);
-          if (schedData && schedData.length > 0) {
-            schedRow = schedData[0];
+            const targetY = parsedAttDate.getFullYear();
+            const targetM = parsedAttDate.getMonth();
+            const targetD = parsedAttDate.getDate();
+
+            schedRow = rawSchedules.find(r => {
+              const rEmp = normalizeText(getPropCaseInsensitive(r, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'Barcode', 'barcode']));
+              if (!empKeys.has(rEmp)) return false;
+              const rDate = getPropCaseInsensitive(r, ['Date', 'date', 'tanggal', 'scheduledate', 'schedule_date']);
+              return checkDateMatch(rDate, targetY, targetM, targetD);
+            }) || null;
+
+            if (!schedRow) {
+              const { data: empSchedRows } = await supabase
+                .from('schedule')
+                .select('*')
+                .ilike('Employee', `%${empEmail}%`)
+                .limit(2000);
+              if (empSchedRows && empSchedRows.length > 0) {
+                schedRow = empSchedRows.find(r => {
+                  const rDate = getPropCaseInsensitive(r, ['Date', 'date', 'tanggal', 'scheduledate', 'schedule_date']);
+                  return checkDateMatch(rDate, targetY, targetM, targetD);
+                }) || null;
+              }
+            }
           }
         }
 
