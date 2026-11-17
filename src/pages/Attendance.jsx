@@ -756,8 +756,10 @@ export default function Attendance() {
         if (isOvertime === 'Yes') {
           const otDateToUse = overtimeDate || finalSubmissionDate;
           const otTimeToUse = `${overtimeTime}:00`;
-          otEmailText = `\nOvertime : User requesting overtime\nReal check out at : ${todayDateStr}, ${timeStr}`;
-          otEmailHtml = `<strong>Overtime :</strong> User requesting overtime<br><strong>Real check out at :</strong> ${todayDateStr}, ${timeStr}<br>`;
+          otEmailText = `
+Overtime : User requesting overtime
+Real check out at : ${todayDateStr}, ${timeStr}`;
+          otEmailHtml = `<div style="margin-bottom: 8px; color: #374151;"><strong>Overtime:</strong> User requesting overtime</div><div style="margin-bottom: 8px; color: #374151;"><strong>Real check out at:</strong> ${todayDateStr}, ${timeStr}</div>`;
           safeAssign(payload, ['Checkout Time', 'checkout_time', 'Check Out Time'], `${otDateToUse} ${otTimeToUse}`);
           safeAssign(payload, ['Overtime', 'overtime', 'is_overtime'], true);
         } else if (lateCheckoutWarning && isOvertime === 'No') {
@@ -805,21 +807,25 @@ Photo : ${photoUrl}`;
       const approvalUrl = `${originUrl}/approval.html`;
       
       const emailBodyHtml = `
-        <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.6;">
-            <p>Hi,</p>
-            <p>Please see below the Attendance Request.</p>
-            <p><strong>Request Details:</strong><br>-----------------</p>
-            <p>
-                <strong>Employee name :</strong> ${empName}<br>
-                <strong>Date :</strong> ${finalSubmissionDate}<br>
-                <strong>Time :</strong> ${timeStr}<br>
-                <strong>Action :</strong> ${attendanceType}<br>
-                <strong>Reason:</strong> ${reason}<br>
-                ${otEmailHtml}<strong>Photo :</strong> <a href="${photoUrl}">View Photo</a>
-            </p>
-            <p style="margin-top: 20px;">
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; color: #374151; line-height: 1.6; max-width: 600px; padding: 24px; border: 1px solid #e5e7eb; border-radius: 8px; margin: 0 auto;">
+            <p style="margin-top: 0; margin-bottom: 16px;">Hi,</p>
+            <p style="margin-bottom: 24px;">A new attendance request has been submitted:</p>
+            
+            <div style="background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 16px; margin-bottom: 24px; border-radius: 0 8px 8px 0;">
+                <div style="margin-bottom: 8px; color: #374151;"><strong>Employee:</strong> ${empName}</div>
+                <div style="margin-bottom: 8px; color: #374151;"><strong>Action:</strong> ${attendanceType}</div>
+                <div style="margin-bottom: 8px; color: #374151;"><strong>Date:</strong> ${finalSubmissionDate}</div>
+                <div style="margin-bottom: 8px; color: #374151;"><strong>Time:</strong> ${timeStr}</div>
+                <div style="margin-bottom: 8px; color: #374151;"><strong>Reason:</strong> ${reason}</div>
+                ${otEmailHtml}
+                <div style="color: #374151;"><strong>Photo:</strong> <a href="${photoUrl}" style="color: #2563eb; text-decoration: none;">View Photo</a></div>
+            </div>
+            
+            <p style="margin-bottom: 24px;">Please review via the HRIS Portal.</p>
+            
+            <p style="margin-top: 0; margin-bottom: 0;">
                 <a href="${approvalUrl}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
-                    Go to Approval Page
+                    Go to HRIS
                 </a>
             </p>
         </div>
