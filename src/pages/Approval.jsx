@@ -3354,13 +3354,16 @@ export default function Approval({ currentUser: propCurrentUser }) {
                   }
                   const status = getRowStatus(item) || 'Approved';
                   
-                  const rawDate = getPropCaseInsensitive(item, ['Time', 'time', 'created_at', 'CreatedDate', 'From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date']);
-                  const fromDate = formatDateDisplay(rawDate, lang);
-                  const toDateRaw = getPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']);
-                  
-                  let dateInfo = toDateRaw ? `${fromDate} - ${formatDateDisplay(toDateRaw, lang)}` : fromDate;
+                  let dateInfo = '-';
                   if (item._category === 'Attendance') {
-                     dateInfo = formatDateTimeDisplay(rawDate, lang);
+                    const rawDate = getPropCaseInsensitive(item, ['Time', 'time', 'created_at', 'CreatedDate', 'From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date']);
+                    dateInfo = formatDateTimeDisplay(rawDate, lang);
+                  } else {
+                    const fromDateRaw = getValidPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal']);
+                    const toDateRaw = getValidPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']);
+                    const fromDate = formatDateDisplay(fromDateRaw, lang);
+                    const toDate = toDateRaw ? formatDateDisplay(toDateRaw, lang) : '';
+                    dateInfo = (toDate && toDate !== '-') ? `${fromDate} - ${toDate}` : fromDate;
                   }
 
                   return (
