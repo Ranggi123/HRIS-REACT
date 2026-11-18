@@ -9,6 +9,14 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const TABLE_SCHEDULE = 'schedule';
 const TABLE_PUBLIC_HOLIDAYS = 'public_holidays';
 const TABLE_EVENTS = ['events', 'event', 'company_events'];
+const TABLE_EMPLOYEES = ['employee_directory', 'employee directory', 'Employee Directory', 'employees'];
+
+const formatWhatsappUrl = (phone) => {
+  if (!phone || phone === '-') return '#';
+  let clean = String(phone).replace(/[^0-9]/g, '');
+  if (clean.startsWith('0')) clean = '62' + clean.slice(1);
+  return `https://wa.me/${clean}`;
+};
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -26,6 +34,10 @@ export default function Dashboard() {
   const [scheduleRecords, setScheduleRecords] = useState([]);
   const [publicHolidayRecords, setPublicHolidayRecords] = useState([]);
   const [eventRecords, setEventRecords] = useState([]);
+
+  // Today's Non-Working Schedule Notifications
+  const [todayNotifGroups, setTodayNotifGroups] = useState([]);
+  const [openCategories, setOpenCategories] = useState({}); // Default tertutup (false)
 
   // Modal State
   const [scheduleModalData, setScheduleModalData] = useState(null);
@@ -72,6 +84,7 @@ export default function Dashboard() {
     missedOut: 'Belum check out',
     missedOutBadge: 'Terlewat',
     workingDay: 'Hari Kerja',
+    chatWa: 'Chat via WhatsApp',
     daysOfWeek: ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'],
     months: ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'],
     monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'],
@@ -111,6 +124,7 @@ export default function Dashboard() {
     missedOut: 'Not checked out',
     missedOutBadge: 'Missed Out',
     workingDay: 'Working Day',
+    chatWa: 'Chat via WhatsApp',
     daysOfWeek: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
     monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
@@ -269,6 +283,233 @@ export default function Dashboard() {
     };
   };
 
+  // Styling & Icon untuk masing-masing kategori notifikasi
+  const getNotifTheme = (categoryType) => {
+    const lower = categoryType.toLowerCase().trim();
+    if (lower === 'annual leave' || lower.includes('leave') || lower.includes('cuti')) {
+      return {
+        wrapper: 'border-orange-500 bg-orange-50/50',
+        headerHover: 'hover:bg-orange-100/60',
+        iconColor: 'text-orange-600',
+        titleColor: 'text-orange-900',
+        badgeColor: 'bg-orange-200 text-orange-800',
+        iconType: 'calendar'
+      };
+    }
+    if (lower === 'public holiday' || lower.includes('holiday')) {
+      return {
+        wrapper: 'border-red-500 bg-red-50/40',
+        headerHover: 'hover:bg-red-100/60',
+        iconColor: 'text-red-600',
+        titleColor: 'text-red-900',
+        badgeColor: 'bg-red-200 text-red-800',
+        iconType: 'alert'
+      };
+    }
+    if (lower === 'sick' || lower.includes('sakit') || lower.includes('maternity') || lower.includes('matternity')) {
+      return {
+        wrapper: 'border-pink-500 bg-pink-50/50',
+        headerHover: 'hover:bg-pink-100/60',
+        iconColor: 'text-pink-600',
+        titleColor: 'text-pink-900',
+        badgeColor: 'bg-pink-200 text-pink-800',
+        iconType: 'heart'
+      };
+    }
+    if (lower === 'day off' || lower === 'off') {
+      return {
+        wrapper: 'border-indigo-500 bg-indigo-50/50',
+        headerHover: 'hover:bg-indigo-100/60',
+        iconColor: 'text-indigo-600',
+        titleColor: 'text-indigo-900',
+        badgeColor: 'bg-indigo-200 text-indigo-800',
+        iconType: 'bolt'
+      };
+    }
+    // Tipe lainnya selain Working Day
+    return {
+      wrapper: 'border-blue-500 bg-blue-50/50',
+      headerHover: 'hover:bg-blue-100/60',
+      iconColor: 'text-blue-600',
+      titleColor: 'text-blue-900',
+      badgeColor: 'bg-blue-200 text-blue-800',
+      iconType: 'info'
+    };
+  };
+
+  // Fetch Notifikasi Hari Ini (type <> Working Day) digabung dengan data Employee Directory
+  const fetchTodayNotifications = async (user) => {
+    try {
+      const now = new Date();
+      const tYear = now.getFullYear();
+      const tMonth = now.getMonth();
+      const tDay = now.getDate();
+      const isoToday = `${tYear}-${String(tMonth + 1).padStart(2, '0')}-${String(tDay).padStart(2, '0')}`;
+      const dmySlash = `${String(tDay).padStart(2, '0')}/${String(tMonth + 1).padStart(2, '0')}/${tYear}`;
+
+      const userCompany = getPropCaseInsensitive(user, ['company', 'Company Name', 'companyuid', 'company_uid'], '').trim().toLowerCase();
+
+      // 1. Ambil data Employee Directory
+      let rawEmployees = [];
+      for (const tbl of TABLE_EMPLOYEES) {
+        const { data: resData, error } = await supabase.from(tbl).select('*').limit(3000);
+        if (!error && resData && resData.length > 0) {
+          rawEmployees = resData;
+          break;
+        }
+      }
+
+      const defaultAvatar = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png';
+      const empLookupMap = new Map();
+      const companyEmployees = [];
+
+      rawEmployees.forEach(emp => {
+        const comp = getPropCaseInsensitive(emp, ['company', 'Company Name', 'companyuid', 'company_uid'], '').trim().toLowerCase();
+        if (userCompany && comp && comp !== userCompany && !comp.includes(userCompany) && !userCompany.includes(comp)) {
+          return;
+        }
+
+        const formattedEmp = {
+          name: getPropCaseInsensitive(emp, ['name', 'nama', 'fullname', 'full_name'], 'User'),
+          jobTitle: getPropCaseInsensitive(emp, ['job title', 'job_title', 'Job Title', 'position'], '-'),
+          empId: getPropCaseInsensitive(emp, ['employee id', 'employee_id', 'employeeid', 'id'], ''),
+          email: getPropCaseInsensitive(emp, ['email', 'Email', 'user_uid'], ''),
+          workEmail: getPropCaseInsensitive(emp, ['Employee work email', 'work_email', 'work email'], ''),
+          phone: getPropCaseInsensitive(emp, ['phone number', 'phone_number', 'phone', 'telepon'], '-'),
+          photo: getPropCaseInsensitive(emp, ['link', 'Link', 'photo', 'picture', 'avatar'], defaultAvatar)
+        };
+
+        companyEmployees.push(formattedEmp);
+
+        if (formattedEmp.email) empLookupMap.set(formattedEmp.email.toLowerCase(), formattedEmp);
+        if (formattedEmp.workEmail) empLookupMap.set(formattedEmp.workEmail.toLowerCase(), formattedEmp);
+        if (formattedEmp.empId) empLookupMap.set(formattedEmp.empId.toLowerCase(), formattedEmp);
+        if (formattedEmp.name) empLookupMap.set(formattedEmp.name.toLowerCase(), formattedEmp);
+      });
+
+      // 2. Ambil data Schedule untuk hari ini
+      let todaySchedules = [];
+      const { data: sampleSched } = await supabase.from(TABLE_SCHEDULE).select('*').limit(1);
+      let dateColName = null;
+      if (sampleSched && sampleSched.length > 0) {
+        dateColName = Object.keys(sampleSched[0]).find(k => {
+          const lk = k.toLowerCase().replace(/[\s_-]/g, '');
+          return lk === 'date' || lk === 'tanggal' || lk === 'scheduledate' || lk === 'startdate';
+        });
+      }
+
+      if (dateColName) {
+        const { data: eqData, error: eqErr } = await supabase
+          .from(TABLE_SCHEDULE)
+          .select('*')
+          .eq(dateColName, isoToday)
+          .limit(2000);
+
+        if (!eqErr && eqData && eqData.length > 0) {
+          todaySchedules = eqData;
+        } else {
+          const { data: likeData } = await supabase
+            .from(TABLE_SCHEDULE)
+            .select('*')
+            .or(`${dateColName}.ilike.%${isoToday}%,${dateColName}.ilike.%${dmySlash}%`)
+            .limit(2000);
+          if (likeData && likeData.length > 0) {
+            todaySchedules = likeData;
+          }
+        }
+      }
+
+      if (todaySchedules.length === 0) {
+        const { data: allSched } = await supabase.from(TABLE_SCHEDULE).select('*').limit(3000);
+        if (allSched) {
+          todaySchedules = allSched.filter(row => {
+            const dbDate = dateColName
+              ? row[dateColName]
+              : getPropCaseInsensitive(row, ['date', 'Date', 'tanggal', 'scheduledate', 'startdate'], null);
+            return checkDateMatch(dbDate, tYear, tMonth, tDay);
+          });
+        }
+      }
+
+      // 3. Filter type <> Working Day & kelompokkan berdasarkan type
+      const groupedMap = new Map();
+      const seenPerCategory = new Set();
+
+      todaySchedules.forEach(row => {
+        const rawType = getPropCaseInsensitive(row, ['type', 'Type', 'TYPE', 'status'], '').trim();
+        if (!rawType) return;
+
+        const tLower = rawType.toLowerCase();
+        // Kecualikan Working Day
+        if (tLower === 'working day' || tLower === 'working' || tLower === 'work' || tLower === 'hari kerja') {
+          return;
+        }
+
+        // Cocokkan dengan data Employee Directory
+        const empIdentifier = getPropCaseInsensitive(
+          row,
+          ['employee', 'email', 'user_uid', 'employee_id', 'employee id', 'name', 'nama', 'employee_name'],
+          ''
+        ).trim();
+
+        const matchedEmp = empIdentifier ? empLookupMap.get(empIdentifier.toLowerCase()) : null;
+
+        // Jika company filter aktif dan directory ada isinya, pastikan hanya karyawan perusahaan terkait yang masuk
+        if (userCompany && companyEmployees.length > 0 && !matchedEmp) {
+          const rowComp = getPropCaseInsensitive(row, ['company', 'Company Name', 'companyuid', 'company_uid'], '').trim().toLowerCase();
+          if (rowComp && rowComp !== userCompany && !rowComp.includes(userCompany) && !userCompany.includes(rowComp)) {
+            return;
+          }
+        }
+
+        // Normalisasi nama kategori utama agar rapi & konsisten
+        let categoryLabel = rawType;
+        if (tLower === 'annual leave') categoryLabel = 'Annual Leave';
+        else if (tLower === 'public holiday') categoryLabel = 'Public Holiday';
+        else if (tLower === 'sick') categoryLabel = 'Sick';
+        else if (tLower === 'day off') categoryLabel = 'Day Off';
+
+        const employeeCard = matchedEmp || {
+          name: getPropCaseInsensitive(row, ['name', 'nama', 'employee_name', 'employee'], empIdentifier || 'Employee'),
+          jobTitle: getPropCaseInsensitive(row, ['job title', 'job_title', 'position', 'department', 'shift'], '-'),
+          phone: getPropCaseInsensitive(row, ['phone', 'phone_number', 'telepon'], '-'),
+          photo: defaultAvatar
+        };
+
+        const dedupKey = `${categoryLabel.toLowerCase()}::${employeeCard.name.toLowerCase()}::${empIdentifier.toLowerCase()}`;
+        if (seenPerCategory.has(dedupKey)) return;
+        seenPerCategory.add(dedupKey);
+
+        if (!groupedMap.has(categoryLabel)) {
+          groupedMap.set(categoryLabel, []);
+        }
+        groupedMap.get(categoryLabel).push(employeeCard);
+      });
+
+      // Urutkan kategori: Annual Leave, Public Holiday, Sick, Day Off, lalu sisa type <> Working Day secara alfabetis
+      const priorityOrder = ['Annual Leave', 'Public Holiday', 'Sick', 'Day Off'];
+      const sortedGroups = Array.from(groupedMap.entries())
+        .filter(([, items]) => items.length > 0) // Hide jika list kosong
+        .sort(([typeA], [typeB]) => {
+          const idxA = priorityOrder.findIndex(p => p.toLowerCase() === typeA.toLowerCase());
+          const idxB = priorityOrder.findIndex(p => p.toLowerCase() === typeB.toLowerCase());
+          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+          if (idxA !== -1) return -1;
+          if (idxB !== -1) return 1;
+          return typeA.localeCompare(typeB);
+        })
+        .map(([category, items]) => ({
+          category,
+          items: items.sort((a, b) => a.name.localeCompare(b.name))
+        }));
+
+      setTodayNotifGroups(sortedGroups);
+    } catch (err) {
+      console.warn('Error fetching today notifications:', err);
+      setTodayNotifGroups([]);
+    }
+  };
+
   const fetchScheduleData = async (user) => {
     try {
       const userEmail = (user?.email || user?.Email || user?.USER_UID || '').trim().toLowerCase();
@@ -351,13 +592,15 @@ export default function Dashboard() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    let user = null;
-    const saved = localStorage.getItem('hris_session_data');
-    if (saved) {
-      try { user = JSON.parse(saved); } catch (e) {}
+    let user = outletContext?.currentUser || null;
+    if (!user) {
+      const saved = localStorage.getItem('hris_session_data');
+      if (saved) {
+        try { user = JSON.parse(saved); } catch (e) {}
+      }
     }
 
-    const promises = [];
+    const promises = [fetchTodayNotifications(user)];
     if (calendarMode === 'schedule') {
       promises.push(fetchScheduleData(user));
       promises.push(fetchPublicHolidayData());
@@ -369,11 +612,18 @@ export default function Dashboard() {
 
     await Promise.all(promises);
     setLoading(false);
-  }, [calendarMode]);
+  }, [calendarMode, outletContext?.currentUser]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const toggleCategory = (category) => {
+    setOpenCategories(prev => ({
+      ...prev,
+      [category]: !prev[category]
+    }));
+  };
 
   const prevMonth = () => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1));
   const nextMonth = () => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1));
@@ -593,9 +843,126 @@ export default function Dashboard() {
     setScheduleModalData(null);
   };
 
+  const renderCategoryIcon = (iconType, className) => {
+    if (iconType === 'alert') {
+      return (
+        <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+        </svg>
+      );
+    }
+    if (iconType === 'bolt') {
+      return (
+        <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+        </svg>
+      );
+    }
+    if (iconType === 'heart') {
+      return (
+        <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+        </svg>
+      );
+    }
+    return (
+      <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+      </svg>
+    );
+  };
+
   return (
     <div className="w-full text-gray-800 font-sans">
       
+      {/* Notifikasi Accordion: Annual Leave, Public Holiday, Sick, Day Off, & semua type <> Working Day */}
+      {todayNotifGroups.length > 0 && (
+        <div className="mb-4 space-y-3">
+          {todayNotifGroups.map(({ category, items }) => {
+            // Hide jika tidak ada listnya
+            if (!items || items.length === 0) return null;
+
+            const isOpen = !!openCategories[category];
+            const theme = getNotifTheme(category);
+
+            return (
+              <div
+                key={category}
+                className={`border-l-4 ${theme.wrapper} rounded-r-xl overflow-hidden shadow-xs`}
+              >
+                <div
+                  onClick={() => toggleCategory(category)}
+                  className={`w-full flex items-center justify-between p-3 sm:p-4 ${theme.headerHover} transition cursor-pointer select-none`}
+                >
+                  <div className="flex items-center gap-2">
+                    {renderCategoryIcon(theme.iconType, `w-5 h-5 ${theme.iconColor}`)}
+                    <h4 className={`font-bold ${theme.titleColor} text-sm`}>
+                      {category}
+                    </h4>
+                    <span className={`${theme.badgeColor} text-[10px] font-black px-2 py-0.5 rounded-full ml-1`}>
+                      {items.length}
+                    </span>
+                  </div>
+                  <svg
+                    className={`w-5 h-5 ${theme.iconColor} transition-transform duration-200 ${isOpen ? 'transform rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                  </svg>
+                </div>
+
+                {isOpen && (
+                  <div className="p-3 sm:p-4 pt-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    {items.map((emp, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-white border border-gray-100 rounded-lg p-2.5 flex items-center justify-between shadow-xs"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <img
+                            src={emp.photo}
+                            alt={emp.name}
+                            className="w-10 h-10 rounded-full object-cover border border-gray-200 bg-gray-50 shrink-0"
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png';
+                            }}
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-gray-900 break-words whitespace-normal">
+                              {emp.name}
+                            </p>
+                            <p className="text-[11px] text-gray-500 truncate">
+                              {emp.jobTitle}
+                            </p>
+                          </div>
+                        </div>
+
+                        {emp.phone && emp.phone !== '-' && (
+                          <a
+                            href={formatWhatsappUrl(emp.phone)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-green-600 hover:bg-green-100 transition shrink-0 ml-2"
+                            title={t.chatWa}
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
+                            </svg>
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 relative">
         
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 mb-4 sm:mb-5 border-b border-gray-200 gap-4">
