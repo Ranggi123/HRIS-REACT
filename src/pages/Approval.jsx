@@ -3527,8 +3527,17 @@ export default function Approval({ currentUser: propCurrentUser }) {
                   
                   let dateInfo = '-';
                   if (item._category === 'Attendance') {
-                    const rawDate = getPropCaseInsensitive(item, ['Time', 'time', 'created_at', 'CreatedDate', 'From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date']);
-                    dateInfo = formatDateTimeDisplay(rawDate, lang);
+                    const isCheckOutReq = reqType.toLowerCase().includes('out') || reqType.toLowerCase().includes('pulang');
+                    const isPending = isPendingApprovalStatus(status);
+                    
+                    let timeToDisplay = getPropCaseInsensitive(item, ['Time', 'time', 'created_at', 'CreatedDate', 'From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date']);
+                    
+                    if (isCheckOutReq && isPending) {
+                       const coTime = getPropCaseInsensitive(item, ['Checkout Time', 'checkout_time', 'Time Out', 'time_out']);
+                       if (coTime) timeToDisplay = coTime;
+                    }
+                    
+                    dateInfo = formatDateTimeDisplay(timeToDisplay, lang);
                   } else {
                     const fromDateRaw = getValidPropCaseInsensitive(item, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal']);
                     const toDateRaw = getValidPropCaseInsensitive(item, ['To Date', 'to_date', 'End Date', 'end_date']);
@@ -4432,9 +4441,23 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] text-gray-400 font-semibold block">{selectedRequest._category === 'Attendance' ? t.reqAttTime : t.reqFromDate}</span>
                   <span className="text-xs sm:text-sm font-semibold text-gray-800">
-                    {selectedRequest._category === 'Attendance'
-                       ? formatDateTimeDisplay(getPropCaseInsensitive(selectedRequest, ['Time', 'time', 'created_at', 'CreatedDate', 'From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date']), lang)
-                       : formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date', 'created_at', 'CreatedDate']), lang)}
+                    {(() => {
+                       if (selectedRequest._category === 'Attendance') {
+                          const modalReqType = (getPropCaseInsensitive(selectedRequest, ['Are you checking out or Checking in?', 'Check In/Out', 'Check Type']) || '').toLowerCase();
+                          const isCheckOutReq = modalReqType.includes('out') || modalReqType.includes('pulang');
+                          const isPending = isPendingApprovalStatus(getRowStatus(selectedRequest));
+                          
+                          let timeToDisplay = getPropCaseInsensitive(selectedRequest, ['Time', 'time', 'created_at', 'CreatedDate', 'From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date']);
+                          
+                          if (isCheckOutReq && isPending) {
+                             const coTime = getPropCaseInsensitive(selectedRequest, ['Checkout Time', 'checkout_time', 'Time Out', 'time_out']);
+                             if (coTime) timeToDisplay = coTime;
+                          }
+                          return formatDateTimeDisplay(timeToDisplay, lang);
+                       }
+                       
+                       return formatDateDisplay(getPropCaseInsensitive(selectedRequest, ['From Date', 'from_date', 'Start Date', 'start_date', 'Date', 'date', 'Tanggal', 'attendance_date', 'created_at', 'CreatedDate']), lang);
+                    })()}
                   </span>
                 </div>
                 

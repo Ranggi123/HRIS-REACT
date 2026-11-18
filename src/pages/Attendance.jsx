@@ -172,6 +172,7 @@ export default function Attendance() {
   const [isFakeLocation, setIsFakeLocation] = useState(false);
 
   const [overtimeDate, setOvertimeDate] = useState('');
+  const [minOvertimeDate, setMinOvertimeDate] = useState('');
   const [overtimeTime, setOvertimeTime] = useState('');
 
   const [todaySchedule, setTodaySchedule] = useState(null);
@@ -476,6 +477,7 @@ export default function Attendance() {
       
       const finalDate = formattedDate || lastDateRaw;
       setOvertimeDate(finalDate);
+      setMinOvertimeDate(finalDate);
 
       const userEmail = getPropCaseInsensitive(activeUser, ['email', 'user_uid']);
       try {
@@ -804,7 +806,7 @@ Reason: ${reason}
 ${otEmailText}
 Photo : ${photoUrl}`;
       const originUrl = typeof window !== 'undefined' ? window.location.origin : 'https://hris.arratechs.com';
-      const approvalUrl = `${originUrl}/approval.html`;
+      const approvalUrl = `${originUrl}/approval`;
       
       const emailBodyHtml = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; color: #374151; line-height: 1.6; max-width: 600px; padding: 24px; border: 1px solid #e5e7eb; border-radius: 8px; margin: 0 auto;">
@@ -1113,7 +1115,7 @@ Photo : ${photoUrl}`;
                         <label className="block text-[10px] font-semibold text-gray-600 mb-1">
                           {isOvertime === 'Yes' ? t.formOtDate : t.formActOutDate}
                         </label>
-                        <input type="date" value={overtimeDate} onChange={e => setOvertimeDate(e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                        <input type="date" value={overtimeDate} min={minOvertimeDate} onChange={e => setOvertimeDate(e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
                       </div>
                       <div className="flex-1">
                         <label className="block text-[10px] font-semibold text-gray-600 mb-1">
