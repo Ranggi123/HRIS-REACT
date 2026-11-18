@@ -4478,6 +4478,64 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 )}
               </div>
 
+              {selectedRequest._category === 'Attendance' && (() => {
+                  const reqDate = getPropCaseInsensitive(selectedRequest, ['Date', 'date', 'Tanggal', 'attendance_date', 'CreatedDate']);
+                  const reqEmail = normalizeText(getPropCaseInsensitive(selectedRequest, ['Employee', 'employee', 'email', 'user_uid', 'employee_email']));
+                  
+                  let schedStartTime = '-';
+                  let schedEndTime = '-';
+                  let shiftVal = '-';
+                  
+                  if (reqDate && reqEmail) {
+                      const parsedDate = parseFlexibleDate(reqDate);
+                      if (parsedDate) {
+                          const y = parsedDate.getFullYear();
+                          const m = parsedDate.getMonth();
+                          const d = parsedDate.getDate();
+                          
+                          const matchedMember = teamMembers.find(member => 
+                            member.email.toLowerCase() === reqEmail || 
+                            (member.emails && member.emails.includes(reqEmail)) || 
+                            normalizeText(member.name) === reqEmail || 
+                            normalizeText(member.barcode) === reqEmail
+                          );
+                          const validEmails = matchedMember ? [matchedMember.email, ...(matchedMember.emails || [])].map(e => e.toLowerCase()) : [reqEmail];
+                          
+                          const foundSched = teamScheduleRecords.find(r => {
+                             const rEmail = normalizeText(getPropCaseInsensitive(r, ['Employee', 'employee', 'email', 'user_uid', 'employee_email', 'Barcode', 'barcode']));
+                             if (!validEmails.includes(rEmail)) return false;
+                             const rDate = getPropCaseInsensitive(r, ['Date', 'date', 'tanggal', 'scheduledate', 'schedule_date']);
+                             return checkDateMatch(rDate, y, m, d);
+                          });
+                          
+                          if (foundSched) {
+                             schedStartTime = getPropCaseInsensitive(foundSched, ['Start Time', 'start_time', 'Start'], '-');
+                             schedEndTime = getPropCaseInsensitive(foundSched, ['End Time', 'end_time', 'End'], '-');
+                             shiftVal = getPropCaseInsensitive(foundSched, ['Shift', 'shift', 'jam kerja'], '-');
+                             
+                             if (schedStartTime !== '-' && schedStartTime.length >= 5) schedStartTime = schedStartTime.slice(0, 5);
+                             if (schedEndTime !== '-' && schedEndTime.length >= 5) schedEndTime = schedEndTime.slice(0, 5);
+                          }
+                      }
+                  }
+
+                  return (
+                      <div className="grid grid-cols-2 gap-3">
+                          <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl">
+                            <span className="text-[10px] text-blue-600 font-semibold block uppercase tracking-wider mb-1">Schedule Start Time</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs sm:text-sm font-black text-blue-900">{schedStartTime}</span>
+                              <span className="text-[10px] font-medium text-blue-500 bg-blue-100/50 px-1.5 py-0.5 rounded border border-blue-200">{shiftVal}</span>
+                            </div>
+                          </div>
+                          <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl">
+                            <span className="text-[10px] text-blue-600 font-semibold block uppercase tracking-wider mb-1">Schedule End Time</span>
+                            <span className="text-xs sm:text-sm font-black text-blue-900">{schedEndTime}</span>
+                          </div>
+                      </div>
+                  );
+              })()}
+
               {selectedRequest._category === 'Leave' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 bg-white border border-gray-200 rounded-xl">
