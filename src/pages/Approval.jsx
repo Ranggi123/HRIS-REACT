@@ -947,7 +947,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
         const { data: pendingAttRows } = await supabase
           .from('attendance')
           .select('*')
-          .or('Status.ilike.%pending%,Status.ilike.%menunggu%,Approval Status.ilike.%pending%,approval_status.ilike.%pending%,Status Pengajuan.ilike.%pending%,Request Status.ilike.%pending%')
+          .or('Status.ilike.%pending%,Status.ilike.%menunggu%,Status.ilike.%request%,Status.ilike.%review%')
           .limit(1500);
 
         if (pendingAttRows && pendingAttRows.length > 0) {
