@@ -338,22 +338,16 @@ export default function Dashboard() {
     };
   };
 
-  // Ambil data HARI INI saja (type <> Working Day) & gabungkan dengan profil Employee Directory
+  // Fetch khusus Hari ini, disesuaikan agar tidak memanggil `.or()` maupun `.ilike()` pada tanggal
   const fetchTodayNotifications = async (user) => {
     try {
       const now = new Date();
       const tYear = now.getFullYear();
       const tMonth = now.getMonth();
       const tDay = now.getDate();
-
       const padM = String(tMonth + 1).padStart(2, '0');
       const padD = String(tDay).padStart(2, '0');
       const isoToday = `${tYear}-${padM}-${padD}`;
-      const dmyDash = `${padD}-${padM}-${tYear}`;
-      const dmySlash = `${padD}/${padM}/${tYear}`;
-      const mdySlash = `${padM}/${padD}/${tYear}`;
-      const dmyShort = `${tDay}/${tMonth + 1}/${tYear}`;
-      const mdyShort = `${tMonth + 1}/${tDay}/${tYear}`;
 
       const userCompany = getPropCaseInsensitive(user, ['company', 'Company Name', 'companyuid', 'company_uid'], '').trim().toLowerCase();
 
@@ -395,10 +389,11 @@ export default function Dashboard() {
         if (formattedEmp.name) empLookupMap.set(formattedEmp.name.toLowerCase(), formattedEmp);
       });
 
-      // 2. Ambil data Schedule khusus HARI INI
+      // 2. Ambil data Schedule khusus HARI INI tanpa ilike untuk menghindari DB error
       let todaySchedules = [];
       const { data: sampleSched } = await supabase.from(TABLE_SCHEDULE).select('*').limit(1);
       let dateColName = null;
+      
       if (sampleSched && sampleSched.length > 0) {
         dateColName = Object.keys(sampleSched[0]).find(k => {
           const lk = k.toLowerCase().replace(/[\s_-]/g, '');
@@ -407,38 +402,33 @@ export default function Dashboard() {
       }
 
       if (dateColName) {
-        const orDateFilter = [
-          `${dateColName}.eq.${isoToday}`,
-          `${dateColName}.ilike.${isoToday}%`,
-          `${dateColName}.ilike.%${dmyDash}%`,
-          `${dateColName}.ilike.%${dmySlash}%`,
-          `${dateColName}.ilike.%${mdySlash}%`,
-          `${dateColName}.ilike.%${dmyShort}%`,
-          `${dateColName}.ilike.%${mdyShort}%`
-        ].join(',');
-
-        const { data: matchedToday, error: todayErr } = await supabase
+        // Coba exact match dulu agar lebih ringan dan menghindari error tipe (jika kolom adalah tipe text vs date)
+        const { data: exactMatch, error: exactErr } = await supabase
           .from(TABLE_SCHEDULE)
           .select('*')
-          .or(orDateFilter)
+          .eq(dateColName, isoToday)
           .limit(3000);
 
-        if (!todayErr && matchedToday && matchedToday.length > 0) {
-          todaySchedules = matchedToday.filter(row => checkDateMatch(row[dateColName], tYear, tMonth, tDay));
+        if (!exactErr && exactMatch && exactMatch.length > 0) {
+          todaySchedules = exactMatch;
+        } else {
+          // Jika exact match gagal (karena format data beda di DB), fetch sekumpulan data baru dan filter manual di JS
+          const { data: recentData, error: recentErr } = await supabase
+            .from(TABLE_SCHEDULE)
+            .select('*')
+            .order(dateColName, { ascending: false })
+            .limit(3000);
+            
+          if (!recentErr && recentData) {
+            todaySchedules = recentData.filter(row => checkDateMatch(row[dateColName], tYear, tMonth, tDay));
+          }
         }
-      }
-
-      if (todaySchedules.length === 0) {
-        let fbQuery = supabase.from(TABLE_SCHEDULE).select('*');
-        if (dateColName) {
-          fbQuery = fbQuery.order(dateColName, { ascending: false });
-        }
-        const { data: fbSched } = await fbQuery.limit(5000);
+      } else {
+        // Fallback total
+        const { data: fbSched } = await supabase.from(TABLE_SCHEDULE).select('*').limit(3000);
         if (fbSched) {
           todaySchedules = fbSched.filter(row => {
-            const dbDate = dateColName
-              ? row[dateColName]
-              : getPropCaseInsensitive(row, ['date', 'Date', 'tanggal', 'scheduledate', 'startdate'], null);
+            const dbDate = getPropCaseInsensitive(row, ['date', 'Date', 'tanggal', 'scheduledate', 'startdate'], null);
             return checkDateMatch(dbDate, tYear, tMonth, tDay);
           });
         }
@@ -560,15 +550,23 @@ export default function Dashboard() {
         });
       }
 
+      // Mengamankan `.or()` dari inputan kosong yang bisa menyebabkan 404
       if (records.length === 0) {
         let orStr = '';
         if (empColName) {
           const parts = [];
-          if (userEmail) parts.push(`${empColName}.ilike.*${userEmail}*`);
-          if (empName) parts.push(`${empColName}.ilike.*${empName}*`);
+          if (userEmail) parts.push(`"${empColName}".ilike.%${userEmail}%`);
+          if (empName) parts.push(`"${empColName}".ilike.%${empName}%`);
           orStr = parts.join(',');
         }
-        const { data: fbData } = await supabase.from(TABLE_SCHEDULE).select('*').or(orStr).limit(1500);
+        
+        let fbQuery = supabase.from(TABLE_SCHEDULE).select('*').limit(1500);
+        // Pastikan tidak mengeksekusi .or('')
+        if (orStr) {
+          fbQuery = fbQuery.or(orStr);
+        }
+        
+        const { data: fbData } = await fbQuery;
         if (fbData) records = fbData;
       }
       setScheduleRecords(records);
@@ -907,7 +905,6 @@ export default function Dashboard() {
 
           <div className="space-y-3">
             {todayNotifGroups.map(({ category, items }) => {
-              // Hide jika tidak ada listnya
               if (!items || items.length === 0) return null;
 
               const isOpen = !!openCategories[category];
