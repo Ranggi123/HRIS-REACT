@@ -802,7 +802,17 @@ Go to HRIS: https://hris.arratechs.com/approval`;
       const durLabel = `${rDur} day(s)`;
       const lineManager = getPropCaseInsensitive(currentUser, ['Line Manager', 'line_manager', 'Manager Email', 'Approver', 'Atasan Email'], 'ranggiit@gmail.com');
       
-      const emailText = `Hi,\n\nA pending leave request has been CANCELLED by the employee:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nNo further action is required.\n\nGo to HRIS: https://hris.arratechs.com/approval`;
+      const emailText = `Hi,
+
+A pending leave request has been CANCELLED by the employee:
+
+Employee: ${profileName}
+Leave Type: ${rType}
+Period: ${rStart} to ${rEnd} (${durLabel})
+
+No further action is required.
+
+Go to HRIS: https://hris.arratechs.com/approval`;
       const emailHtml = `
 <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
   <p style="margin-top: 0; font-size: 15px;">Hi,</p>
@@ -874,7 +884,17 @@ Go to HRIS: https://hris.arratechs.com/approval`;
       const durLabel = `${rDur} day(s)`;
       const lineManager = getPropCaseInsensitive(currentUser, ['Line Manager', 'line_manager', 'Manager Email', 'Approver', 'Atasan Email'], 'ranggiit@gmail.com');
       
-      const emailText = `Hi,\n\nA request to CANCEL an APPROVED leave has been submitted by the employee:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nPlease review via the HRIS Portal.\n\nGo to HRIS: https://hris.arratechs.com/approval`;
+      const emailText = `Hi,
+
+A request to CANCEL an APPROVED leave has been submitted by the employee:
+
+Employee: ${profileName}
+Leave Type: ${rType}
+Period: ${rStart} to ${rEnd} (${durLabel})
+
+Please review via the HRIS Portal.
+
+Go to HRIS: https://hris.arratechs.com/approval`;
       const emailHtml = `
 <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
   <p style="margin-top: 0; font-size: 15px;">Hi,</p>
@@ -946,7 +966,17 @@ Go to HRIS: https://hris.arratechs.com/approval`;
       const durLabel = `${rDur} day(s)`;
       const lineManager = getPropCaseInsensitive(currentUser, ['Line Manager', 'line_manager', 'Manager Email', 'Approver', 'Atasan Email'], 'ranggiit@gmail.com');
       
-      const emailText = `Hi,\n\nThe employee has ABORTED their request to cancel the approved leave. The leave remains APPROVED:\n\nEmployee: ${profileName}\nLeave Type: ${rType}\nPeriod: ${rStart} to ${rEnd} (${durLabel})\n\nNo further action is required.\n\nGo to HRIS: https://hris.arratechs.com/approval`;
+      const emailText = `Hi,
+
+The employee has ABORTED their request to cancel the approved leave. The leave remains APPROVED:
+
+Employee: ${profileName}
+Leave Type: ${rType}
+Period: ${rStart} to ${rEnd} (${durLabel})
+
+No further action is required.
+
+Go to HRIS: https://hris.arratechs.com/approval`;
       const emailHtml = `
 <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
   <p style="margin-top: 0; font-size: 15px;">Hi,</p>
@@ -1162,7 +1192,13 @@ Go to HRIS: https://hris.arratechs.com/approval`;
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filteredLeaveRecords.length === 0 && !loading ? (
-                <tr><td colSpan="7" className="px-5 py-12 text-center text-gray-400 italic">{t.noRecords}</td></tr>
+                <tr>
+                <td colSpan="7" className="h-[150px]">
+                  <div className="absolute inset-x-0 flex items-center justify-center text-gray-400 italic">
+                    {t.noRecords}
+                  </div>
+                </td>
+              </tr>
               ) : (
                 filteredLeaveRecords.map((r, i) => {
                   const status = getPropCaseInsensitive(r, ['Status', 'status', 'Approval Status', 'approval_status'], 'Pending Approval');
@@ -1273,7 +1309,15 @@ Go to HRIS: https://hris.arratechs.com/approval`;
                       return false;
                     });
                     
-                    if (filteredHolidays.length === 0 && !loading) return <tr><td colSpan="6" className="px-5 py-12 text-center text-gray-400 italic">{t.noHolRec}</td></tr>;
+                    if (filteredHolidays.length === 0 && !loading) return (
+                      <tr>
+                        <td colSpan="6" className="h-[150px]">
+                          <div className="absolute inset-x-0 flex items-center justify-center text-gray-400 italic">
+                            {t.noHolRec}
+                          </div>
+                        </td>
+                      </tr>
+                    );
 
                     return filteredHolidays.map((r, i) => {
                       const status = getPropCaseInsensitive(r, ['status', 'Status', 'STATUS'], '-');

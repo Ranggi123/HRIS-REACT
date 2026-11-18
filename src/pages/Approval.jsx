@@ -49,8 +49,20 @@ const toIsoTimestampString = (val, fallbackDateVal = null) => {
   if (!val || val === '-' || val === 'null' || val === 'undefined') return '';
   const str = String(val).trim();
 
-  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-    return str.replace(' ', 'T');
+  const isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2}:\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}T${isoMatch[2]}`;
+  }
+
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    const hh = String(parsed.getHours()).padStart(2, '0');
+    const mm = String(parsed.getMinutes()).padStart(2, '0');
+    const ss = String(parsed.getSeconds()).padStart(2, '0');
+    return `${y}-${m}-${d}T${hh}:${mm}:${ss}`;
   }
 
   const mYmdSlash = str.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM))?)?/i);
@@ -944,10 +956,26 @@ export default function Approval({ currentUser: propCurrentUser }) {
       const schedData = schedRes.status === 'fulfilled' && Array.isArray(schedRes.value) ? schedRes.value : [];
 
       try {
+        let attSample = attData.length > 0 ? attData[0] : null;
+        if (!attSample) {
+          const { data: sampleRows } = await supabase.from('attendance').select('*').limit(1);
+          if (sampleRows && sampleRows.length > 0) attSample = sampleRows[0];
+        }
+        const attCols = attSample ? Object.keys(attSample) : ['Status'];
+        const statusCols = attCols.filter(c =>
+          ['status', 'approvalstatus', 'statusapproval', 'requeststatus', 'statuspengajuan', 'attendancestatus'].includes(
+            c.toLowerCase().replace(/[\s_-]/g, '')
+          )
+        );
+        const targetCols = statusCols.length > 0 ? statusCols : ['Status'];
+        const orFilter = targetCols
+          .flatMap(col => [`"${col}".ilike.%pending%`, `"${col}".ilike.%menunggu%`])
+          .join(',');
+
         const { data: pendingAttRows } = await supabase
           .from('attendance')
           .select('*')
-          .or('Status.ilike.%pending%,Status.ilike.%menunggu%,Status.ilike.%request%,Status.ilike.%review%')
+          .or(orFilter)
           .limit(1500);
 
         if (pendingAttRows && pendingAttRows.length > 0) {
