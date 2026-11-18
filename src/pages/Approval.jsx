@@ -3391,10 +3391,16 @@ export default function Approval({ currentUser: propCurrentUser }) {
                 className="w-full pl-3 pr-8 py-1.5 text-[13px] font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-between shadow-sm transition relative z-0 cursor-pointer"
             >
                 <div className="flex items-center gap-1.5 truncate">
-                  <svg className="w-4 h-4 text-blue-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <span className="truncate">
+                  {selectedEmployee === 'all' ? (
+                    <svg className="w-4 h-4 text-blue-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  ) : (() => {
+                    const selMem = teamMembers.find(m => m.email === selectedEmployee);
+                    const photo = selMem?.photo || selMem?.avatar || selMem?.link || 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png';
+                    return <img src={photo} alt="" className="w-4 h-4 rounded-full object-cover border border-gray-200 shrink-0 bg-gray-100" onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }} />;
+                  })()}
+                  <span className="truncate text-left max-w-[140px]">
                     {selectedEmployee === 'all' 
                       ? `${t.empFilterAll} (${scopedCalendarMembers.length})` 
                       : teamMembers.find(m => m.email === selectedEmployee)?.name || selectedEmployee}
@@ -4084,16 +4090,16 @@ export default function Approval({ currentUser: propCurrentUser }) {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center justify-end gap-2 shrink-0">
-                      <span className={`min-w-[104px] inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-[10px] font-bold border whitespace-nowrap ${badgeClass}`}>
-                        {displayType}
-                      </span>
-
+                    <div className="flex items-center justify-end gap-2 shrink-0 flex-nowrap h-full">
                       {empRequestedWorkOnPh && (
-                        <span className="min-w-[112px] inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 whitespace-nowrap">
+                        <span className="min-w-[112px] h-[28px] inline-flex items-center justify-center px-2.5 rounded-lg text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 whitespace-nowrap">
                           Work Requested
                         </span>
                       )}
+
+                      <span className={`min-w-[104px] h-[28px] inline-flex items-center justify-center px-2.5 rounded-lg text-[10px] font-bold border whitespace-nowrap ${badgeClass}`}>
+                        {displayType}
+                      </span>
                       
                       {(isPublicHolidayType || (teamScheduleModalData.isPublicHoliday && !emp.id)) && !isWorking && !isOff && !empRequestedWorkOnPh && (
                         <button
@@ -4102,7 +4108,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                             e.stopPropagation();
                             openWorkOnPublicHolidayModal(emp, teamScheduleModalData.date, teamScheduleModalData.holidayRemarks);
                           }}
-                          className="min-w-[112px] inline-flex items-center justify-center gap-1 px-2.5 py-1.5 text-[11px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition shadow-xs cursor-pointer active:scale-95 whitespace-nowrap"
+                          className="min-w-[112px] h-[28px] inline-flex items-center justify-center gap-1 px-2.5 text-[11px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition shadow-xs cursor-pointer active:scale-95 whitespace-nowrap box-border"
                         >
                           <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                           <span>{t.btnRequestWork}</span>
@@ -4116,7 +4122,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
                             e.stopPropagation();
                             openSingleScheduleEdit(emp, teamScheduleModalData.date);
                           }}
-                          className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 text-[11px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition shadow-xs cursor-pointer active:scale-95 whitespace-nowrap"
+                          className="h-[28px] inline-flex items-center justify-center gap-1 px-2.5 text-[11px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition shadow-xs cursor-pointer active:scale-95 whitespace-nowrap box-border"
                         >
                           <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                           <span>Edit</span>
