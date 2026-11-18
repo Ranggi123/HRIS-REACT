@@ -103,21 +103,57 @@ export default function MainLayout() {
     return fallback;
   };
 
-  const fetchAllRowsFromTable = async (tableName, maxRows = 10000) => {
+  const fetchAllRowsFromTable = async (tableName, maxRows = 100000) => {
     const pageSize = 1000;
+    const batchPages = 5;
     let allData = [];
-    let from = 0;
-    while (from < maxRows) {
-      const { data, error } = await supabase
-        .from(tableName)
-        .select('*')
-        .range(from, from + pageSize - 1);
-      if (error) throw error;
-      if (!data || data.length === 0) break;
-      allData = allData.concat(data);
-      if (data.length < pageSize) break;
-      from += pageSize;
+    let startPage = 0;
+
+    while (startPage * pageSize < maxRows) {
+      const promises = [];
+      for (let i = 0; i < batchPages; i++) {
+        const pageIdx = startPage + i;
+        const from = pageIdx * pageSize;
+        if (from >= maxRows) break;
+        const to = from + pageSize - 1;
+        promises.push(
+          supabase
+            .from(tableName)
+            .select('*')
+            .range(from, to)
+        );
+      }
+
+      const results = await Promise.all(promises);
+      let reachedEnd = false;
+
+      for (let i = 0; i < results.length; i++) {
+        let res = results[i];
+        if (res.error) {
+          const from = (startPage + i) * pageSize;
+          const to = from + pageSize - 1;
+          res = await supabase.from(tableName).select('*').range(from, to);
+        }
+
+        if (res.error) {
+          reachedEnd = true;
+          break;
+        }
+
+        const rows = Array.isArray(res.data) ? res.data : [];
+        if (rows.length > 0) {
+          allData = allData.concat(rows);
+        }
+        if (rows.length < pageSize) {
+          reachedEnd = true;
+          break;
+        }
+      }
+
+      if (reachedEnd) break;
+      startPage += batchPages;
     }
+
     return allData;
   };
 
@@ -275,10 +311,10 @@ export default function MainLayout() {
 
     try {
       const [dirRes, compRes, lvRes, attRes] = await Promise.allSettled([
-        fetchAllRowsFromTable('employee_directory', 10000),
-        fetchAllRowsFromTable('company', 2000),
-        fetchAllRowsFromTable('leave_requests', 10000),
-        fetchAllRowsFromTable('attendance', 10000)
+        fetchAllRowsFromTable('employee_directory', 20000),
+        fetchAllRowsFromTable('company', 5000),
+        fetchAllRowsFromTable('leave_requests', 50000),
+        fetchAllRowsFromTable('attendance', 100000)
       ]);
 
       const rawDirEmployees = dirRes.status === 'fulfilled' && Array.isArray(dirRes.value) ? dirRes.value : [];
@@ -287,10 +323,26 @@ export default function MainLayout() {
       let rawAttendance = attRes.status === 'fulfilled' && Array.isArray(attRes.value) ? [...attRes.value] : [];
 
       try {
+        let attSample = rawAttendance.length > 0 ? rawAttendance[0] : null;
+        if (!attSample) {
+          const { data: sampleRows } = await supabase.from('attendance').select('*').limit(1);
+          if (sampleRows && sampleRows.length > 0) attSample = sampleRows[0];
+        }
+        const attCols = attSample ? Object.keys(attSample) : ['Status'];
+        const statusCols = attCols.filter(c =>
+          ['status', 'approvalstatus', 'statusapproval', 'requeststatus', 'statuspengajuan', 'attendancestatus'].includes(
+            c.toLowerCase().replace(/[\s_-]/g, '')
+          )
+        );
+        const targetCols = statusCols.length > 0 ? statusCols : ['Status'];
+        const orFilter = targetCols
+          .flatMap(col => [`"${col}".ilike.%pending%`, `"${col}".ilike.%menunggu%`])
+          .join(',');
+
         const { data: pendingAttRows } = await supabase
           .from('attendance')
           .select('*')
-          .or('Status.ilike.%pending%,Status.ilike.%menunggu%,Approval Status.ilike.%pending%,approval_status.ilike.%pending%,Status Pengajuan.ilike.%pending%,Request Status.ilike.%pending%')
+          .or(orFilter)
           .limit(1500);
 
         if (pendingAttRows && pendingAttRows.length > 0) {
