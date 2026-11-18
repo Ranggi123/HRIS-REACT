@@ -947,8 +947,8 @@ export default function Approval({ currentUser: propCurrentUser }) {
         const { data: pendingAttRows } = await supabase
           .from('attendance')
           .select('*')
-          .ilike('Status', '%Pending%')
-          .limit(1000);
+          .or('Status.ilike.%pending%,Status.ilike.%menunggu%,Approval Status.ilike.%pending%,approval_status.ilike.%pending%,Status Pengajuan.ilike.%pending%,Request Status.ilike.%pending%')
+          .limit(1500);
 
         if (pendingAttRows && pendingAttRows.length > 0) {
           const existingIds = new Set(attData.map(r => r.id ?? `${r.Employee}_${r.Date}_${r.Status}`));
@@ -1303,10 +1303,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
         const isSelf = empVal && (empVal === cleanEffectiveWorkEmail || (cleanLoginEmail && empVal === cleanLoginEmail));
         if (isSelf) return false;
 
-        if (hasExplicitLineManager(row)) {
-          return matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail);
-        }
-        return matchesScopedEmployee(row);
+        return matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail) || matchesScopedEmployee(row);
       })
       .map(row => ({
         ...row,
@@ -1334,10 +1331,7 @@ export default function Approval({ currentUser: propCurrentUser }) {
         const isSelf = empEmail && (empEmail === cleanEffectiveWorkEmail || (cleanLoginEmail && empEmail === cleanLoginEmail));
         if (isSelf) return false;
 
-        if (hasExplicitLineManager(row)) {
-          return matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail);
-        }
-        return matchesScopedEmployee(row);
+        return matchesLineManagerWorkEmail(row, cleanEffectiveWorkEmail) || matchesScopedEmployee(row);
       })
       .map(row => ({
         ...row,
