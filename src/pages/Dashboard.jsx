@@ -35,7 +35,7 @@ export default function Dashboard() {
   const [publicHolidayRecords, setPublicHolidayRecords] = useState([]);
   const [eventRecords, setEventRecords] = useState([]);
 
-  // Today's Non-Working Schedule Notifications
+  // Today Not Working Schedule Notifications
   const [todayNotifGroups, setTodayNotifGroups] = useState([]);
   const [openCategories, setOpenCategories] = useState({}); // Default tertutup (false)
 
@@ -50,6 +50,7 @@ export default function Dashboard() {
   }, [navigate]);
 
   const t = currentLang === 'id' ? {
+    todayNotWorkingTitle: 'Today Not Working Schedule',
     titleHoliday: 'Kalender Libur Nasional',
     titleEvent: 'Kalender Acara',
     titleSchedule: 'Kalender Jadwal Kerja',
@@ -90,6 +91,7 @@ export default function Dashboard() {
     monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'],
     daysFull: ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
   } : {
+    todayNotWorkingTitle: 'Today Not Working Schedule',
     titleHoliday: 'Public Holiday Calendar',
     titleEvent: 'Event Calendar',
     titleSchedule: 'Work Schedule Calendar',
@@ -283,7 +285,7 @@ export default function Dashboard() {
     };
   };
 
-  // Styling & Icon untuk masing-masing kategori notifikasi
+  // Styling & Icon untuk setiap kategori accordion
   const getNotifTheme = (categoryType) => {
     const lower = categoryType.toLowerCase().trim();
     if (lower === 'annual leave' || lower.includes('leave') || lower.includes('cuti')) {
@@ -326,7 +328,6 @@ export default function Dashboard() {
         iconType: 'bolt'
       };
     }
-    // Tipe lainnya selain Working Day
     return {
       wrapper: 'border-blue-500 bg-blue-50/50',
       headerHover: 'hover:bg-blue-100/60',
@@ -337,15 +338,22 @@ export default function Dashboard() {
     };
   };
 
-  // Fetch Notifikasi Hari Ini (type <> Working Day) digabung dengan data Employee Directory
+  // Ambil data HARI INI saja (type <> Working Day) & gabungkan dengan profil Employee Directory
   const fetchTodayNotifications = async (user) => {
     try {
       const now = new Date();
       const tYear = now.getFullYear();
       const tMonth = now.getMonth();
       const tDay = now.getDate();
-      const isoToday = `${tYear}-${String(tMonth + 1).padStart(2, '0')}-${String(tDay).padStart(2, '0')}`;
-      const dmySlash = `${String(tDay).padStart(2, '0')}/${String(tMonth + 1).padStart(2, '0')}/${tYear}`;
+
+      const padM = String(tMonth + 1).padStart(2, '0');
+      const padD = String(tDay).padStart(2, '0');
+      const isoToday = `${tYear}-${padM}-${padD}`;
+      const dmyDash = `${padD}-${padM}-${tYear}`;
+      const dmySlash = `${padD}/${padM}/${tYear}`;
+      const mdySlash = `${padM}/${padD}/${tYear}`;
+      const dmyShort = `${tDay}/${tMonth + 1}/${tYear}`;
+      const mdyShort = `${tMonth + 1}/${tDay}/${tYear}`;
 
       const userCompany = getPropCaseInsensitive(user, ['company', 'Company Name', 'companyuid', 'company_uid'], '').trim().toLowerCase();
 
@@ -387,7 +395,7 @@ export default function Dashboard() {
         if (formattedEmp.name) empLookupMap.set(formattedEmp.name.toLowerCase(), formattedEmp);
       });
 
-      // 2. Ambil data Schedule untuk hari ini
+      // 2. Ambil data Schedule khusus HARI INI
       let todaySchedules = [];
       const { data: sampleSched } = await supabase.from(TABLE_SCHEDULE).select('*').limit(1);
       let dateColName = null;
@@ -399,30 +407,35 @@ export default function Dashboard() {
       }
 
       if (dateColName) {
-        const { data: eqData, error: eqErr } = await supabase
+        const orDateFilter = [
+          `${dateColName}.eq.${isoToday}`,
+          `${dateColName}.ilike.${isoToday}%`,
+          `${dateColName}.ilike.%${dmyDash}%`,
+          `${dateColName}.ilike.%${dmySlash}%`,
+          `${dateColName}.ilike.%${mdySlash}%`,
+          `${dateColName}.ilike.%${dmyShort}%`,
+          `${dateColName}.ilike.%${mdyShort}%`
+        ].join(',');
+
+        const { data: matchedToday, error: todayErr } = await supabase
           .from(TABLE_SCHEDULE)
           .select('*')
-          .eq(dateColName, isoToday)
-          .limit(2000);
+          .or(orDateFilter)
+          .limit(3000);
 
-        if (!eqErr && eqData && eqData.length > 0) {
-          todaySchedules = eqData;
-        } else {
-          const { data: likeData } = await supabase
-            .from(TABLE_SCHEDULE)
-            .select('*')
-            .or(`${dateColName}.ilike.%${isoToday}%,${dateColName}.ilike.%${dmySlash}%`)
-            .limit(2000);
-          if (likeData && likeData.length > 0) {
-            todaySchedules = likeData;
-          }
+        if (!todayErr && matchedToday && matchedToday.length > 0) {
+          todaySchedules = matchedToday.filter(row => checkDateMatch(row[dateColName], tYear, tMonth, tDay));
         }
       }
 
       if (todaySchedules.length === 0) {
-        const { data: allSched } = await supabase.from(TABLE_SCHEDULE).select('*').limit(3000);
-        if (allSched) {
-          todaySchedules = allSched.filter(row => {
+        let fbQuery = supabase.from(TABLE_SCHEDULE).select('*');
+        if (dateColName) {
+          fbQuery = fbQuery.order(dateColName, { ascending: false });
+        }
+        const { data: fbSched } = await fbQuery.limit(5000);
+        if (fbSched) {
+          todaySchedules = fbSched.filter(row => {
             const dbDate = dateColName
               ? row[dateColName]
               : getPropCaseInsensitive(row, ['date', 'Date', 'tanggal', 'scheduledate', 'startdate'], null);
@@ -440,12 +453,11 @@ export default function Dashboard() {
         if (!rawType) return;
 
         const tLower = rawType.toLowerCase();
-        // Kecualikan Working Day
+        // Hanya ambil type <> Working Day
         if (tLower === 'working day' || tLower === 'working' || tLower === 'work' || tLower === 'hari kerja') {
           return;
         }
 
-        // Cocokkan dengan data Employee Directory
         const empIdentifier = getPropCaseInsensitive(
           row,
           ['employee', 'email', 'user_uid', 'employee_id', 'employee id', 'name', 'nama', 'employee_name'],
@@ -454,7 +466,6 @@ export default function Dashboard() {
 
         const matchedEmp = empIdentifier ? empLookupMap.get(empIdentifier.toLowerCase()) : null;
 
-        // Jika company filter aktif dan directory ada isinya, pastikan hanya karyawan perusahaan terkait yang masuk
         if (userCompany && companyEmployees.length > 0 && !matchedEmp) {
           const rowComp = getPropCaseInsensitive(row, ['company', 'Company Name', 'companyuid', 'company_uid'], '').trim().toLowerCase();
           if (rowComp && rowComp !== userCompany && !rowComp.includes(userCompany) && !userCompany.includes(rowComp)) {
@@ -462,7 +473,6 @@ export default function Dashboard() {
           }
         }
 
-        // Normalisasi nama kategori utama agar rapi & konsisten
         let categoryLabel = rawType;
         if (tLower === 'annual leave') categoryLabel = 'Annual Leave';
         else if (tLower === 'public holiday') categoryLabel = 'Public Holiday';
@@ -486,10 +496,9 @@ export default function Dashboard() {
         groupedMap.get(categoryLabel).push(employeeCard);
       });
 
-      // Urutkan kategori: Annual Leave, Public Holiday, Sick, Day Off, lalu sisa type <> Working Day secara alfabetis
       const priorityOrder = ['Annual Leave', 'Public Holiday', 'Sick', 'Day Off'];
       const sortedGroups = Array.from(groupedMap.entries())
-        .filter(([, items]) => items.length > 0) // Hide jika list kosong
+        .filter(([, items]) => items.length > 0) // Hide jika tidak ada listnya
         .sort(([typeA], [typeB]) => {
           const idxA = priorityOrder.findIndex(p => p.toLowerCase() === typeA.toLowerCase());
           const idxB = priorityOrder.findIndex(p => p.toLowerCase() === typeB.toLowerCase());
@@ -505,7 +514,7 @@ export default function Dashboard() {
 
       setTodayNotifGroups(sortedGroups);
     } catch (err) {
-      console.warn('Error fetching today notifications:', err);
+      console.warn('Error fetching today not working schedule:', err);
       setTodayNotifGroups([]);
     }
   };
@@ -639,6 +648,8 @@ export default function Dashboard() {
 
   const today = new Date();
   const todayOnlyDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const todayFormattedHeader = `${t.daysFull[today.getDay()]}, ${String(today.getDate()).padStart(2, '0')} ${t.monthsShort[today.getMonth()]} ${today.getFullYear()}`;
+  const totalTodayNotWorking = todayNotifGroups.reduce((sum, g) => sum + g.items.length, 0);
 
   const { calendarDays, stats } = useMemo(() => {
     const days = [];
@@ -875,91 +886,109 @@ export default function Dashboard() {
   return (
     <div className="w-full text-gray-800 font-sans">
       
-      {/* Notifikasi Accordion: Annual Leave, Public Holiday, Sick, Day Off, & semua type <> Working Day */}
+      {/* Section: Today Not Working Schedule */}
       {todayNotifGroups.length > 0 && (
-        <div className="mb-4 space-y-3">
-          {todayNotifGroups.map(({ category, items }) => {
-            // Hide jika tidak ada listnya
-            if (!items || items.length === 0) return null;
-
-            const isOpen = !!openCategories[category];
-            const theme = getNotifTheme(category);
-
-            return (
-              <div
-                key={category}
-                className={`border-l-4 ${theme.wrapper} rounded-r-xl overflow-hidden shadow-xs`}
-              >
-                <div
-                  onClick={() => toggleCategory(category)}
-                  className={`w-full flex items-center justify-between p-3 sm:p-4 ${theme.headerHover} transition cursor-pointer select-none`}
-                >
-                  <div className="flex items-center gap-2">
-                    {renderCategoryIcon(theme.iconType, `w-5 h-5 ${theme.iconColor}`)}
-                    <h4 className={`font-bold ${theme.titleColor} text-sm`}>
-                      {category}
-                    </h4>
-                    <span className={`${theme.badgeColor} text-[10px] font-black px-2 py-0.5 rounded-full ml-1`}>
-                      {items.length}
-                    </span>
-                  </div>
-                  <svg
-                    className={`w-5 h-5 ${theme.iconColor} transition-transform duration-200 ${isOpen ? 'transform rotate-180' : ''}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-                  </svg>
-                </div>
-
-                {isOpen && (
-                  <div className="p-3 sm:p-4 pt-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                    {items.map((emp, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-white border border-gray-100 rounded-lg p-2.5 flex items-center justify-between shadow-xs"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <img
-                            src={emp.photo}
-                            alt={emp.name}
-                            className="w-10 h-10 rounded-full object-cover border border-gray-200 bg-gray-50 shrink-0"
-                            onError={(e) => {
-                              e.target.onerror = null;
-                              e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png';
-                            }}
-                          />
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-gray-900 break-words whitespace-normal">
-                              {emp.name}
-                            </p>
-                            <p className="text-[11px] text-gray-500 truncate">
-                              {emp.jobTitle}
-                            </p>
-                          </div>
-                        </div>
-
-                        {emp.phone && emp.phone !== '-' && (
-                          <a
-                            href={formatWhatsappUrl(emp.phone)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-green-600 hover:bg-green-100 transition shrink-0 ml-2"
-                            title={t.chatWa}
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
-                            </svg>
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
+          <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold text-gray-900">
+                  {t.todayNotWorkingTitle}
+                </h3>
+                <span className="bg-gray-100 text-gray-700 text-xs font-extrabold px-2.5 py-0.5 rounded-full">
+                  {totalTodayNotWorking}
+                </span>
               </div>
-            );
-          })}
+              <p className="text-xs text-gray-500 mt-0.5">
+                {todayFormattedHeader}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {todayNotifGroups.map(({ category, items }) => {
+              // Hide jika tidak ada listnya
+              if (!items || items.length === 0) return null;
+
+              const isOpen = !!openCategories[category];
+              const theme = getNotifTheme(category);
+
+              return (
+                <div
+                  key={category}
+                  className={`border-l-4 ${theme.wrapper} rounded-r-xl overflow-hidden shadow-xs`}
+                >
+                  <div
+                    onClick={() => toggleCategory(category)}
+                    className={`w-full flex items-center justify-between p-3 sm:p-4 ${theme.headerHover} transition cursor-pointer select-none`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {renderCategoryIcon(theme.iconType, `w-5 h-5 ${theme.iconColor}`)}
+                      <h4 className={`font-bold ${theme.titleColor} text-sm`}>
+                        {category}
+                      </h4>
+                      <span className={`${theme.badgeColor} text-[10px] font-black px-2 py-0.5 rounded-full ml-1`}>
+                        {items.length}
+                      </span>
+                    </div>
+                    <svg
+                      className={`w-5 h-5 ${theme.iconColor} transition-transform duration-200 ${isOpen ? 'transform rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                  </div>
+
+                  {isOpen && (
+                    <div className="p-3 sm:p-4 pt-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                      {items.map((emp, idx) => (
+                        <div
+                          key={idx}
+                          className="bg-white border border-gray-100 rounded-lg p-2.5 flex items-center justify-between shadow-xs"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <img
+                              src={emp.photo}
+                              alt={emp.name}
+                              className="w-10 h-10 rounded-full object-cover border border-gray-200 bg-gray-50 shrink-0"
+                              onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png';
+                              }}
+                            />
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-gray-900 break-words whitespace-normal">
+                                {emp.name}
+                              </p>
+                              <p className="text-[11px] text-gray-500 truncate">
+                                {emp.jobTitle}
+                              </p>
+                            </div>
+                          </div>
+
+                          {emp.phone && emp.phone !== '-' && (
+                            <a
+                              href={formatWhatsappUrl(emp.phone)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-green-600 hover:bg-green-100 transition shrink-0 ml-2"
+                              title={t.chatWa}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
+                              </svg>
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
