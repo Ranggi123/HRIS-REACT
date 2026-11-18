@@ -327,7 +327,6 @@ export default function TopNav({
                             })}
                           </select>
 
-                          {/* KUSTOM DROPDOWN UNTUK FOTO & JOB TITLE KARYAWAN */}
                           <div className="relative">
                             <button
                               type="button"
@@ -369,7 +368,6 @@ export default function TopNav({
                                 </div>
                                 <div className="py-1">
                                   {(() => {
-                                    // filter locally
                                     const searched = filteredEmployees.filter(emp => {
                                       const email = getPropCaseInsensitiveTopNav(emp, ['email', 'email address', 'user_uid'], '');
                                       const name = getPropCaseInsensitiveTopNav(emp, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Unknown');
@@ -424,12 +422,23 @@ export default function TopNav({
                               </div>
                             )}
                           </div>
-                          {/* ------------------------------------------------------------- */}
                         </div>
                       </>
                     )}
                   </div>
                 )}
+
+                {/* Tautan Human Resources Baru */}
+                <Link 
+                  to="/hrd" 
+                  onClick={() => setDropdownOpen(false)}
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 hover:text-blue-600 flex items-center space-x-2.5 transition border-b border-gray-50"
+                >
+                  <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                  </svg>
+                  <span className="font-medium text-gray-700">Human Resources</span>
+                </Link>
 
                 <button 
                   onClick={() => {
