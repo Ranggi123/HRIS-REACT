@@ -1256,7 +1256,24 @@ Photo : ${photoUrl}`;
               </div>
               <div className="flex justify-between items-center border-b border-gray-100 pb-2">
                 <span className="text-gray-500 font-medium">{t.detTime}</span>
-                <strong className="text-gray-900 text-sm tracking-tight">{formatIndoDateTime(selectedRecord)}</strong>
+                <strong className="text-gray-900 text-sm tracking-tight">
+                  {(() => {
+                    const statusVal = getPropCaseInsensitive(selectedRecord, ['Status', 'status'], 'Pending Approval');
+                    const typeVal = getPropCaseInsensitive(selectedRecord, ['Are you checking out or Checking in?', 'Type', 'type', 'status'], 'Checking in');
+
+                    const isPendingApproval = statusVal.toLowerCase() === 'pending approval';
+                    const isCheckingOut = typeVal.toLowerCase() === 'checking out';
+
+                    if (isPendingApproval && isCheckingOut) {
+                      const checkoutTimeVal = getPropCaseInsensitive(selectedRecord, ['Checkout Time', 'checkout_time', 'Check Out Time'], '');
+                      if (checkoutTimeVal) {
+                        return formatIndoDateTime(checkoutTimeVal);
+                      }
+                    }
+
+                    return formatIndoDateTime(selectedRecord);
+                  })()}
+                </strong>
               </div>
               <div className="flex justify-between items-start border-b border-gray-100 pb-2">
                 <span className="text-gray-500 font-medium">{t.detLoc}</span>
