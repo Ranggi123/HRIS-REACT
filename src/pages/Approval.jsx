@@ -430,10 +430,10 @@ const getReqTypeColor = (reqType, category) => {
       return 'text-purple-600';
     }
   } else if (category === 'Attendance') {
-    if (typeLower.includes('in')) {
+    if (typeLower.includes('out')) {
+      return 'text-red-600';
+    } else if (typeLower.includes('in')) {
       return 'text-green-600';
-    } else if (typeLower.includes('out')) {
-      return 'text-orange-600';
     }
   }
   return 'text-blue-700';
