@@ -353,11 +353,18 @@ export default function TopNav({
                                 
                                 const name = getPropCaseInsensitiveTopNav(emp, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Unknown');
                                 const photo = getPropCaseInsensitiveTopNav(emp, ['link', 'Link', 'photo', 'avatar'], 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png');
+                                const status = getPropCaseInsensitiveTopNav(emp, ['Status', 'status', 'STATUS', 'Account Status', 'account_status'], '');
+                                const isInactive = status.toLowerCase() !== 'active';
                                 
                                 return (
                                   <div className="flex items-center gap-1.5 overflow-hidden">
-                                    <img src={photo} alt="" className="w-5 h-5 rounded-full object-cover shrink-0 bg-gray-100 border border-gray-200" onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }} />
-                                    <span className="truncate font-semibold text-gray-800">{name}</span>
+                                    <img
+                                      src={photo}
+                                      alt=""
+                                      className={`w-5 h-5 rounded-full object-cover shrink-0 bg-gray-100 border ${isInactive ? 'border-red-300' : 'border-gray-200'}`}
+                                      onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }}
+                                    />
+                                    <span className={`truncate font-semibold ${isInactive ? 'text-red-600' : 'text-gray-800'}`}>{name}</span>
                                   </div>
                                 );
                               })()}
@@ -397,6 +404,8 @@ export default function TopNav({
                                       const name = getPropCaseInsensitiveTopNav(emp, ['Name', 'name', 'nama', 'fullname', 'full_name'], 'Unknown');
                                       const photo = getPropCaseInsensitiveTopNav(emp, ['link', 'Link', 'photo', 'avatar'], 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png');
                                       const jobTitle = getPropCaseInsensitiveTopNav(emp, ['job title', 'Job Title', 'job_title', 'position'], '');
+                                      const status = getPropCaseInsensitiveTopNav(emp, ['Status', 'status', 'STATUS', 'Account Status', 'account_status'], '');
+                                      const isInactive = status.toLowerCase() !== 'active';
                                       
                                       return (
                                         <button 
@@ -413,17 +422,37 @@ export default function TopNav({
                                             localStorage.setItem('hris_session_data', JSON.stringify(emp));
                                             window.location.reload();
                                           }}
-                                          className="w-full px-3 py-2 flex items-center space-x-2.5 hover:bg-indigo-50 text-left transition group border-b border-gray-50 last:border-b-0"
+                                          className={`w-full px-3 py-2 flex items-center space-x-2.5 text-left transition group border-b border-gray-50 last:border-b-0 ${
+                                            isInactive
+                                              ? 'bg-red-50/70 hover:bg-red-100/80'
+                                              : 'hover:bg-indigo-50'
+                                          }`}
                                         >
                                           <img 
                                             src={photo} 
                                             alt={name} 
-                                            className="w-7 h-7 rounded-full object-cover border border-gray-200 shrink-0 bg-gray-100" 
+                                            className={`w-7 h-7 rounded-full object-cover border shrink-0 bg-gray-100 ${
+                                              isInactive ? 'border-red-300' : 'border-gray-200'
+                                            }`}
                                             onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/128/1077/1077063.png'; }}
                                           />
                                           <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-semibold text-gray-800 group-hover:text-indigo-600 truncate">{name}</p>
-                                            <p className="text-[10px] text-gray-400 truncate">{jobTitle ? jobTitle + ' • ' : ''}{email}</p>
+                                            <p
+                                              className={`text-xs font-semibold truncate ${
+                                                isInactive
+                                                  ? 'text-red-600 group-hover:text-red-700'
+                                                  : 'text-gray-800 group-hover:text-indigo-600'
+                                              }`}
+                                            >
+                                              {name}
+                                            </p>
+                                            <p
+                                              className={`text-[10px] truncate ${
+                                                isInactive ? 'text-red-400' : 'text-gray-400'
+                                              }`}
+                                            >
+                                              {jobTitle ? jobTitle + ' • ' : ''}{email}
+                                            </p>
                                           </div>
                                         </button>
                                       );
